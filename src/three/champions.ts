@@ -7,6 +7,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import type { FactionConfig } from '../config/factions';
 import { buildFeetShadow, buildPedestal, DNA } from './figurine';
@@ -16,6 +17,15 @@ const CHARACTER_HEIGHT = 1.45;
 
 const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
+
+/**
+ * Must run once (with the app renderer) before any model loads: attaches the
+ * KTX2/BasisU transcoder used by the compressed character textures.
+ */
+export function initCharacterLoader(renderer: THREE.WebGLRenderer): void {
+  const ktx2 = new KTX2Loader().setTranscoderPath('basis/').detectSupport(renderer);
+  loader.setKTX2Loader(ktx2);
+}
 
 const cache = new Map<string, Promise<THREE.Group>>();
 const loadWaiters = new Map<string, (g: THREE.Group) => void>();

@@ -65,14 +65,23 @@ export function studioStep(actions: UIActions, state: AppState): StepView {
   });
   CHARACTERS.forEach((c) => {
     const faction = factionById(c.factionId);
+    // Prebaked portrait (scripts/gen-thumbs.mjs); if missing, fall back to a
+    // monogram and upgrade from the live model once it streams in.
     const img = h('img', {
       alt: '',
-      src: monogramThumb(c.name[0], faction.accentColor),
+      src: `assets/thumbs/${c.id}.webp`,
       draggable: 'false',
     }) as HTMLImageElement;
-    void characterThumb(c.modelUrl, c.name[0], faction.accentColor).then((src) => {
-      img.src = src;
-    });
+    img.addEventListener(
+      'error',
+      () => {
+        img.src = monogramThumb(c.name[0], faction.accentColor);
+        void characterThumb(c.modelUrl, c.name[0], faction.accentColor).then((src) => {
+          img.src = src;
+        });
+      },
+      { once: true }
+    );
     const b = h(
       'button',
       {

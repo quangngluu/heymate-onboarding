@@ -1,5 +1,5 @@
 {
-  "$comment": "Generated-asset registry for heymate-onboarding (universe: Afterburn City). Champion models are USER-PROVIDED generated GLBs (Meshy-style 'base_basic_pbr.glb' exports from /Users/admin/Downloads/<Character Name>/), optimized via scripts/optimize-glb.mjs (dedup+prune, textures -> 1024 WebP, geometry -> Meshopt EXT_meshopt_compression; ~39MB -> ~4.7MB each). They load as immutable presentation-ready champions. The customizable Mate and the ambience remain procedural proxies so every customization control stays real.",
+  "$comment": "Generated-asset registry for heymate-onboarding (universe: Afterburn City). Champion models are USER-PROVIDED generated GLBs (Meshy-style 'base_basic_pbr.glb' exports from /Users/admin/Downloads/<Character Name>/), optimized via scripts/optimize-glb.mjs (dedup+prune, textures -> KTX2/BasisU (baseColor 2K, normal/ORM 1K, emissive 512), 35% mesh simplify, Meshopt; ~39MB -> ~3.3MB each). They load as immutable presentation-ready champions. The customizable Mate and the ambience remain procedural proxies so every customization control stays real.",
   "assetRoot": "public/assets",
   "assets": {
     "afterburn-city-ambience": {
@@ -18,7 +18,7 @@
         "champion-iona.glb (Iona, NULL CHOIR)",
         "extra-echo.glb (Echo, NULL CHOIR)"
       ],
-      "source": "user-provided generated models, optimized by scripts/optimize-glb.mjs (1024 WebP + Meshopt)"
+      "source": "user-provided generated models, optimized by scripts/optimize-glb.mjs (KTX2/BasisU + Meshopt, native gltfpack)"
     },
     "faction-environments": {
       "status": "local-artifacts",

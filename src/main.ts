@@ -9,6 +9,7 @@ import {
   applyVariantTint,
   createGlbChampion,
   GlbChampion,
+  initCharacterLoader,
   loadNormalized,
   loadRawModel,
   type ChampionView,
@@ -62,6 +63,7 @@ class App implements UIActions {
   constructor() {
     const canvas = document.getElementById('stage') as HTMLCanvasElement;
     this.engine = new Engine(canvas);
+    initCharacterLoader(this.engine.renderer);
     this.rig = new CameraRig(this.engine.camera, this.engine.reducedMotion);
 
     this.controls = new OrbitControls(this.engine.camera, canvas);

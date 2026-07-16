@@ -30,21 +30,31 @@ const simplify = Number(simplifyArg) || 0;
 const io = new NodeIO();
 const doc = await io.read(resolve(inPath));
 
+// With a native gltfpack (GLTFPACK_BIN) the final texture encode is
+// KTX2/BasisU, so this stage only resizes (PNG passthrough). Without it we
+// fall back to WebP here and skip -tc.
+const nativePack = process.env.GLTFPACK_BIN;
+const fmt = nativePack ? 'png' : 'webp';
 await doc.transform(
   dedup(),
   prune(),
-  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [texSize, texSize], quality: 80, slots: /baseColor/i }),
-  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [halfSize, halfSize], quality: 82, slots: /(normal|metallicRoughness|occlusion)/i }),
-  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [512, 512], quality: 80, slots: /emissive/i })
+  textureCompress({ encoder: sharp, targetFormat: fmt, resize: [texSize, texSize], quality: 80, slots: /baseColor/i }),
+  textureCompress({ encoder: sharp, targetFormat: fmt, resize: [halfSize, halfSize], quality: 82, slots: /(normal|metallicRoughness|occlusion)/i }),
+  textureCompress({ encoder: sharp, targetFormat: fmt, resize: [512, 512], quality: 80, slots: /emissive/i })
 );
 
 const tmp = mkdtempSync(join(tmpdir(), 'glbopt-'));
 const mid = join(tmp, 'mid.glb');
 await io.write(mid, doc);
 
-const packArgs = ['gltfpack', '-i', mid, '-o', resolve(outPath), '-cc', '-kn'];
+const packArgs = ['-i', mid, '-o', resolve(outPath), '-cc', '-kn'];
 if (simplify > 0) packArgs.push('-si', String(simplify));
-execFileSync('npx', packArgs, { stdio: 'inherit' });
+if (nativePack) {
+  packArgs.push('-tc'); // KTX2/BasisU texture compression (native build only)
+  execFileSync(nativePack, packArgs, { stdio: 'inherit' });
+} else {
+  execFileSync('npx', ['gltfpack', ...packArgs], { stdio: 'inherit' });
+}
 rmSync(tmp, { recursive: true, force: true });
 
 const inMB = (statSync(resolve(inPath)).size / 1e6).toFixed(1);

@@ -89,6 +89,14 @@ try {
   await desktop.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
   const d = await journey(desktop, 'desktop');
   console.log('desktop shots:', d.shots.length, 'errors:', JSON.stringify(d.errors.slice(0, 5)));
+  // Close before the mobile run: a backgrounded page gets no rAF in headless
+  // Chrome, which freezes the app's animation loop mid-journey.
+  await desktop.close();
+
+  const mobile = await browser.newPage();
+  await mobile.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  const m = await journey(mobile, 'mobile');
+  console.log('mobile shots:', m.shots.length, 'errors:', JSON.stringify(m.errors.slice(0, 5)));
 } finally {
   await browser.close();
 }
