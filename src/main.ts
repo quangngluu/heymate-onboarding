@@ -4,7 +4,7 @@ import { Engine } from './three/engine';
 import { CameraRig } from './three/rig';
 import { buildStage, type StageHandles } from './three/stage';
 import { PLINTH_HEIGHT, plinthPositions } from './config/layout';
-import { Figurine } from './three/adapter';
+import { LoadingPlinth } from './three/loading';
 import {
   applyVariantTint,
   createGlbChampion,
@@ -25,7 +25,6 @@ import { CAMERA_PRESETS } from './config/cameras';
 import { COPY } from './config/copy';
 import { factionById } from './config/factions';
 import { CHARACTERS, characterById, characterIndex } from './config/characters';
-import { defaultCustomization } from './config/customization';
 import { universeById } from './config/universes';
 import { fnv1a } from './util/hash';
 
@@ -144,12 +143,11 @@ class App implements UIActions {
   private buildCharacters(): void {
     CHARACTERS.forEach((c, i) => {
       const faction = factionById(c.factionId);
-      const proxy = new Figurine(faction);
-      proxy.apply(defaultCustomization(faction));
+      const stage = new LoadingPlinth(faction);
       const [x, , z] = PLINTHS[i];
-      proxy.root.position.set(x, PLINTH_HEIGHT, z);
-      this.engine.scene.add(proxy.root);
-      this.views.set(c.id, proxy);
+      stage.root.position.set(x, PLINTH_HEIGHT, z);
+      this.engine.scene.add(stage.root);
+      this.views.set(c.id, stage);
       this.liftTargets.set(c.id, 0);
     });
     this.refreshPickSet();
@@ -178,7 +176,7 @@ class App implements UIActions {
     void createGlbChampion(faction, c.modelUrl)
       .then((champ) => {
         const current = this.views.get(id);
-        if (!(current instanceof Figurine)) return;
+        if (!(current instanceof LoadingPlinth)) return;
         champ.root.position.copy(current.root.position);
         // Preserve any in-progress facing so the swap is seamless.
         if (this.selectedId === id) {
@@ -195,7 +193,7 @@ class App implements UIActions {
         this.refreshPickSet();
       })
       .catch(() => {
-        console.warn(`Model missing for ${id}; proxy figurine stays until the GLB exists.`);
+        console.warn(`Model missing for ${id}; loading stage stays until the GLB exists.`);
       })
       .finally(() => {
         this.loadingCharacter = false;
@@ -410,13 +408,6 @@ class App implements UIActions {
           const mate = new GlbChampion(faction, model, { pedestal: false });
           return { mate: mate as ChampionView, label };
         })
-        .catch(() => {
-          // Base model missing (e.g. Kira): variant on the proxy figurine.
-          const palette = faction.palettes[seed % faction.palettes.length];
-          const proxy = new Figurine(faction);
-          proxy.apply({ ...defaultCustomization(faction), palette: palette.id });
-          return { mate: proxy as ChampionView, label: palette.label };
-        })
         .then(({ mate, label }) => {
           this.mate?.dispose();
           this.mate = mate;
@@ -448,6 +439,11 @@ class App implements UIActions {
             this.controls.enabled = true;
             this.rig.syncLook();
           });
+        })
+        .catch(() => {
+          // Base model unavailable: fail honestly instead of a stand-in Mate.
+          store.set({ genPhase: 'idle' });
+          this.flashError(COPY.errors.generic);
         });
     }, delay);
   }
