@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "heymate-onboarding",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "/Users/admin/product-pka-labs/heymate-onboarding",
+      "port": 5199
+    }
+  ]
+}

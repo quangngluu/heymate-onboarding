@@ -1,0 +1,35 @@
+{
+  "$comment": "Generated-asset registry for heymate-onboarding (universe: Afterburn City). Champion models are USER-PROVIDED generated GLBs (Meshy-style 'base_basic_pbr.glb' exports from /Users/admin/Downloads/<Character Name>/), optimized via scripts/optimize-glb.mjs (dedup+prune, textures -> 1024 WebP, geometry -> Meshopt EXT_meshopt_compression; ~39MB -> ~4.7MB each). They load as immutable presentation-ready champions. The customizable Mate and the ambience remain procedural proxies so every customization control stays real.",
+  "assetRoot": "public/assets",
+  "assets": {
+    "afterburn-city-ambience": {
+      "status": "proxy",
+      "proxy": "src/audio/ambience.ts (procedural WebAudio hum + cues)"
+    },
+    "characters": {
+      "status": "local-artifacts",
+      "files": [
+        "champion-rex.glb (Rex, RED//SHIFT)",
+        "champion-vexa.glb (Vexa, RED//SHIFT)",
+        "champion-grind.glb (Grind, RAZORPACK)",
+        "extra-hex.glb (Hex, RAZORPACK)",
+        "champion-vale.glb (Vale, WARD-9)",
+        "extra-k6.glb (Unit K-6, WARD-9)",
+        "champion-iona.glb (Iona, NULL CHOIR)",
+        "extra-echo.glb (Echo, NULL CHOIR)"
+      ],
+      "source": "user-provided generated models, optimized by scripts/optimize-glb.mjs (1024 WebP + Meshopt)"
+    },
+    "faction-environments": {
+      "status": "local-artifacts",
+      "files": [
+        "env/env-red-shift.webp",
+        "env/env-razorpack.webp",
+        "env/env-ward-9.webp",
+        "env/env-null-choir.webp"
+      ],
+      "source": "user-provided generated 360 panoramas (hdr_high.png), resized 8192x4096 -> 4096x2048 WebP q80",
+      "note": "Applied as equirectangular skybox + scene.environment per selected faction (src/three/backdrop.ts). Source EXR HDRs kept in Downloads if true HDR IBL is wanted later."
+    }
+  }
+}

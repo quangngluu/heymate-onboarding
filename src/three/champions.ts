@@ -1,0 +1,163 @@
+// Loaded GLB faction champions (user-provided generated characters).
+//
+// The GLB is treated as presentation-ready and immutable: no recoloring, no
+// mesh surgery — it is normalized (height, ground contact, centering) and
+// placed on the shared collectible pedestal. Fulfils the same presentation
+// contract as the procedural Figurine so scene code treats both alike.
+
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import type { FactionConfig } from '../config/factions';
+import { buildFeetShadow, buildPedestal, DNA } from './figurine';
+
+/** Height of the character itself (pedestal excluded) — matches the DNA. */
+const CHARACTER_HEIGHT = 1.45;
+
+const loader = new GLTFLoader();
+loader.setMeshoptDecoder(MeshoptDecoder);
+
+const cache = new Map<string, Promise<THREE.Group>>();
+
+/** Load a GLB without character normalization (props, bases, scenery). */
+export function loadRawModel(url: string): Promise<THREE.Group> {
+  return loader.loadAsync(url).then((gltf) => {
+    const g = new THREE.Group();
+    g.add(gltf.scene);
+    return g;
+  });
+}
+
+export function loadNormalized(url: string): Promise<THREE.Group> {
+  let p = cache.get(url);
+  if (!p) {
+    p = loader.loadAsync(url).then((gltf) => {
+      const src = gltf.scene;
+      const box = new THREE.Box3().setFromObject(src);
+      const size = box.getSize(new THREE.Vector3());
+      src.scale.setScalar(CHARACTER_HEIGHT / (size.y || 1));
+      const box2 = new THREE.Box3().setFromObject(src);
+      const center = box2.getCenter(new THREE.Vector3());
+      src.position.x -= center.x;
+      src.position.z -= center.z;
+      src.position.y -= box2.min.y;
+      src.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.castShadow = true;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const m of mats as THREE.MeshStandardMaterial[]) {
+          for (const map of [m.map, m.normalMap, m.roughnessMap, m.metalnessMap, m.emissiveMap]) {
+            if (map) map.anisotropy = 8;
+          }
+        }
+      });
+      const wrapper = new THREE.Group();
+      wrapper.add(src);
+      return wrapper;
+    });
+    cache.set(url, p);
+  }
+  // Clone per consumer; geometry and materials stay shared via the cache.
+  return p.then((g) => g.clone(true));
+}
+
+/** Common presentation contract shared with the procedural Figurine. */
+export interface ChampionView {
+  root: THREE.Group;
+  faction: FactionConfig;
+  hoverLift: number;
+  /** Turn the figure toward a yaw (radians); animated unless immediate. */
+  setFacing(yaw: number, immediate?: boolean): void;
+  updatePresentation(t: number, phase: number, dt: number): void;
+  dispose(): void;
+}
+
+export class GlbChampion implements ChampionView {
+  readonly root = new THREE.Group();
+  hoverLift = 0;
+  private figure = new THREE.Group();
+  private ringMaterial: THREE.MeshStandardMaterial;
+  private targetYaw = 0;
+
+  constructor(
+    readonly faction: FactionConfig,
+    model: THREE.Group,
+    opts: { pedestal?: boolean } = {}
+  ) {
+    const withPedestal = opts.pedestal !== false;
+    if (withPedestal) {
+      const ped = buildPedestal(faction.accentColor);
+      this.root.add(ped.group);
+      this.ringMaterial = ped.ringMaterial;
+    } else {
+      // Standing directly on a shared base: no collectible pedestal, just a
+      // soft contact shadow under the feet.
+      this.root.add(buildFeetShadow());
+      this.ringMaterial = new THREE.MeshStandardMaterial();
+    }
+    this.figure.add(model);
+    this.figure.position.y = withPedestal ? DNA.pedestalHeight : 0;
+    this.baseY = this.figure.position.y;
+    this.root.add(this.figure);
+  }
+  private baseY = 0;
+
+  setFacing(yaw: number, immediate = false): void {
+    this.targetYaw = yaw;
+    if (immediate) this.figure.rotation.y = yaw;
+  }
+
+  /** Spin-in flourish: start several turns away and settle on the target. */
+  spinTo(yaw: number): void {
+    this.figure.rotation.y = yaw + Math.PI * 3;
+    this.targetYaw = yaw;
+  }
+
+  updatePresentation(t: number, phase: number, dt: number): void {
+    this.figure.position.y = this.baseY + this.hoverLift + Math.sin(t * 0.9 + phase) * 0.008;
+    this.figure.rotation.y += (this.targetYaw - this.figure.rotation.y) * Math.min(1, dt * 4.5);
+    this.ringMaterial.emissiveIntensity = 0.22 + this.hoverLift * 6 + Math.sin(t * 1.4 + phase) * 0.04;
+  }
+
+  dispose(): void {
+    // Geometry/materials are shared via the loader cache — never disposed here.
+    this.root.parent?.remove(this.root);
+    this.ringMaterial.dispose();
+  }
+}
+
+export async function createGlbChampion(faction: FactionConfig, url: string): Promise<GlbChampion> {
+  const model = await loadNormalized(url);
+  return new GlbChampion(faction, model);
+}
+
+/**
+ * SIMULATED regeneration treatment. The real product regenerates the model
+ * from the base file plus the user prompt through a generation service; this
+ * mockup deterministically derives a faction-approved colorway from the
+ * prompt seed and applies it as a material tint + emissive shift on a clone.
+ * Materials are cloned per-mesh first so the shared cache stays pristine.
+ */
+export function applyVariantTint(
+  root: THREE.Object3D,
+  faction: FactionConfig,
+  seed: number
+): { label: string } {
+  const palette = faction.palettes[seed % faction.palettes.length];
+  const tint = new THREE.Color(palette.accent).lerp(new THREE.Color(0xffffff), 0.55);
+  const emissive = new THREE.Color(palette.accent).multiplyScalar(0.14);
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const cloned = mats.map((m) => {
+      const c = m.clone() as THREE.MeshStandardMaterial;
+      if (c.color) c.color.multiply(tint);
+      if ('emissive' in c) c.emissive.add(emissive);
+      return c;
+    });
+    mesh.material = cloned.length > 1 ? cloned : cloned[0];
+  });
+  return { label: palette.label };
+}
