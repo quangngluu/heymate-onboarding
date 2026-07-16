@@ -3,7 +3,7 @@
 // models fall back to a typographic monogram tile.
 
 import * as THREE from 'three';
-import { loadNormalized } from './champions';
+import { whenLoaded } from './champions';
 
 const SIZE_W = 120;
 const SIZE_H = 150;
@@ -52,7 +52,9 @@ export function monogramThumb(letter: string, accent: number): string {
 export function characterThumb(url: string, fallbackLetter: string, accent: number): Promise<string> {
   let p = cache.get(url);
   if (!p) {
-    p = loadNormalized(url)
+    // Rides along with the progressive character loader — never triggers a
+    // download of its own. Until then the monogram placeholder stays up.
+    p = whenLoaded(url)
       .then((model) => {
         ensureRig();
         scene!.add(model);

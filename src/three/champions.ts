@@ -18,6 +18,26 @@ const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
 
 const cache = new Map<string, Promise<THREE.Group>>();
+const loadWaiters = new Map<string, (g: THREE.Group) => void>();
+const loadedBases = new Map<string, THREE.Group>();
+
+/**
+ * Resolves with the shared (non-cloned) normalized model once something else
+ * has actually loaded it — never initiates a download itself. Used by the
+ * thumbnail renderer so thumbs ride along with the progressive loader
+ * instead of triggering eight parallel downloads.
+ */
+export function whenLoaded(url: string): Promise<THREE.Group> {
+  const ready = loadedBases.get(url);
+  if (ready) return Promise.resolve(ready);
+  return new Promise((resolve) => {
+    const prev = loadWaiters.get(url);
+    loadWaiters.set(url, (g) => {
+      prev?.(g);
+      resolve(g);
+    });
+  });
+}
 
 /** Load a GLB without character normalization (props, bases, scenery). */
 export function loadRawModel(url: string): Promise<THREE.Group> {
@@ -54,6 +74,9 @@ export function loadNormalized(url: string): Promise<THREE.Group> {
       });
       const wrapper = new THREE.Group();
       wrapper.add(src);
+      loadedBases.set(url, wrapper);
+      loadWaiters.get(url)?.(wrapper);
+      loadWaiters.delete(url);
       return wrapper;
     });
     cache.set(url, p);

@@ -138,6 +138,9 @@ class App implements UIActions {
     }
   }
 
+  private loadQueue: string[] = [];
+  private loadingCharacter = false;
+
   private buildCharacters(): void {
     CHARACTERS.forEach((c, i) => {
       const faction = factionById(c.factionId);
@@ -148,22 +151,56 @@ class App implements UIActions {
       this.engine.scene.add(proxy.root);
       this.views.set(c.id, proxy);
       this.liftTargets.set(c.id, 0);
-
-      void createGlbChampion(faction, c.modelUrl)
-        .then((champ) => {
-          const current = this.views.get(c.id);
-          if (current !== proxy) return;
-          champ.root.position.copy(proxy.root.position);
-          this.engine.scene.add(champ.root);
-          proxy.dispose();
-          this.views.set(c.id, champ);
-          this.refreshPickSet();
-        })
-        .catch(() => {
-          console.warn(`Model missing for ${c.id}; proxy figurine stays until the GLB exists.`);
-        });
     });
     this.refreshPickSet();
+    // Characters stream in one at a time (selection jumps the queue) so the
+    // first meaningful render never waits on eight parallel downloads.
+    this.loadQueue = CHARACTERS.map((c) => c.id);
+    this.pumpLoadQueue();
+  }
+
+  /** Move a character to the front of the download queue. */
+  private prioritizeLoad(id: string): void {
+    const i = this.loadQueue.indexOf(id);
+    if (i > 0) {
+      this.loadQueue.splice(i, 1);
+      this.loadQueue.unshift(id);
+    }
+  }
+
+  private pumpLoadQueue(): void {
+    if (this.loadingCharacter) return;
+    const id = this.loadQueue.shift();
+    if (!id) return;
+    this.loadingCharacter = true;
+    const c = characterById(id);
+    const faction = factionById(c.factionId);
+    void createGlbChampion(faction, c.modelUrl)
+      .then((champ) => {
+        const current = this.views.get(id);
+        if (!(current instanceof Figurine)) return;
+        champ.root.position.copy(current.root.position);
+        // Preserve any in-progress facing so the swap is seamless.
+        if (this.selectedId === id) {
+          const idx = characterIndex(id);
+          const preset = CAMERA_PRESETS[`plinth-${idx}`];
+          champ.setFacing(
+            Math.atan2(preset.pos[0] - PLINTHS[idx][0], preset.pos[2] - PLINTHS[idx][2]),
+            true
+          );
+        }
+        this.engine.scene.add(champ.root);
+        current.dispose();
+        this.views.set(id, champ);
+        this.refreshPickSet();
+      })
+      .catch(() => {
+        console.warn(`Model missing for ${id}; proxy figurine stays until the GLB exists.`);
+      })
+      .finally(() => {
+        this.loadingCharacter = false;
+        this.pumpLoadQueue();
+      });
   }
 
   /** Swap the placeholder center pedestal for the generated portal base. */
@@ -282,6 +319,7 @@ class App implements UIActions {
       this.views.get(this.selectedId)?.setFacing(0);
     }
     this.selectedId = id;
+    this.prioritizeLoad(id);
     const yaw = Math.atan2(camPos.x - plinth.x, camPos.z - plinth.z);
     this.views.get(id)?.setFacing(yaw);
 

@@ -16,12 +16,16 @@ import { NodeIO } from '@gltf-transform/core';
 import { prune, dedup, textureCompress } from '@gltf-transform/functions';
 import sharp from 'sharp';
 
-const [, , inPath, outPath, sizeArg] = process.argv;
+const [, , inPath, outPath, sizeArg, simplifyArg] = process.argv;
 if (!inPath || !outPath) {
-  console.error('usage: optimize-glb.mjs <input.glb> <output.glb> [textureSize=1024]');
+  console.error('usage: optimize-glb.mjs <input.glb> <output.glb> [baseColorSize=1024] [simplifyRatio]');
   process.exit(1);
 }
 const texSize = Number(sizeArg) || 1024;
+// Secondary maps (normal/ORM) read fine at half resolution on stylized toys;
+// emissive is mostly flat glow shapes and survives 512.
+const halfSize = Math.max(512, texSize / 2);
+const simplify = Number(simplifyArg) || 0;
 
 const io = new NodeIO();
 const doc = await io.read(resolve(inPath));
@@ -29,16 +33,18 @@ const doc = await io.read(resolve(inPath));
 await doc.transform(
   dedup(),
   prune(),
-  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [texSize, texSize], quality: 88 })
+  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [texSize, texSize], quality: 80, slots: /baseColor/i }),
+  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [halfSize, halfSize], quality: 82, slots: /(normal|metallicRoughness|occlusion)/i }),
+  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [512, 512], quality: 80, slots: /emissive/i })
 );
 
 const tmp = mkdtempSync(join(tmpdir(), 'glbopt-'));
 const mid = join(tmp, 'mid.glb');
 await io.write(mid, doc);
 
-execFileSync('npx', ['gltfpack', '-i', mid, '-o', resolve(outPath), '-cc', '-kn'], {
-  stdio: 'inherit',
-});
+const packArgs = ['gltfpack', '-i', mid, '-o', resolve(outPath), '-cc', '-kn'];
+if (simplify > 0) packArgs.push('-si', String(simplify));
+execFileSync('npx', packArgs, { stdio: 'inherit' });
 rmSync(tmp, { recursive: true, force: true });
 
 const inMB = (statSync(resolve(inPath)).size / 1e6).toFixed(1);
