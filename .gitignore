@@ -3,3 +3,6 @@ dist/
 .tmp*
 *.log
 .vercel
+
+# Re-include app state (parent repo used to ignore any state/ dir)
+!src/state/
