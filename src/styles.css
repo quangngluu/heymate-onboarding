@@ -354,12 +354,23 @@ html, body {
 }
 .personalize-panel .group-label { margin-top: 2px; }
 
-.stage-info {
+.stage-rail {
   position: absolute;
   right: 24px;
   top: 76px;
+  bottom: 24px;
   width: min(340px, calc(100vw - 32px));
-  max-height: 40vh;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  pointer-events: none;
+}
+.stage-rail > * { pointer-events: auto; }
+
+.stage-info {
+  flex: 0 1 auto;
+  max-height: 42vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -400,17 +411,6 @@ html, body {
 .episode.is-open .episode-title { color: var(--ivory); }
 .episode-body { font-size: 12.5px; line-height: 1.5; color: var(--ivory-dim); margin-top: 3px; }
 
-.stage-bottom {
-  position: absolute;
-  right: 24px;
-  bottom: 24px;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
-  width: min(340px, calc(100vw - 32px));
-  max-height: 52vh;
-}
 /* Roster sits clear of the right rail so nothing stacks on the card. */
 .roster {
   position: absolute;
@@ -446,9 +446,83 @@ html, body {
 .roster-chip.is-active .dot { opacity: 1; box-shadow: 0 0 10px var(--accent); }
 .roster-chip:focus-visible { outline: 2px solid var(--ivory); outline-offset: 2px; }
 
-.talk-btn { pointer-events: auto; }
-.chat-box { width: 100%; display: flex; flex-direction: column; gap: 10px; }
-.chat-box[hidden], .talk-btn[hidden] { display: none; }
+/* Liquid-glass web approximation: backdrop-filter plus layered highlights.
+   This is not Apple's Liquid Glass material; a solid fill takes over under
+   prefers-reduced-transparency. */
+.invite-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: left;
+  padding: 16px 18px 15px;
+  border-radius: 14px;
+  border: 1px solid rgba(239, 230, 212, 0.24);
+  background:
+    linear-gradient(135deg, rgba(239, 230, 212, 0.13), rgba(239, 230, 212, 0.03)),
+    rgba(12, 16, 22, 0.44);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 18px 44px rgba(0, 0, 0, 0.32);
+  color: var(--ivory);
+  font-family: var(--font);
+  cursor: pointer;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.28s;
+}
+/* Edge refraction and the accent hairline that keeps her identity on the card
+   without putting accent colour under text. */
+.invite-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(circle at 16% 0%, rgba(255, 255, 255, 0.3), transparent 48%);
+  pointer-events: none;
+}
+.invite-card::after {
+  content: '';
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: 0;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: var(--accent);
+  opacity: 0.8;
+  pointer-events: none;
+}
+.invite-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 55%, rgba(239, 230, 212, 0.24));
+}
+.invite-card:active { transform: translateY(0) scale(0.995); }
+.invite-card:focus-visible { outline: 2px solid var(--ivory); outline-offset: 2px; }
+.invite-card[hidden] { display: none; }
+.invite-line { font-size: 14px; line-height: 1.5; color: var(--ivory); }
+.invite-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ivory);
+}
+.invite-chevron {
+  font-size: 16px;
+  color: var(--accent);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.invite-card:hover .invite-chevron { transform: translateX(4px); }
+
+.chat-box { width: 100%; margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+.chat-box[hidden] { display: none; }
 .chat-log {
   display: flex;
   flex-direction: column;
@@ -488,10 +562,10 @@ html, body {
 }
 .chat-input:focus-visible { outline: 2px solid var(--ivory); outline-offset: 1px; }
 .chat-input:disabled { opacity: 0.45; }
-.chat-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.chat-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.chat-foot { display: flex; flex-direction: column; align-items: stretch; gap: 9px; }
+.chat-actions { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 6px; }
 .turns-left.is-voicing { color: var(--accent); }
-.turns-left { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ivory-dim); }
+.turns-left { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ivory-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btn.xs { padding: 6px 12px; font-size: 11px; }
 .bubble-resident {
   align-self: flex-start;
@@ -904,11 +978,38 @@ html, body {
   .customize-panel.is-open { transform: translateX(-50%) translateY(0); }
   .customize-panel.is-open ~ .sheet-toggle { display: none; }
   .sheet-close { display: block; flex-shrink: 0; }
-  .stage-bottom { right: 10px; bottom: 10px; width: calc(100vw - 20px); }
-  .chat-foot { align-items: flex-end; }
-  .chat-actions { max-width: 64%; }
+  .stage-rail { right: 10px; bottom: 10px; top: auto; width: calc(100vw - 20px); }
+  .stage-info { max-height: 30vh; }
+  .stage-rail.is-chatting .stage-info { display: none; }
+  /* The roster moves out of the conversation's way and scrolls sideways. */
+  .roster {
+    left: 10px;
+    right: 10px;
+    top: 106px;
+    bottom: auto;
+    transform: none;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+    scrollbar-width: none;
+  }
+  .roster::-webkit-scrollbar { display: none; }
+  .roster-chip { flex: 0 0 auto; }
+
   .session-sheet { left: 10px; width: min(340px, calc(100vw - 20px)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .step, .panel, .arrival-copy, .customize-panel { transition: none; }
+  .invite-card, .invite-chevron { transition: none; }
+  .invite-card:hover { transform: none; }
+  .invite-card:hover .invite-chevron { transform: none; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .invite-card {
+    background: rgba(12, 16, 22, 0.95);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .invite-card::before { display: none; }
 }

@@ -14,6 +14,7 @@ export const COPY = {
 
     // Session setup: only what the user understands. Never a raw prompt.
     setSession: 'Thiết lập cuộc trò chuyện',
+    setSessionShort: 'Thiết lập',
     sessionNote: 'Thiết lập này chỉ áp dụng cho lần gặp này. Con người của em không đổi.',
     nickname: 'Em nên gọi anh là gì?',
     nicknamePlaceholder: 'Tên hoặc biệt danh',

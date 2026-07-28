@@ -22,8 +22,8 @@ const GHOST_HEIGHT = 1.05;
  * otherwise perspective lines them up into a single column.
  */
 export const GHOST_SLOTS: [number, number, number][] = [
-  [-1.75, 0, -0.5], // nearer the camera: lower and larger in frame
-  [-4.1, 0, -3.4], // further back and further left: higher and smaller
+  [-1.55, 0, 0.1], // nearer the camera: lower, larger, and clear of the base
+  [-4.9, 0, -3.4], // further back and further left: higher, smaller, no overlap
   [-1.2, 0, -5.8],
 ];
 

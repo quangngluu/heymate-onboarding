@@ -86,6 +86,20 @@ export function galleryStep(actions: UIActions): StepView {
 // to her before any settings exist. "Set this session" only appears once she
 // is no longer a stranger, and it never exposes a raw prompt.
 
+/**
+ * A taste of her voice for the invitation card: enough of the greeting to
+ * hear who she is, never the whole thing.
+ */
+function teaser(greeting: string): string {
+  const parts = greeting.match(/[^.!?]+[.!?]/g) ?? [greeting];
+  let out = '';
+  for (const part of parts) {
+    out += part;
+    if (out.length >= 40 || out === greeting) break;
+  }
+  return out.trim();
+}
+
 export function stageStep(actions: UIActions, state: AppState): StepView {
   const srOnlyName = h('h1', { class: 'visually-hidden' });
   const info = h('aside', { class: 'panel stage-info' });
@@ -154,15 +168,30 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         { class: 'chat-actions' },
         questBtn,
         voiceBtn,
-        h('button', { class: 'btn btn-ghost xs', onClick: () => actions.openSessionPanel() }, COPY.stage.setSession)
+        h('button', { class: 'btn btn-ghost xs', onClick: () => actions.openSessionPanel() }, COPY.stage.setSessionShort)
       )
     )
   );
-  const talkBtn = h(
+  // The invitation is a glass card in her rail, level with her, not a slab at
+  // the screen edge: you hear her before you decide, and the line you hear is
+  // the button.
+  const inviteLine = h('p', { class: 'invite-line' });
+  const inviteCard = h(
     'button',
-    { class: 'btn btn-primary talk-btn', onClick: () => actions.startChat() },
-    COPY.stage.talk
+    { class: 'invite-card', onClick: () => actions.startChat() },
+    inviteLine,
+    h(
+      'span',
+      { class: 'invite-cta' },
+      COPY.stage.talk,
+      h('span', { class: 'invite-chevron', 'aria-hidden': 'true' }, '\u203a')
+    )
   ) as HTMLButtonElement;
+
+  // One rail on the right does one job at a time: who she is, then her
+  // invitation, then the conversation. On phones the identity card steps
+  // aside once the conversation starts.
+  const rail = h('div', { class: 'stage-rail' }, info, inviteCard, chatBox);
 
   // --- session sheet (only after the encounter) ---
   const nickInput = h('input', {
@@ -386,9 +415,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     sessionSheet,
     questPanel,
     voicePanel,
-    info,
     roster,
-    h('div', { class: 'stage-bottom' }, talkBtn, chatBox),
+    rail,
     saveGate,
     unlockGate
   );
@@ -407,6 +435,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       if (s.residentId !== lastResident) {
         lastResident = s.residentId;
         srOnlyName.textContent = r.name;
+        inviteLine.textContent = teaser(r.greeting);
         nickInput.value = s.session.nickname;
         personaInput.value = s.session.persona;
         // The card carries three layers: the hook, who she is, and what the
@@ -419,14 +448,14 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
             h('span', { class: 'chip' }, 'Tiếng Việt')
           ),
           h('h2', { class: 'card-name' }, r.name),
-          h('p', { class: 'card-series' }, r.series),
+          h('p', { class: 'card-series' }, r.series.split(' - ')[0]),
           h('p', { class: 'card-hook' }, r.card.hook),
-          h('p', { class: 'card-bio' }, r.card.personality),
           h('p', { class: 'card-promise' }, r.card.promise),
-          h('p', { class: 'card-setting' }, r.setting),
           h('details', { class: 'profile-more' },
             h('summary', {}, 'Em là ai'),
-            h('p', { class: 'card-bio' }, r.profile)
+            h('p', { class: 'card-bio' }, r.card.personality),
+            h('p', { class: 'card-bio' }, r.profile),
+            h('p', { class: 'card-setting' }, r.setting)
           ),
           h('details', { class: 'episode-block profile-more' },
             h('summary', {}, 'Câu chuyện của em'),
@@ -485,7 +514,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         b.setAttribute('aria-checked', String(r.voices[i].slot === s.session.voice))
       );
 
-      talkBtn.hidden = s.chatOpen;
+      inviteCard.hidden = s.chatOpen;
+      rail.classList.toggle('is-chatting', s.chatOpen);
       (chatBox as HTMLElement).hidden = !s.chatOpen;
       (sessionSheet as HTMLElement).hidden = !s.sessionPanelOpen;
       (questPanel as HTMLElement).hidden = !s.questPanelOpen;
