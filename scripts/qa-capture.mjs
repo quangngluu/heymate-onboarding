@@ -45,16 +45,35 @@ async function journey(page, tag) {
 
   await page.goto(URL, { waitUntil: 'networkidle0' });
   await sleep(1600);
-  await shot('1-arrival');
+  await shot('0-gallery');
 
+  // --- Waifu Universe: pick a resident, talk to her ---
+  await clickByText(page, '.universe-tile', 'Waifu Universe');
+  await sleep(11000);
+  await shot('1-stage');
+  await clickByText(page, '.roster-chip', 'NYX');
+  await sleep(2600);
+  await shot('2-stage-nyx');
+  await page.evaluate(() => document.querySelector('.talk-btn').click());
+  await sleep(1500);
+  await page.type('.chat-input', 'who are you?');
+  await page.keyboard.press('Enter');
+  await sleep(1800);
+  await shot('3-chat');
+  await clickByText(page, '.btn', 'All universes');
+  await sleep(1800);
+
+  // --- Afterburn City: the creator flow ---
+  await clickByText(page, '.universe-tile', 'Afterburn City');
+  await sleep(2600);
   await clickByText(page, 'button', 'Enter Afterburn City');
-  await sleep(5800); // hall flight + fly to first character (slower under load)
-  await shot('2-studio-rex');
+  await sleep(6600); // hall flight + fly to first character (slower under load)
+  await shot('4-studio-rex');
 
   // Slider: jump to VALE via thumbnail, then arrow to UNIT K-6 and back
-  await clickByText(page, ".slider-thumb", "VALE");
+  await clickByText(page, '.slider-thumb', 'VALE');
   await sleep(2000);
-  await shot('3-studio-vale');
+  await shot('5-studio-vale');
   await clickByText(page, '.slider-arrow[aria-label="Next character"]', '›');
   await sleep(1800);
   await clickByText(page, '.slider-arrow[aria-label="Previous character"]', '‹');
@@ -65,15 +84,15 @@ async function journey(page, tag) {
   await page.type('.describe-input', 'Layered black hair, calm, smart casual, silver details.');
   await clickByText(page, 'button', 'Generate My Mate');
   await sleep(1200);
-  await shot('4-generating');
+  await shot('6-generating');
   await sleep(4200); // processing + reveal flight
-  await shot('5-reveal');
+  await shot('7-reveal');
 
   await page.waitForSelector('.name-input', { timeout: 10000 });
   await page.type('.name-input', 'Quang');
   await clickByText(page, 'button', 'Join Afterburn City');
   await sleep(3400);
-  await shot('6-joined');
+  await shot('8-joined');
 
   return { shots, errors };
 }

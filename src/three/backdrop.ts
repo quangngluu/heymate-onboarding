@@ -15,6 +15,44 @@ export const FACTION_ENVS: Record<string, string> = {
 const loader = new THREE.TextureLoader();
 const cache = new Map<string, Promise<THREE.Texture>>();
 
+/**
+ * Procedural studio panorama for companion universes: a soft vertical
+ * gradient with an overhead softbox, so the residents read like product
+ * photography instead of standing in a city.
+ */
+function studioTexture(top: number, bottom: number): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 512;
+  const ctx = c.getContext('2d')!;
+  const hex = (v: number) => `#${v.toString(16).padStart(6, '0')}`;
+  const grad = ctx.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0, hex(top));
+  grad.addColorStop(0.45, hex(top));
+  grad.addColorStop(0.62, hex(bottom));
+  grad.addColorStop(1, hex(bottom));
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 1024, 512);
+  // Overhead softbox: a bright band across the top of the dome.
+  const soft = ctx.createRadialGradient(512, 40, 20, 512, 40, 420);
+  soft.addColorStop(0, 'rgba(255,255,255,0.85)');
+  soft.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = soft;
+  ctx.fillRect(0, 0, 1024, 300);
+  // Two dim side kickers for shape.
+  for (const x of [150, 880]) {
+    const kick = ctx.createRadialGradient(x, 210, 10, x, 210, 240);
+    kick.addColorStop(0, 'rgba(255,255,255,0.22)');
+    kick.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = kick;
+    ctx.fillRect(x - 240, 0, 480, 420);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  return tex;
+}
+
 function loadPano(url: string): Promise<THREE.Texture> {
   let p = cache.get(url);
   if (!p) {
@@ -58,6 +96,14 @@ export class FactionBackdrop {
     scene.add(this.front, this.back);
   }
 
+  /** Companion universes: procedural studio dome, no download. */
+  showStudio(top: number, bottom: number, intensity: number): void {
+    const key = `studio:${top}:${bottom}`;
+    if (this.activeFaction === key) return;
+    this.activeFaction = key;
+    this.applyTexture(studioTexture(top, bottom), intensity);
+  }
+
   async show(factionId: string): Promise<void> {
     if (this.activeFaction === factionId) return;
     const url = FACTION_ENVS[factionId];
@@ -65,6 +111,10 @@ export class FactionBackdrop {
     this.activeFaction = factionId;
     const tex = await loadPano(url);
     if (this.activeFaction !== factionId) return; // superseded meanwhile
+    this.applyTexture(tex, 0.55);
+  }
+
+  private applyTexture(tex: THREE.Texture, intensity: number): void {
     // Current front becomes the fading back layer.
     const prev = this.front;
     this.front = this.back;
@@ -76,7 +126,7 @@ export class FactionBackdrop {
     this.back.renderOrder = -3;
     this.fadeIn = 1;
     this.scene.environment = tex;
-    this.scene.environmentIntensity = 0.55;
+    this.scene.environmentIntensity = intensity;
     for (const o of this.hideWhenActive) o.visible = false;
   }
 

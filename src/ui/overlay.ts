@@ -4,7 +4,15 @@
 import { h } from './dom';
 import type { UIActions } from './actions';
 import type { AppState, Step, Store } from '../state/store';
-import { arrivalStep, joinedStep, revealStep, studioStep, type StepView } from './steps';
+import {
+  arrivalStep,
+  galleryStep,
+  joinedStep,
+  revealStep,
+  stageStep,
+  studioStep,
+  type StepView,
+} from './steps';
 import { COPY } from '../config/copy';
 
 export function mountUI(root: HTMLElement, store: Store, actions: UIActions): void {
@@ -37,6 +45,8 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
   let view: StepView | null = null;
 
   const factories: Record<Step, (s: AppState) => StepView> = {
+    gallery: () => galleryStep(actions),
+    stage: (s) => stageStep(actions, s),
     arrival: () => arrivalStep(actions),
     studio: (s) => studioStep(actions, s),
     reveal: (s) => revealStep(actions, s),

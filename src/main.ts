@@ -18,6 +18,9 @@ import { Picker } from './three/picking';
 import { createRevealFx, type RevealFx } from './three/reveal';
 import { Nameplate } from './three/nameplate';
 import { FactionBackdrop } from './three/backdrop';
+import { WaifuStage } from './three/waifu-stage';
+import { reply as chatReply, speakingDuration } from './chat/engine';
+import { waifuById, type WaifuPersona } from './config/waifus';
 import { Ambience } from './audio/ambience';
 import { store, type Step } from './state/store';
 import { mountUI } from './ui/overlay';
@@ -52,6 +55,9 @@ class App implements UIActions {
   private rimTarget = 0;
   private selectedId: string | null = null;
 
+  private waifuStage: WaifuStage | null = null;
+  private speakTimer = 0;
+
   private photoSeed = 0;
   private genTimer = 0;
   private portalActivation = 0;
@@ -77,10 +83,11 @@ class App implements UIActions {
     this.controls.maxPolarAngle = 1.52;
     this.rig.attachControls(this.controls);
 
-    const universe = universeById(store.get().universeId);
+    // The shared physical set (floor, base, plinths, portal beam) is built
+    // once; each universe decides what stands on it.
     this.stage = buildStage(
       this.engine.scene,
-      universe,
+      universeById('afterburn-city'),
       CHARACTERS.map((c) => factionById(c.factionId).accentColor)
     );
     this.nameplate = new Nameplate(this.engine.scene);
@@ -101,21 +108,25 @@ class App implements UIActions {
       this.updateLiftTargets();
     };
     this.picker.onPick = (id) => {
-      if (store.get().step === 'studio') this.selectCharacter(id);
+      const step = store.get().step;
+      if (step === 'studio') this.selectCharacter(id);
+      else if (step === 'stage') this.selectWaifu(id);
     };
 
-    this.rig.applyPreset(CAMERA_PRESETS.arrival);
+    this.rig.applyPreset(CAMERA_PRESETS.gallery);
     window.addEventListener('resize', () => this.rig.refreshFov());
     this.engine.onUpdate((dt, t) => this.tick(dt, t));
     this.engine.start();
 
+    // Gallery costs nothing but the center base: character models are only
+    // fetched once a universe is opened.
     let booted = false;
     const off = this.engine.onUpdate(() => {
       if (booted) return;
       booted = true;
       window.setTimeout(() => {
-        this.buildCharacters();
         this.loadCenterBase();
+        this.setPlinthsVisible(false);
         document.getElementById('boot')?.classList.add('is-done');
         off();
       }, 0);
@@ -123,7 +134,8 @@ class App implements UIActions {
 
     store.subscribe((s, prev) => {
       if (s.characterId !== prev.characterId || s.step !== prev.step) this.updateLiftTargets();
-      this.picker.enabled = s.step === 'studio' && !s.transitioning;
+      this.picker.enabled =
+        !s.transitioning && (s.step === 'studio' || s.step === 'stage');
     });
 
     mountUI(document.getElementById('ui')!, store, this);
@@ -224,6 +236,7 @@ class App implements UIActions {
         this.centerTopY = box2.max.y - box2.min.y;
         this.stage.centerPedestal.visible = false;
         this.mate?.root.position.setY(this.centerTopY);
+        this.waifuStage?.setBaseTop(this.centerTopY);
       })
       .catch(() => {
         console.warn('Portal base GLB missing; placeholder pedestal stays.');
@@ -277,6 +290,7 @@ class App implements UIActions {
       i++;
     }
     this.mate?.updatePresentation(t, 0.7, dt);
+    this.waifuStage?.update(t, dt);
     for (const rim of [this.rimA, this.rimB]) {
       rim.intensity += (this.rimTarget - rim.intensity) * Math.min(1, dt * 4);
     }
@@ -326,7 +340,174 @@ class App implements UIActions {
     void this.rig.flyTo(preset, duration);
   }
 
-  // ---------- UIActions ----------
+  // ---------- Universe routing ----------
+
+  private setPlinthsVisible(v: boolean): void {
+    for (const p of this.stage.plinths) p.visible = v;
+    for (const l of this.stage.plinthLights) l.visible = v;
+  }
+
+  openUniverse(id: string): void {
+    if (store.get().transitioning) return;
+    const universe = universeById(id);
+    this.ambience.start();
+    store.set({ universeId: id });
+
+    if (universe.kind === 'companion') {
+      const studio = universe.env.studio!;
+      this.backdrop.showStudio(studio.top, studio.bottom, studio.intensity);
+      this.setPlinthsVisible(false);
+      this.portalTarget = 0.35;
+      store.goto('stage');
+      this.openStage();
+    } else {
+      this.setPlinthsVisible(true);
+      this.buildCharacters();
+      store.goto('arrival');
+      this.rig.applyPreset(CAMERA_PRESETS.arrival);
+    }
+  }
+
+  private openStage(): void {
+    const s = store.get();
+    if (!this.waifuStage) {
+      this.waifuStage = new WaifuStage(this.engine.scene, this.centerTopY);
+      void this.waifuStage.load(s.waifuId, (id) => {
+        // The hero takes the base the moment her model lands.
+        if (id === store.get().waifuId) {
+          this.waifuStage!.setHero(id);
+          this.applyStageAccent();
+          this.greet();
+        }
+        this.picker.setPickSet(this.waifuStage!.pickTargets());
+      });
+    } else {
+      this.waifuStage.setHero(s.waifuId);
+      this.applyStageAccent();
+    }
+    void this.rig.flyTo(CAMERA_PRESETS.stage, this.engine.reducedMotion ? 0 : 1.4);
+  }
+
+  private applyStageAccent(): void {
+    const w = waifuById(store.get().waifuId);
+    this.waifuStage?.setAccent(w.accentColor);
+    const camPos = new THREE.Vector3(...CAMERA_PRESETS.stage.pos);
+    const heroPos = new THREE.Vector3(0, 0, 0);
+    this.placeRims(heroPos, camPos, w.accentColor);
+    this.nameplate.transitionTo(w.name, w.accentColor, heroPos, camPos);
+  }
+
+  /** Speak the greeting: prerecorded audio when present, always on screen. */
+  private greet(): void {
+    const s = store.get();
+    const w = waifuById(s.waifuId);
+    const line = (s.personas[s.waifuId] ?? w.defaults).greeting;
+    store.set({ chat: [{ from: 'waifu', text: line }] });
+    this.speak(line, w.voiceUrl);
+  }
+
+  /** Drive the speaking pulse for as long as the line lasts. */
+  private speak(text: string, voiceUrl?: string): void {
+    window.clearTimeout(this.speakTimer);
+    store.set({ speaking: true });
+    this.waifuStage?.setSpeaking(true);
+    if (voiceUrl) this.ambience.playClip(voiceUrl);
+    const secs = speakingDuration(text);
+    this.speakTimer = window.setTimeout(() => {
+      store.set({ speaking: false });
+      this.waifuStage?.setSpeaking(false);
+    }, secs * 1000);
+  }
+
+  leaveUniverse(): void {
+    this.rig.cancel();
+    window.clearTimeout(this.speakTimer);
+    window.clearTimeout(this.genTimer);
+    this.controls.enabled = false;
+    this.ambience.stopClip();
+    this.waifuStage?.dispose();
+    this.waifuStage = null;
+    this.mate?.dispose();
+    this.mate = null;
+    this.revealFx?.dispose();
+    this.revealFx = null;
+    for (const v of this.views.values()) v.dispose();
+    this.views.clear();
+    this.loadQueue = [];
+    this.selectedId = null;
+    this.hoveredId = null;
+    this.picker.setPickSet([]);
+    this.nameplate.hide();
+    this.backdrop.hide();
+    this.rimTarget = 0;
+    this.portalTarget = 0.12;
+    this.setPlinthsVisible(false);
+    store.leaveUniverse();
+    this.rig.applyPreset(CAMERA_PRESETS.gallery);
+  }
+
+  // ---------- Companion actions ----------
+
+  selectWaifu(id: string): void {
+    if (store.get().step !== 'stage' || store.get().waifuId === id) return;
+    store.selectWaifu(id);
+    this.waifuStage?.setHero(id);
+    this.applyStageAccent();
+    this.greet();
+    this.picker.setPickSet(this.waifuStage?.pickTargets() ?? []);
+  }
+
+  startChat(): void {
+    store.set({ chatOpen: true });
+    void this.rig.flyTo(CAMERA_PRESETS.stageChat, this.engine.reducedMotion ? 0 : 1.0);
+  }
+
+  sendMessage(text: string): void {
+    const s = store.get();
+    const w = waifuById(s.waifuId);
+    const persona = s.personas[s.waifuId] ?? w.defaults;
+    store.pushTurn({ from: 'user', text });
+    const answer = chatReply(text, { name: w.name, title: w.title, persona });
+    // A beat of "thinking" before she answers reads as conversation.
+    window.setTimeout(() => {
+      if (store.get().waifuId !== s.waifuId) return; // switched residents
+      store.pushTurn({ from: 'waifu', text: answer });
+      this.speak(answer);
+    }, this.engine.reducedMotion ? 120 : 520);
+  }
+
+  updatePersona(patch: Partial<WaifuPersona>): void {
+    store.updatePersona(store.get().waifuId, patch);
+  }
+
+  resetPersona(): void {
+    store.resetPersona(store.get().waifuId);
+  }
+
+  replayGreeting(): void {
+    this.greet();
+  }
+
+  regenerateLook(prompt: string): void {
+    const s = store.get();
+    const w = waifuById(s.waifuId);
+    if (!prompt.trim()) {
+      this.flashError(COPY.errors.emptyInput);
+      return;
+    }
+    const seed = fnv1a(prompt.trim().toLowerCase());
+    this.waifuStage?.tintHero(seed);
+    store.set({ variantSeed: seed, variantLabel: `Look ${(seed % 900) + 100}` });
+    this.ambience.chime(720 + (seed % 5) * 40);
+    void w; // accent unchanged: the sculpt and faction colors stay on model
+  }
+
+  restoreLook(): void {
+    this.waifuStage?.restoreHero();
+    store.set({ variantSeed: null, variantLabel: null });
+  }
+
+  // ---------- Creator actions ----------
 
   enterUniverse(): void {
     if (store.get().transitioning) return;
