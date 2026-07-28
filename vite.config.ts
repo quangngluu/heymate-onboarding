@@ -1,5 +1,7 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 
+const MAX_TOKENS = { short: 70, natural: 130, expressive: 180 } as const;
+
 /**
  * Runs the same chat endpoint as the deployed edge function during
  * `npm run dev`, using DEEPSEEK_API_KEY from .env.local. Without this the dev
@@ -30,7 +32,8 @@ function devChatApi(key: string): Plugin {
             body.session,
             body.memories ?? [],
             body.revealed ?? 0,
-            body.revealNow
+            body.idle ? undefined : body.revealNow,
+            body.idle
           );
           const upstream = await fetch('https://api.deepseek.com/chat/completions', {
             method: 'POST',
@@ -40,10 +43,15 @@ function devChatApi(key: string): Plugin {
               messages: [
                 { role: 'system', content: system },
                 ...(body.history ?? []).slice(-12),
-                { role: 'user', content: String(body.message ?? '').slice(0, 500) },
+                {
+                  role: 'user',
+                  content: body.idle
+                    ? '[The visitor is quiet. Speak first now.]'
+                    : String(body.message ?? '').slice(0, 500),
+                },
               ],
-              temperature: 1.1,
-              max_tokens: 220,
+              temperature: 0.92,
+              max_tokens: MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural,
             }),
           });
           const data = await upstream.json();

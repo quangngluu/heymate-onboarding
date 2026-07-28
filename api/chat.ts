@@ -10,6 +10,7 @@ interface ChatRequest {
   memories: string[];
   revealed: number;
   revealNow?: number;
+  idle?: boolean;
   history: { role: 'user' | 'assistant'; content: string }[];
   message: string;
 }
@@ -19,6 +20,7 @@ export const config = { runtime: 'edge' };
 
 const ENDPOINT = 'https://api.deepseek.com/chat/completions';
 const MODEL = process.env.DEEPSEEK_MODEL ?? 'deepseek-chat';
+const MAX_TOKENS = { short: 70, natural: 130, expressive: 180 } as const;
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
@@ -43,7 +45,8 @@ export default async function handler(req: Request): Promise<Response> {
       body.session,
       body.memories ?? [],
       body.revealed ?? 0,
-      body.revealNow
+      body.revealNow,
+      body.idle
     );
   } catch {
     return Response.json({ error: 'unknown-resident' }, { status: 400 });
@@ -52,7 +55,15 @@ export default async function handler(req: Request): Promise<Response> {
   const messages = [
     { role: 'system', content: system },
     ...(body.history ?? []).slice(-12),
-    { role: 'user', content: String(body.message ?? '').slice(0, 500) },
+    {
+      role: 'user',
+      // This is a turn trigger, not dialogue from the visitor. Passing the
+      // idle line as user text made the model answer it instead of taking the
+      // initiative the prompt asks for.
+      content: body.idle
+        ? '[The visitor is quiet. Speak first now.]'
+        : String(body.message ?? '').slice(0, 500),
+    },
   ];
 
   try {
@@ -65,8 +76,8 @@ export default async function handler(req: Request): Promise<Response> {
       body: JSON.stringify({
         model: MODEL,
         messages,
-        temperature: 1.1, // conversational, not deterministic
-        max_tokens: 220,
+        temperature: 0.92, // a distinct voice without generic/canon-drifting improvisation
+        max_tokens: MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural,
         // She speaks as herself; stop the model from writing the user's turn.
         stop: ['\nUser:', '\nYou:'],
       }),

@@ -257,16 +257,22 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       h('p', { class: 'hint' }, COPY.stage.unlockBody),
       h(
         'div',
-        { class: 'row' },
-        h('button', { class: 'btn btn-ghost', onClick: () => actions.closeUnlockGate() }, COPY.stage.unlockSkip),
+        { class: 'row gate-choices' },
+        h('button', { class: 'btn btn-secondary', onClick: () => actions.makeYourVersion() }, COPY.stage.unlockOwn),
         h('button', { class: 'btn btn-primary', onClick: () => actions.unlockView() }, COPY.stage.unlockCta)
       ),
+      h('p', { class: 'hint faint' }, COPY.stage.unlockOwnNote),
       h('p', { class: 'group-label' }, COPY.stage.unlockCode),
       h(
         'div',
         { class: 'chat-row' },
         codeInput,
         h('button', { class: 'btn btn-secondary', onClick: () => actions.unlockView(codeInput.value) }, COPY.stage.unlockCodeCta)
+      ),
+      h(
+        'div',
+        { class: 'row' },
+        h('button', { class: 'btn btn-ghost xs', onClick: () => actions.closeUnlockGate() }, COPY.stage.unlockSkip)
       )
     )
   );
@@ -306,7 +312,12 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         // The card carries three layers: the hook, who she is, and what the
         // user gets. Full canon stays behind the story list.
         info.replaceChildren(
-          h('span', { class: 'chip chip-accent' }, saved?.visits ? `Visit ${saved.visits + 1}` : 'First meeting'),
+          h(
+            'div',
+            { class: 'row chip-row' },
+            h('span', { class: 'chip chip-accent' }, saved?.visits ? `Visit ${saved.visits + 1}` : 'First meeting'),
+            ...(r.language === 'vi' ? [h('span', { class: 'chip' }, 'Tiếng Việt')] : [])
+          ),
           h('h2', { class: 'card-name' }, r.name),
           h('p', { class: 'card-series' }, r.series),
           h('p', { class: 'card-hook' }, r.card.hook),

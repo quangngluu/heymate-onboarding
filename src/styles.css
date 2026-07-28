@@ -582,6 +582,7 @@ html, body {
   border: 1px solid var(--line);
   color: var(--ivory-dim);
 }
+.chip-row { gap: 6px; }
 .chip-accent {
   border-color: color-mix(in srgb, var(--accent) 60%, transparent);
   color: var(--accent);

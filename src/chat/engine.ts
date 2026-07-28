@@ -47,7 +47,10 @@ function detectIntent(text: string): Intent {
  */
 const LINES: Record<ResidentId, Record<Intent, [string, string]>> = {
   rin: {
-    greeting: ['You made it. Queue was getting boring.', 'Late, but you showed up. Sit.'],
+    greeting: [
+      'You finally stopped orbiting the door. Sit down and tell me why you came back.',
+      'You are late. I kept your place open anyway. Do not make me explain why.',
+    ],
     howAreYou: [
       'Stable. Latency is fine. You are the variable tonight.',
       'Running. Ask me something harder.',
@@ -76,7 +79,10 @@ const LINES: Record<ResidentId, Record<Intent, [string, string]>> = {
     fallback: ['Keep going. What follows from that?', 'Alright. And the part you are routing around?'],
   },
   kagura: {
-    greeting: ['You return. Good. The hours here are strange.', 'Come in. Nothing is attacking, which I still find unsettling.'],
+    greeting: [
+      'There you are. Come closer. I will not ask twice.',
+      'You return. Good. Stand where I can keep an eye on you.',
+    ],
     howAreYou: [
       'Whole. Which is not the same as rested, but it will do.',
       'I am well. This century is loud, but I am well.',
@@ -105,7 +111,10 @@ const LINES: Record<ResidentId, Record<Intent, [string, string]>> = {
     fallback: ['Say the rest of it.', 'Continue. I am listening properly.'],
   },
   momo: {
-    greeting: ['There you are. The night was going to be so ordinary.', 'Look who came back before the first train.'],
+    greeting: [
+      'Cuối cùng cậu cũng vào. Lại đây, ghế cạnh tôi vẫn để trống.',
+      'Đến đúng lúc đấy. Tôi đang bắt đầu nhớ cậu rồi.',
+    ],
     howAreYou: [
       'Delicious question. Fine. Bored until you walked in.',
       'Wonderful, obviously. Ask me again after closing and I might mean it.',
@@ -150,6 +159,28 @@ const MOOD_TAG: Record<ResidentId, Partial<Record<MoodId, string>>> = {
     serious: 'No performance for this bit.',
   },
 };
+
+/** What she says into a silence when the model is unavailable. */
+const IDLE_LINES: Record<ResidentId, string[]> = {
+  rin: [
+    'Still there? Your cursor has not moved in a while. I notice things.',
+    'You went quiet on me. That is usually where the interesting part starts.',
+  ],
+  kagura: [
+    'You have gone still. Say something, or I will assume you are thinking about me.',
+    'Silence again. In my time that meant someone was working up to a confession.',
+  ],
+  momo: [
+    'Im lặng rồi à. Tôi đoán là cậu đang nghĩ điều gì đó mà chưa dám nói.',
+    'Cậu càng im, tôi càng đoán bạo đấy. Chắc chưa?',
+  ],
+};
+
+/** A deterministic line for the nth silence in a session. */
+export function idleLine(resident: ResidentConfig, index: number): string {
+  const pool = IDLE_LINES[resident.id];
+  return pool[index % pool.length];
+}
 
 export interface SessionSetup {
   nickname: string;
@@ -242,7 +273,15 @@ export function openingLine(
 ): string {
   if (!memories.length) return resident.greeting;
   const who = nickname ? `${nickname}. ` : '';
-  return `${who}Last time you mentioned ${memories[0]}. So, where did that land?`;
+  const memory = memories[0];
+  switch (resident.id) {
+    case 'rin':
+      return `${who}Last time you mentioned ${memory}. I kept thinking about where that landed. Tell me.`;
+    case 'kagura':
+      return `${who}Last time you mentioned ${memory}. Tell me plainly where it stands now.`;
+    case 'momo':
+      return `${who}Lần trước cậu kể về ${memory}. Tôi vẫn nhớ. Giờ chuyện đó đã đi đến đâu rồi?`;
+  }
 }
 
 /** Rough speaking time so the base light pulses for the right duration. */

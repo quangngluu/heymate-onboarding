@@ -21,9 +21,18 @@ export class Ambience {
    * silently blocks it. A new clip stops the previous one.
    */
   playClip(url: string): void {
+    const myToken = (this.clipToken = (this.clipToken + 1) | 0);
+    void this.prepareClip(url).then((buffer) => {
+      if (!buffer || myToken !== this.clipToken) return;
+      this.startBuffer(buffer);
+    });
+  }
+
+  /** Decode a clip before it is revealed, so dialogue and speech can start together. */
+  async prepareClip(url: string): Promise<AudioBuffer | null> {
     this.start();
     const ctx = this.ctx;
-    if (!ctx) return;
+    if (!ctx) return null;
     if (ctx.state === 'suspended') void ctx.resume();
     let p = this.clipCache.get(url);
     if (!p) {
@@ -35,25 +44,36 @@ export class Ambience {
         .then((buf) => ctx.decodeAudioData(buf));
       this.clipCache.set(url, p);
     }
-    const myToken = (this.clipToken = (this.clipToken + 1) | 0);
-    void p
-      .then((buffer) => {
-        if (myToken !== this.clipToken) return; // superseded by a newer clip
-        this.clipSource?.stop();
-        if (!this.clipGain) {
-          this.clipGain = ctx.createGain();
-          this.clipGain.connect(ctx.destination);
-        }
-        this.clipGain.gain.value = this.muted ? 0 : 0.9;
-        const src = ctx.createBufferSource();
-        src.buffer = buffer;
-        src.connect(this.clipGain);
-        src.start();
-        this.clipSource = src;
-      })
-      .catch(() => {
-        /* missing/undecodable clip: stay silent */
-      });
+    try {
+      return await p;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Start a pre-decoded voice clip immediately. */
+  playBuffer(buffer: AudioBuffer): void {
+    this.start();
+    if (!this.ctx) return;
+    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    this.clipToken = (this.clipToken + 1) | 0;
+    this.startBuffer(buffer);
+  }
+
+  private startBuffer(buffer: AudioBuffer): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.clipSource?.stop();
+    if (!this.clipGain) {
+      this.clipGain = ctx.createGain();
+      this.clipGain.connect(ctx.destination);
+    }
+    this.clipGain.gain.value = this.muted ? 0 : 0.9;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(this.clipGain);
+    src.start();
+    this.clipSource = src;
   }
   private clipToken = 0;
 

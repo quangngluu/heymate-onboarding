@@ -22,9 +22,13 @@ let endpointAvailable = true;
 export async function getReply(
   message: string,
   ctx: ReplyContext,
-  history: ChatTurn[]
+  history: ChatTurn[],
+  opts: { idle?: boolean } = {}
 ): Promise<ChatOutcome> {
-  const scripted = scriptedReply(message, ctx);
+  // An idle nudge is already-authored dialogue, not a user message that the
+  // scripted engine should try to answer. The model may vary it, but offline
+  // and unavailable deployments must still let her speak first.
+  const scripted = opts.idle ? { text: message } : scriptedReply(message, ctx);
 
   if (!endpointAvailable) return { ...scripted, source: 'scripted' };
 
@@ -37,7 +41,8 @@ export async function getReply(
         session: ctx.session,
         memories: ctx.memories,
         revealed: ctx.revealed,
-        revealNow: dueEpisodeIndex(ctx) ?? undefined,
+        revealNow: opts.idle ? undefined : (dueEpisodeIndex(ctx) ?? undefined),
+        idle: opts.idle,
         history: history.map((t) => ({
           role: t.from === 'user' ? 'user' : 'assistant',
           content: t.text,
@@ -56,7 +61,11 @@ export async function getReply(
     const data = (await res.json()) as { text?: string };
     if (!data.text) return { ...scripted, source: 'scripted' };
     // The reveal schedule stays owned by the app, not the model.
-    return { text: data.text, revealedRung: scripted.revealedRung, source: 'model' };
+    return {
+      text: data.text,
+      revealedRung: opts.idle ? undefined : scripted.revealedRung,
+      source: 'model',
+    };
   } catch {
     return { ...scripted, source: 'scripted' };
   }

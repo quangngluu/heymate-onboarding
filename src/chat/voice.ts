@@ -22,11 +22,11 @@ export function cancelSpeech(): void {
  * when the endpoint is unavailable, times out, or the request was superseded,
  * in which case the caller simply stays text-only.
  */
-export function renderSpeech(text: string, voiceId?: string): Promise<string | null> {
+export function renderSpeech(text: string, voiceId?: string, speed?: number): Promise<string | null> {
   cancelSpeech();
   const handle: SpeakHandle = { cancelled: false };
   current = handle;
-  const run = chain.then(() => request(text, handle, voiceId));
+  const run = chain.then(() => request(text, handle, voiceId, speed));
   chain = run.catch(() => undefined);
   return run;
 }
@@ -34,7 +34,8 @@ export function renderSpeech(text: string, voiceId?: string): Promise<string | n
 async function request(
   text: string,
   handle: SpeakHandle,
-  voiceId?: string
+  voiceId?: string,
+  speed?: number
 ): Promise<string | null> {
   // Superseded while queued: never spend a render on a line nobody waits for.
   if (handle.cancelled) return null;
@@ -42,7 +43,7 @@ async function request(
     const res = await fetch('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, voiceId }),
+      body: JSON.stringify({ text, voiceId, speed }),
       signal: AbortSignal.timeout(30000),
     });
     if (handle.cancelled || !res.ok) return null;

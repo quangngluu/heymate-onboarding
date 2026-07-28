@@ -19,7 +19,7 @@ import { createRevealFx, type RevealFx } from './three/reveal';
 import { Nameplate } from './three/nameplate';
 import { FactionBackdrop } from './three/backdrop';
 import { WaifuStage } from './three/waifu-stage';
-import { openingLine, speakingDuration } from './chat/engine';
+import { idleLine, openingLine, speakingDuration } from './chat/engine';
 import { getReply } from './chat/client';
 import { cancelSpeech, renderSpeech } from './chat/voice';
 import { residentById, type ResidentId } from './config/residents';
@@ -41,6 +41,9 @@ const STAGE_AZIMUTH = Math.atan2(CAMERA_PRESETS.stage.pos[0], CAMERA_PRESETS.sta
 
 /** Half of the 120-degree arc a visitor may inspect for free. */
 const FREE_ARC = Math.PI / 3;
+
+/** Keep the reply hidden briefly for a synchronized voice start, never indefinitely. */
+const VOICE_REVEAL_WAIT_MS = 3500;
 
 class App implements UIActions {
   private engine: Engine;
@@ -65,6 +68,9 @@ class App implements UIActions {
 
   private residentStage: WaifuStage | null = null;
   private speakTimer = 0;
+  private idleTimer = 0;
+  /** She breaks a silence at most twice per encounter. */
+  private idleSpoken = 0;
 
   private photoSeed = 0;
   private genTimer = 0;
@@ -481,6 +487,7 @@ class App implements UIActions {
     const r = residentById(s.residentId);
     const saved = store.progressFor(s.residentId);
     const line = openingLine(r, saved.memories, saved.nickname);
+    this.idleSpoken = 0;
     store.set({ chat: [{ from: 'resident', text: line }] });
     const voice = r.voices.find((v) => v.slot === s.session.voice) ?? r.voices[0];
     // Only the authored signature greeting has audio; a callback is text.
@@ -488,9 +495,103 @@ class App implements UIActions {
   }
 
   /**
-   * Drive the speaking pulse, and render her voice if the service is up.
-   * Text is already on screen by now: the pulse runs on an estimate, then
-   * re-syncs to the real clip when it arrives.
+   * If the visitor goes quiet she speaks first, at most twice per encounter.
+   * Waiting for permission to talk is what makes a companion feel like a form.
+   */
+  private armIdleNudge(): void {
+    window.clearTimeout(this.idleTimer);
+    if (this.idleSpoken >= 2) return;
+    this.idleTimer = window.setTimeout(() => this.speakIntoSilence(), 30000);
+  }
+
+  private cancelIdleNudge(): void {
+    window.clearTimeout(this.idleTimer);
+  }
+
+  private speakIntoSilence(): void {
+    const s = store.get();
+    if (s.step !== 'stage' || !s.chatOpen || s.thinking || this.idleSpoken >= 2) return;
+    const r = residentById(s.residentId);
+    const spokenIndex = this.idleSpoken;
+    this.idleSpoken++;
+
+    const ctx = {
+      resident: r,
+      session: s.session,
+      revealed: s.revealed,
+      memories: store.progressFor(s.residentId).memories,
+      turn: s.turns,
+    };
+    const chatLength = s.chat.length;
+    void getReply(idleLine(r, spokenIndex), ctx, s.chat, { idle: true }).then(async (result) => {
+      // Do not insert a late nudge after the visitor has started talking, or
+      // after the encounter has changed while the request was in flight.
+      const current = store.get();
+      if (
+        current.residentId !== s.residentId ||
+        current.step !== 'stage' ||
+        !current.chatOpen ||
+        current.chat.length !== chatLength
+      ) {
+        return;
+      }
+      // Keep the reply under the familiar typing state while its clip is
+      // prepared. This avoids the old text-first, voice-later experience.
+      store.set({ thinking: true, voicing: true });
+      const buffer = await this.prepareReplySpeech(result.text, s.residentId);
+      const afterSpeech = store.get();
+      if (
+        afterSpeech.residentId !== s.residentId ||
+        afterSpeech.step !== 'stage' ||
+        !afterSpeech.chatOpen ||
+        afterSpeech.chat.length !== chatLength
+      ) {
+        return;
+      }
+      store.set({ thinking: false, voicing: false });
+      store.pushTurn({ from: 'resident', text: result.text });
+      this.speakPrepared(result.text, buffer);
+      this.armIdleNudge();
+    });
+  }
+
+  /**
+   * Spoon renders asynchronously. We give it a short head start, then reveal
+   * text-only if it is slow rather than letting a late clip talk over an
+   * already-read message.
+   */
+  private async prepareReplySpeech(text: string, residentId: ResidentId): Promise<AudioBuffer | null> {
+    const r = residentById(residentId);
+    const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
+    const prepared = renderSpeech(text, slot.voiceId, slot.speed).then(async (url) => {
+      return url ? this.ambience.prepareClip(url) : null;
+    });
+    const buffer = await Promise.race([
+      prepared,
+      new Promise<null>((resolve) => window.setTimeout(resolve, VOICE_REVEAL_WAIT_MS)),
+    ]);
+    // Do not permit a slow clip to arrive after the message has been revealed.
+    if (!buffer && store.get().residentId === residentId && store.get().step === 'stage') cancelSpeech();
+    return buffer;
+  }
+
+  /** Start a reply that has already been prepared, with text and voice together. */
+  private speakPrepared(text: string, buffer: AudioBuffer | null): void {
+    window.clearTimeout(this.speakTimer);
+    cancelSpeech();
+    store.set({ speaking: true });
+    this.residentStage?.setSpeaking(true);
+    if (buffer) this.ambience.playBuffer(buffer);
+    const secs = buffer?.duration ?? speakingDuration(text);
+    this.speakTimer = window.setTimeout(() => {
+      store.set({ speaking: false });
+      this.residentStage?.setSpeaking(false);
+    }, secs * 1000);
+  }
+
+  /**
+   * Drive a greeting or other pre-existing line. Live chat replies take the
+   * prepared path above so their text and voice begin together.
    */
   private speak(text: string, voiceUrl?: string): void {
     window.clearTimeout(this.speakTimer);
@@ -517,7 +618,7 @@ class App implements UIActions {
     const speakerId = store.get().residentId;
     const r = residentById(speakerId);
     const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
-    void renderSpeech(text, slot.voiceId).then((url) => {
+    void renderSpeech(text, slot.voiceId, slot.speed).then((url) => {
       store.set({ voicing: false });
       // She may have been swapped out while the audio rendered.
       if (!url || store.get().residentId !== speakerId) return;
@@ -531,6 +632,7 @@ class App implements UIActions {
   leaveUniverse(): void {
     this.rig.cancel();
     window.clearTimeout(this.speakTimer);
+    this.cancelIdleNudge();
     window.clearTimeout(this.genTimer);
     this.controls.enabled = false;
     this.ambience.stopClip();
@@ -566,11 +668,14 @@ class App implements UIActions {
     this.residentStage?.setHero(id);
     this.applyStageAccent();
     this.greet();
+    // Picking someone new must not leave the camera frozen.
+    this.returnToFront();
     this.picker.setPickSet(this.residentStage?.pickTargets() ?? []);
   }
 
   startChat(): void {
     store.set({ chatOpen: true });
+    this.armIdleNudge();
     this.controls.enabled = false;
     void this.rig.flyTo(CAMERA_PRESETS.stageChat, this.engine.reducedMotion ? 0 : 1.0).then((done) => {
       if (done && store.get().step === 'stage') this.enableStageOrbit();
@@ -581,6 +686,7 @@ class App implements UIActions {
     const s = store.get();
     if (s.turns >= FREE_TURNS || s.thinking) return;
     const r = residentById(s.residentId);
+    this.cancelIdleNudge();
     store.pushTurn({ from: 'user', text });
     store.set({ thinking: true });
 
@@ -595,14 +701,20 @@ class App implements UIActions {
     // History excludes the turn we just pushed; the message is sent separately.
     const history = after.chat.slice(0, -1);
 
-    void getReply(text, ctx, history).then((result) => {
+    void getReply(text, ctx, history).then(async (result) => {
       if (store.get().residentId !== s.residentId) return; // switched residents
-      store.set({ thinking: false });
+      // Retain the typing state for a bounded voice pre-roll. The chat turn is
+      // only committed after the audio has decoded, so there is no visible gap.
+      store.set({ voicing: true });
+      const buffer = await this.prepareReplySpeech(result.text, s.residentId);
+      if (store.get().residentId !== s.residentId || store.get().step !== 'stage') return;
+      store.set({ thinking: false, voicing: false });
       store.pushTurn({ from: 'resident', text: result.text });
       if (result.revealedRung !== undefined) {
         store.set({ revealed: result.revealedRung + 1 });
       }
-      this.speak(result.text);
+      this.speakPrepared(result.text, buffer);
+      this.armIdleNudge();
       // The free encounter ends by offering to keep what was said, not by
       // blocking the conversation mid-sentence.
       if (store.get().turns >= FREE_TURNS) {
@@ -646,6 +758,30 @@ class App implements UIActions {
 
   closeUnlockGate(): void {
     store.set({ unlockGateOpen: false });
+    this.returnToFront();
+  }
+
+  /** Ease back to the framing she is posed for, and hand control back. */
+  private returnToFront(): void {
+    this.controls.enabled = false;
+    void this.rig
+      .flyTo(CAMERA_PRESETS.stage, this.engine.reducedMotion ? 0 : 0.7)
+      .then((done) => {
+        if (done && store.get().step === 'stage') this.enableStageOrbit();
+      });
+  }
+
+  /**
+   * The other side of the offer: instead of buying the turntable, make a
+   * variant that is yours. Your own version is yours to turn around.
+   */
+  makeYourVersion(): void {
+    const seed = fnv1a(`${store.get().residentId}:${store.get().session.nickname || 'you'}`);
+    this.residentStage?.tintHero(seed);
+    store.unlockView('__owned');
+    store.set({ unlockGateOpen: false, variantSeed: seed });
+    this.ambience.chime(820);
+    this.returnToFront();
   }
 
   unlockView(code?: string): void {

@@ -37,7 +37,9 @@ export const COPY = {
 
     unlockTitle: 'Turn her around',
     unlockBody: 'The front arc is free to inspect. The full turntable comes with the figurine.',
-    unlockCta: 'Use 1 credit',
+    unlockCta: 'Purchase the turntable',
+    unlockOwn: 'Make your own version',
+    unlockOwnNote: 'Your variant of her, yours to turn around.',
     unlockCode: 'Or enter the code from your box',
     unlockCodeCta: 'Unlock',
     unlockSkip: 'Not now',

@@ -18,6 +18,7 @@ export interface UIActions {
   continueWithoutSaving(): void;
   closeUnlockGate(): void;
   unlockView(code?: string): void;
+  makeYourVersion(): void;
   regenerateLook(prompt: string): void;
   restoreLook(): void;
 

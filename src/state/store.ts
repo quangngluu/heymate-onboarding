@@ -258,7 +258,9 @@ export class Store {
 
   /** Turn-around view: one credit, or a code from a physical box insert. */
   unlockView(withCode?: string): 'ok' | 'bad-code' | 'no-credits' {
-    if (withCode !== undefined) {
+    if (withCode === '__owned') {
+      // A variant the user made is theirs; no purchase involved.
+    } else if (withCode !== undefined) {
       if (withCode.trim().toUpperCase() !== UNLOCK_CODE) return 'bad-code';
     } else if (this.state.credits < 1) {
       return 'no-credits';
