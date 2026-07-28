@@ -36,6 +36,12 @@ import { fnv1a } from './util/hash';
 
 const PLINTHS = plinthPositions(CHARACTERS.length);
 
+/** Horizontal angle the stage preset frames her from. */
+const STAGE_AZIMUTH = Math.atan2(CAMERA_PRESETS.stage.pos[0], CAMERA_PRESETS.stage.pos[2]);
+
+/** Half of the 120-degree arc a visitor may inspect for free. */
+const FREE_ARC = Math.PI / 3;
+
 class App implements UIActions {
   private engine: Engine;
   private rig: CameraRig;
@@ -104,6 +110,7 @@ class App implements UIActions {
       this.engine.scene.add(rim.target);
     }
 
+    this.watchOrbitLimit();
     this.picker = new Picker(canvas, this.engine.camera);
     this.picker.onHover = (id) => {
       this.hoveredId = id;
@@ -386,7 +393,64 @@ class App implements UIActions {
       this.residentStage.setHero(s.residentId);
       this.applyStageAccent();
     }
-    void this.rig.flyTo(CAMERA_PRESETS.stage, this.engine.reducedMotion ? 0 : 1.4);
+    void this.rig.flyTo(CAMERA_PRESETS.stage, this.engine.reducedMotion ? 0 : 1.4).then((done) => {
+      if (done && store.get().step === 'stage') this.enableStageOrbit();
+    });
+  }
+
+  /** Let the visitor lean around her; the turntable itself is an unlock. */
+  private enableStageOrbit(): void {
+    const c = this.controls;
+    c.target.set(0, this.centerTopY + 0.75, 0);
+    c.enabled = true;
+    c.enableZoom = true;
+    c.enablePan = false;
+    c.minDistance = 2.6;
+    c.maxDistance = 6.2;
+    c.minPolarAngle = 0.95;
+    c.maxPolarAngle = 1.62;
+    // Never hard-clamp the azimuth: a clamp stops the camera dead, which both
+    // feels broken and stops firing the events we would need to react to.
+    c.minAzimuthAngle = -Infinity;
+    c.maxAzimuthAngle = Infinity;
+    this.rig.syncLook();
+  }
+
+  /** Signed angle away from the front framing, wrapped to [-PI, PI]. */
+  private azimuthOffset(): number {
+    let d = this.controls.getAzimuthalAngle() - STAGE_AZIMUTH;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  }
+
+  /**
+   * The front 120 degrees are free. Turn past that and we offer the
+   * turntable rather than silently blocking the drag.
+   */
+  private watchOrbitLimit(): void {
+    this.controls.addEventListener('change', () => {
+      const st = store.get();
+      if (st.step !== 'stage' || !this.controls.enabled) return;
+      if (store.viewIsUnlocked || st.unlockGateOpen) return;
+      if (Math.abs(this.azimuthOffset()) <= FREE_ARC) return;
+      store.set({ unlockGateOpen: true });
+      this.snapIntoFreeArc();
+    });
+  }
+
+  /** Return to the edge of the free arc once the offer is on screen. */
+  private snapIntoFreeArc(): void {
+    const edge = STAGE_AZIMUTH + Math.sign(this.azimuthOffset()) * FREE_ARC;
+    const r = this.controls.getDistance();
+    const polar = this.controls.getPolarAngle();
+    const t = this.controls.target;
+    this.controls.object.position.set(
+      t.x + r * Math.sin(polar) * Math.sin(edge),
+      t.y + r * Math.cos(polar),
+      t.z + r * Math.sin(polar) * Math.cos(edge)
+    );
+    this.controls.update();
   }
 
   /**
@@ -496,6 +560,7 @@ class App implements UIActions {
 
   selectResident(id: string): void {
     if (store.get().step !== 'stage' || store.get().residentId === id) return;
+    this.controls.enabled = false;
     store.beginEncounter(id as ResidentId);
     this.residentStage?.restoreHero();
     this.residentStage?.setHero(id);
@@ -506,7 +571,10 @@ class App implements UIActions {
 
   startChat(): void {
     store.set({ chatOpen: true });
-    void this.rig.flyTo(CAMERA_PRESETS.stageChat, this.engine.reducedMotion ? 0 : 1.0);
+    this.controls.enabled = false;
+    void this.rig.flyTo(CAMERA_PRESETS.stageChat, this.engine.reducedMotion ? 0 : 1.0).then((done) => {
+      if (done && store.get().step === 'stage') this.enableStageOrbit();
+    });
   }
 
   sendMessage(text: string): void {
@@ -574,6 +642,17 @@ class App implements UIActions {
 
   continueWithoutSaving(): void {
     store.set({ saveGateOpen: false });
+  }
+
+  closeUnlockGate(): void {
+    store.set({ unlockGateOpen: false });
+  }
+
+  unlockView(code?: string): void {
+    const result = store.unlockView(code);
+    if (result === 'bad-code') return this.flashError(COPY.stage.badCode);
+    if (result === 'no-credits') return this.flashError(COPY.stage.noCredits);
+    this.ambience.chime(940);
   }
 
   regenerateLook(prompt: string): void {

@@ -52,7 +52,7 @@ export default async function handler(req: Request): Promise<Response> {
     // The account allows one export at a time; a burst of lines can collide,
     // so back off briefly rather than dropping the line.
     let submitted: Record<string, unknown> | null = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 4; attempt++) {
       try {
         submitted = await rpc(key, 'ttsLongText', {
           text,
@@ -61,7 +61,11 @@ export default async function handler(req: Request): Promise<Response> {
         });
         break;
       } catch (e) {
-        if (!String(e).includes('export in progress') || attempt === 2) throw e;
+        // "export in progress" is our own queue colliding; "Redis is loading"
+        // is the provider warming up. Both clear on their own.
+        const msg = String(e);
+        const transient = msg.includes('export in progress') || msg.includes('Redis is loading');
+        if (!transient || attempt === 3) throw e;
         await new Promise((r) => setTimeout(r, 2500));
       }
     }

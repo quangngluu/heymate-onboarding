@@ -46,6 +46,9 @@ export interface SavedProgress {
 
 export const FREE_TURNS = 5;
 
+/** Mock unlock code, as if printed on the figurine's box. */
+export const UNLOCK_CODE = 'HEYMATE360';
+
 function defaultSession(): SessionSetup {
   return {
     nickname: '',
@@ -79,6 +82,9 @@ export interface AppState {
   revealed: number;
   sessionPanelOpen: boolean;
   saveGateOpen: boolean;
+  /** Full 360 inspection, bought or unlocked by code. Per resident. */
+  viewUnlocked: Record<string, boolean>;
+  unlockGateOpen: boolean;
   credits: number;
 
   // --- creator universe ---
@@ -108,6 +114,8 @@ const initialState: AppState = {
   revealed: 0,
   sessionPanelOpen: false,
   saveGateOpen: false,
+  viewUnlocked: {},
+  unlockGateOpen: false,
   credits: 3,
   characterId: CHARACTERS[0].id,
   gen: { mode: 'text', text: '', photoUrl: null, photoName: null },
@@ -131,11 +139,16 @@ export class Store {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const saved = JSON.parse(raw) as { progress: Record<string, SavedProgress>; credits?: number };
+        const saved = JSON.parse(raw) as {
+          progress: Record<string, SavedProgress>;
+          credits?: number;
+          viewUnlocked?: Record<string, boolean>;
+        };
         this.state = {
           ...this.state,
           progress: saved.progress ?? {},
           credits: saved.credits ?? this.state.credits,
+          viewUnlocked: saved.viewUnlocked ?? {},
         };
       }
     } catch {
@@ -166,7 +179,11 @@ export class Store {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ progress: this.state.progress, credits: this.state.credits })
+        JSON.stringify({
+          progress: this.state.progress,
+          credits: this.state.credits,
+          viewUnlocked: this.state.viewUnlocked,
+        })
       );
     } catch {
       /* storage unavailable: keep the in-memory copy */
@@ -193,6 +210,7 @@ export class Store {
       revealed: saved.revealed,
       sessionPanelOpen: false,
       saveGateOpen: false,
+      unlockGateOpen: false,
       session: { ...defaultSession(), nickname: saved.nickname },
     });
   }
@@ -238,6 +256,26 @@ export class Store {
     return true;
   }
 
+  /** Turn-around view: one credit, or a code from a physical box insert. */
+  unlockView(withCode?: string): 'ok' | 'bad-code' | 'no-credits' {
+    if (withCode !== undefined) {
+      if (withCode.trim().toUpperCase() !== UNLOCK_CODE) return 'bad-code';
+    } else if (this.state.credits < 1) {
+      return 'no-credits';
+    }
+    this.set({
+      viewUnlocked: { ...this.state.viewUnlocked, [this.state.residentId]: true },
+      credits: withCode === undefined ? this.state.credits - 1 : this.state.credits,
+      unlockGateOpen: false,
+    });
+    this.persist();
+    return 'ok';
+  }
+
+  get viewIsUnlocked(): boolean {
+    return !!this.state.viewUnlocked[this.state.residentId];
+  }
+
   // ---- creator ----
 
   selectCharacter(id: string): void {
@@ -260,7 +298,12 @@ export class Store {
   leaveUniverse(): void {
     const { photoUrl } = this.state.gen;
     if (photoUrl) URL.revokeObjectURL(photoUrl);
-    this.set({ ...initialState, progress: this.state.progress, credits: this.state.credits });
+    this.set({
+      ...initialState,
+      progress: this.state.progress,
+      credits: this.state.credits,
+      viewUnlocked: this.state.viewUnlocked,
+    });
   }
 
   restart(): void {

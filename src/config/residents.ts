@@ -129,10 +129,8 @@ export const RESIDENTS: ResidentConfig[] = [
     modelUrl: 'assets/waifu-nyx.glb',
     greeting: 'The queue still has one person in it. That is you, isn’t it?',
     voices: [
-      // Audio not recorded yet: the greeting shows as text until an mp3
-      // lands at assets/voice/rin-signature.mp3 / rin-alternate.mp3.
-      { slot: 'signature', label: 'Signature' },
-      { slot: 'alternate', label: 'Late-night stream' },
+      { slot: 'signature', label: 'Signature', voiceId: 'tH4Pvi6EXeBHk97YMkCZU7' },
+      { slot: 'alternate', label: 'Late-night stream', voiceId: '33YJQiF4VhDgJDbe7EgwRg' },
     ],
     episodes: [
       {
@@ -197,8 +195,8 @@ export const RESIDENTS: ResidentConfig[] = [
     modelUrl: 'assets/waifu-aria.glb',
     greeting: 'Stand where I can see you. I have woken in a strange century and you are the first thing in it that makes sense.',
     voices: [
-      { slot: 'signature', label: 'Signature' },
-      { slot: 'alternate', label: 'Off the battlefield' },
+      { slot: 'signature', label: 'Signature', voiceId: '37QgwuRqpHtwaPWJeZ4E19' },
+      { slot: 'alternate', label: 'Off the battlefield', voiceId: 'tH4Pvi6EXeBHk97YMkCZU7' },
     ],
     episodes: [
       {
@@ -263,8 +261,8 @@ export const RESIDENTS: ResidentConfig[] = [
     modelUrl: 'assets/waifu-suri.glb',
     greeting: 'Route Zero, open until the first train. You are the only one tonight who walked in without a wish. Interesting.',
     voices: [
-      { slot: 'signature', label: 'Signature' },
-      { slot: 'alternate', label: 'After closing' },
+      { slot: 'signature', label: 'Signature', voiceId: '33YJQiF4VhDgJDbe7EgwRg' },
+      { slot: 'alternate', label: 'After closing', voiceId: '37QgwuRqpHtwaPWJeZ4E19' },
     ],
     episodes: [
       {

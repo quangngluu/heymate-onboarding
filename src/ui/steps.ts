@@ -239,6 +239,38 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     )
   );
 
+  // --- turn-around unlock gate ---
+  const codeInput = h('input', {
+    type: 'text',
+    class: 'name-input',
+    placeholder: 'BOX CODE',
+    'aria-label': COPY.stage.unlockCode,
+    maxlength: '16',
+  }) as HTMLInputElement;
+  const unlockGate = h(
+    'div',
+    { class: 'save-gate', hidden: true, role: 'dialog', 'aria-label': COPY.stage.unlockTitle },
+    h(
+      'div',
+      { class: 'panel gate-card' },
+      h('h2', { class: 'panel-title' }, COPY.stage.unlockTitle),
+      h('p', { class: 'hint' }, COPY.stage.unlockBody),
+      h(
+        'div',
+        { class: 'row' },
+        h('button', { class: 'btn btn-ghost', onClick: () => actions.closeUnlockGate() }, COPY.stage.unlockSkip),
+        h('button', { class: 'btn btn-primary', onClick: () => actions.unlockView() }, COPY.stage.unlockCta)
+      ),
+      h('p', { class: 'group-label' }, COPY.stage.unlockCode),
+      h(
+        'div',
+        { class: 'chat-row' },
+        codeInput,
+        h('button', { class: 'btn btn-secondary', onClick: () => actions.unlockView(codeInput.value) }, COPY.stage.unlockCodeCta)
+      )
+    )
+  );
+
   const el = h(
     'section',
     { class: 'step step-stage', 'aria-label': 'Resident encounter' },
@@ -252,7 +284,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     info,
     roster,
     h('div', { class: 'stage-bottom' }, talkBtn, chatBox),
-    saveGate
+    saveGate,
+    unlockGate
   );
 
   let lastResident = '';
@@ -365,6 +398,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         log.scrollTop = log.scrollHeight;
       }
 
+      (unlockGate as HTMLElement).hidden = !s.unlockGateOpen;
       (saveGate as HTMLElement).hidden = !s.saveGateOpen;
       if (s.saveGateOpen && !lastGateOpen) {
         const candidates = extractMemories(s.chat, s.session.nickname);

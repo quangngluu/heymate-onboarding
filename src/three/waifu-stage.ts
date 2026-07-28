@@ -17,10 +17,14 @@ const HERO_HEIGHT = 1.3;
 const GHOST_HEIGHT = 1.05;
 
 /** Waiting spots behind and to the left of the base, matching the layout. */
+/**
+ * Waiting spots. Read from the stage camera they must step back *and* across,
+ * otherwise perspective lines them up into a single column.
+ */
 export const GHOST_SLOTS: [number, number, number][] = [
-  [-2.4, 0, 0.5],
-  [-4.7, 0, -1.9],
-  [-2.6, 0, -4.4],
+  [-2.15, 0, 1.15],
+  [-3.55, 0, -1.75],
+  [-1.65, 0, -4.3],
 ];
 
 interface Entry {

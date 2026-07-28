@@ -16,6 +16,8 @@ export interface UIActions {
   resetSession(): void;
   saveChapter(memories: string[]): void;
   continueWithoutSaving(): void;
+  closeUnlockGate(): void;
+  unlockView(code?: string): void;
   regenerateLook(prompt: string): void;
   restoreLook(): void;
 

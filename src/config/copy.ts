@@ -35,6 +35,14 @@ export const COPY = {
     saveNothing: 'Nothing worth keeping yet. Talk a little longer.',
     noCredits: 'No credits left. The conversation still works without saving.',
 
+    unlockTitle: 'Turn her around',
+    unlockBody: 'The front arc is free to inspect. The full turntable comes with the figurine.',
+    unlockCta: 'Use 1 credit',
+    unlockCode: 'Or enter the code from your box',
+    unlockCodeCta: 'Unlock',
+    unlockSkip: 'Not now',
+    badCode: 'That code does not match.',
+
     tabLook: 'Appearance',
     lookNote: 'Regenerate her look from a prompt. The sculpt stays on model.',
     lookPlaceholder: 'Moonlit palette, softer highlights.',
