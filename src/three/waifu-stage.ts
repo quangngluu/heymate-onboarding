@@ -8,7 +8,9 @@
 
 import * as THREE from 'three';
 import { loadNormalized } from './champions';
-import { WAIFUS } from '../config/waifus';
+import { RESIDENTS, type VisualIdentity } from '../config/residents';
+
+type MoteMotif = VisualIdentity['moteMotif'];
 
 /** Total height on the base, including the figure's own display plinth. */
 const HERO_HEIGHT = 1.3;
@@ -16,9 +18,9 @@ const GHOST_HEIGHT = 1.05;
 
 /** Waiting spots behind and to the left of the base, matching the layout. */
 export const GHOST_SLOTS: [number, number, number][] = [
-  [-2.35, 0, -1.5],
-  [-3.5, 0, -3.1],
-  [-1.9, 0, -4.6],
+  [-2.7, 0, -0.4],
+  [-5.0, 0, -2.6],
+  [-2.2, 0, -5.2],
 ];
 
 interface Entry {
@@ -40,6 +42,9 @@ export class WaifuStage {
   readonly ring: THREE.Mesh;
   private ringMat: THREE.MeshBasicMaterial;
   private glow: THREE.PointLight;
+  private upLight: THREE.SpotLight;
+  private motes: THREE.Points;
+  private moteMotif: MoteMotif = 'data';
 
   constructor(
     private scene: THREE.Scene,
@@ -61,21 +66,46 @@ export class WaifuStage {
     this.glow = new THREE.PointLight(0xffffff, 0, 4, 2);
     this.glow.position.set(0, baseTopY + 0.35, 0.3);
     scene.add(this.glow);
+
+    // Display-case uplight: throws her silhouette off the dark backdrop and
+    // catches the underside of the sculpt the key light misses.
+    this.upLight = new THREE.SpotLight(0xffffff, 3.2, 5, Math.PI / 3, 0.85, 1.1);
+    this.upLight.position.set(0, baseTopY + 0.05, 0.55);
+    this.upLight.target.position.set(0, baseTopY + 1.15, 0);
+    scene.add(this.upLight, this.upLight.target);
+
+    const N = 220;
+    const positions = new Float32Array(N * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    this.motes = new THREE.Points(
+      geo,
+      new THREE.PointsMaterial({
+        size: 0.022,
+        transparent: true,
+        opacity: 0.55,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      })
+    );
+    scene.add(this.motes);
   }
 
   setBaseTop(y: number): void {
     this.heroY = y;
     this.ring.position.y = y + 0.01;
     this.glow.position.y = y + 0.35;
+    this.upLight.position.y = y + 0.05;
+    this.upLight.target.position.y = y + 1.15;
     const hero = this.heroId && this.entries.get(this.heroId);
     if (hero) hero.group.position.y = y;
   }
 
   /** Load every resident; the hero is fetched first. */
   async load(heroId: string, onReady: (id: string) => void): Promise<void> {
-    const order = [heroId, ...WAIFUS.map((w) => w.id).filter((id) => id !== heroId)];
+    const order = [heroId, ...RESIDENTS.map((r) => r.id).filter((id) => id !== heroId)];
     for (const id of order) {
-      const cfg = WAIFUS.find((w) => w.id === id)!;
+      const cfg = RESIDENTS.find((r) => r.id === id)!;
       try {
         const model = await loadNormalized(cfg.modelUrl);
         const entry: Entry = {
@@ -105,10 +135,10 @@ export class WaifuStage {
   setHero(id: string): void {
     this.heroId = id;
     let ghostIdx = 0;
-    for (const w of WAIFUS) {
-      const isHero = w.id === id;
+    for (const r of RESIDENTS) {
+      const isHero = r.id === id;
       if (!isHero) ghostIdx++;
-      this.place(w.id, isHero, isHero ? 0 : ghostIdx - 1);
+      this.place(r.id, isHero, isHero ? 0 : ghostIdx - 1);
     }
   }
 
@@ -126,19 +156,51 @@ export class WaifuStage {
       e.group.position.set(slot[0], 0, slot[2]);
       e.targetYaw = 0.35; // angled slightly toward the base
     }
+    // Waiting residents stay solid and step back into shadow. Transparency
+    // reads as a rendering fault once two of them overlap.
     for (const m of e.materials) {
       const mat = m as THREE.MeshStandardMaterial;
-      mat.transparent = !isHero;
-      mat.opacity = isHero ? 1 : 0.45;
-      mat.depthWrite = isHero;
+      mat.transparent = false;
+      mat.opacity = 1;
+      mat.depthWrite = true;
+      if (!mat.userData.baseColor && mat.color) {
+        mat.userData.baseColor = mat.color.clone();
+      }
+      const base = mat.userData.baseColor as THREE.Color | undefined;
+      if (base && mat.color) {
+        mat.color.copy(base);
+        if (!isHero) mat.color.multiplyScalar(0.3);
+      }
     }
-    e.group.renderOrder = isHero ? 0 : -1;
+    e.group.renderOrder = 0;
   }
 
   /** Ring/light accent, matched to the active resident. */
   setAccent(color: number): void {
     this.ringMat.color.setHex(color);
     this.glow.color.setHex(color);
+    // Uplight leans toward her accent but stays mostly neutral so skin and
+    // metal do not turn into a single colour wash.
+    this.upLight.color.setHex(color).lerp(new THREE.Color(0xffffff), 0.62);
+  }
+
+  /**
+   * What her canon leaves in the air around her: Rin's data motes rise in
+   * columns, Kagura's embers drift up from the floor, Momo's ribbons turn
+   * slowly at chest height.
+   */
+  setMotes(color: number, motif: MoteMotif): void {
+    this.moteMotif = motif;
+    (this.motes.material as THREE.PointsMaterial).color.setHex(color);
+    const pos = this.motes.geometry.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      const a = (i / pos.count) * Math.PI * 2 * 7;
+      const r = motif === 'ribbon' ? 0.9 + (i % 5) * 0.22 : 0.5 + (i % 9) * 0.16;
+      const y = motif === 'ember' ? (i % 17) * 0.09 : 0.2 + (i % 21) * 0.09;
+      pos.setXYZ(i, Math.cos(a) * r, y, Math.sin(a) * r);
+    }
+    pos.needsUpdate = true;
+    (this.motes.material as THREE.PointsMaterial).size = motif === 'ribbon' ? 0.035 : 0.022;
   }
 
   /** Called when a greeting or reply starts/stops. */
@@ -155,6 +217,20 @@ export class WaifuStage {
     this.ringMat.opacity = 0.28 + chatter * 0.6 + Math.sin(t * 1.5) * 0.04;
     this.ring.scale.setScalar(1 + chatter * 0.05);
     this.glow.intensity = this.speakingLevel * 2.4 + 0.35;
+
+    // Motes move the way her canon moves: data climbs, embers rise and fade,
+    // ribbons turn. All three lift a little while she is speaking.
+    const mm = this.motes.material as THREE.PointsMaterial;
+    const pos = this.motes.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const rise = (this.moteMotif === 'ribbon' ? 0.05 : 0.16) * (1 + this.speakingLevel);
+    for (let i = 0; i < pos.count; i++) {
+      let y = pos.getY(i) + dt * rise;
+      if (y > 2.3) y = 0.05;
+      pos.setY(i, y);
+    }
+    pos.needsUpdate = true;
+    this.motes.rotation.y += dt * (this.moteMotif === 'ribbon' ? 0.16 : 0.05);
+    mm.opacity = 0.4 + this.speakingLevel * 0.3;
 
     for (const [id, e] of this.entries) {
       const isHero = id === this.heroId;
@@ -233,6 +309,11 @@ export class WaifuStage {
     this.ring.parent?.remove(this.ring);
     this.ring.geometry.dispose();
     this.ringMat.dispose();
+    this.motes.parent?.remove(this.motes);
+    this.motes.geometry.dispose();
+    (this.motes.material as THREE.Material).dispose();
     this.glow.parent?.remove(this.glow);
+    this.upLight.parent?.remove(this.upLight);
+    this.upLight.target.parent?.remove(this.upLight.target);
   }
 }

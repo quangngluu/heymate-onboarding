@@ -10,7 +10,16 @@ import { factionById } from '../config/factions';
 import { CHARACTERS, characterById, characterIndex } from '../config/characters';
 import { characterThumb, monogramThumb } from '../three/thumbs';
 import { UNIVERSES } from '../config/universes';
-import { STYLE_OPTIONS, VOICE_OPTIONS, WAIFUS, waifuById } from '../config/waifus';
+import {
+  LENGTHS,
+  MOODS,
+  RESIDENTS,
+  SCENARIOS,
+  STYLES,
+  residentById,
+} from '../config/residents';
+import { FREE_TURNS } from '../state/store';
+import { extractMemories } from '../chat/memory';
 
 export interface StepView {
   el: HTMLElement;
@@ -49,7 +58,7 @@ export function galleryStep(actions: UIActions): StepView {
         'span',
         { class: 'tile-meta' },
         u.kind === 'companion'
-          ? `${u.waifus?.length ?? 0} residents · talk`
+          ? `${u.residents?.length ?? 0} residents · talk`
           : `${u.factions?.length ?? 0} factions · create`
       )
     );
@@ -71,28 +80,30 @@ export function galleryStep(actions: UIActions): StepView {
 }
 
 // ---------- COMPANION STAGE ----------
+//
+// Encounter first. The user meets the resident, hears her greeting and talks
+// to her before any settings exist. "Set this session" only appears once she
+// is no longer a stranger, and it never exposes a raw prompt.
 
 export function stageStep(actions: UIActions, state: AppState): StepView {
-  // The giant resident name lives in the 3D scene (see Nameplate) so the side
-  // panels never cover it; this heading keeps it in the accessibility tree.
-  const bigName = h('h1', { class: 'visually-hidden' });
-
+  const srOnlyName = h('h1', { class: 'visually-hidden' });
   const info = h('aside', { class: 'panel stage-info' });
 
+  // --- roster ---
   const roster = h('div', { role: 'radiogroup', 'aria-label': 'Residents', class: 'roster' });
   const rosterBtns: HTMLButtonElement[] = [];
-  WAIFUS.forEach((w) => {
+  RESIDENTS.forEach((r) => {
     const b = h(
       'button',
       {
         role: 'radio',
         'aria-checked': 'false',
         class: 'roster-chip',
-        style: `--accent:${cssColor(w.accentColor)}`,
-        onClick: () => actions.selectWaifu(w.id),
+        style: `--accent:${cssColor(r.accentColor)}`,
+        onClick: () => actions.selectResident(r.id),
       },
       h('span', { class: 'dot', 'aria-hidden': 'true' }),
-      w.name
+      r.name
     ) as HTMLButtonElement;
     rosterBtns.push(b);
     roster.append(b);
@@ -105,7 +116,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     class: 'chat-input',
     placeholder: COPY.stage.inputPlaceholder,
     'aria-label': 'Message',
-    maxlength: '200',
+    maxlength: '220',
   }) as HTMLInputElement;
   const send = () => {
     const v = input.value.trim();
@@ -116,15 +127,18 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   input.addEventListener('keydown', (e) => {
     if ((e as KeyboardEvent).key === 'Enter') send();
   });
+  const sendBtn = h('button', { class: 'btn btn-primary', onClick: send }, COPY.stage.send) as HTMLButtonElement;
+  const turnsLeft = h('span', { class: 'turns-left' });
   const chatBox = h(
     'div',
     { class: 'panel chat-box', hidden: true },
     log,
+    h('div', { class: 'chat-row' }, input, sendBtn),
     h(
       'div',
-      { class: 'chat-row' },
-      input,
-      h('button', { class: 'btn btn-primary', onClick: send }, COPY.stage.send)
+      { class: 'chat-foot' },
+      turnsLeft,
+      h('button', { class: 'btn btn-ghost xs', onClick: () => actions.openSessionPanel() }, COPY.stage.setSession)
     )
   );
   const talkBtn = h(
@@ -133,175 +147,248 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     COPY.stage.talk
   ) as HTMLButtonElement;
 
-  // --- personalize panel (2 tabs) ---
-  const promptInput = h('textarea', {
-    class: 'describe-input',
-    rows: '4',
-    'aria-label': COPY.stage.promptLabel,
-  }) as HTMLTextAreaElement;
-  promptInput.addEventListener('change', () => actions.updatePersona({ prompt: promptInput.value }));
-
-  const greetInput = h('input', {
+  // --- session sheet (only after the encounter) ---
+  const nickInput = h('input', {
     type: 'text',
     class: 'name-input',
-    'aria-label': COPY.stage.greetingLabel,
-    maxlength: '120',
+    placeholder: COPY.stage.nicknamePlaceholder,
+    'aria-label': COPY.stage.nickname,
+    maxlength: '24',
   }) as HTMLInputElement;
-  greetInput.addEventListener('change', () => actions.updatePersona({ greeting: greetInput.value }));
+  nickInput.addEventListener('change', () => actions.updateSession({ nickname: nickInput.value }));
 
-  const styleSeg = h('div', { role: 'radiogroup', 'aria-label': COPY.stage.styleLabel, class: 'segment' });
-  const styleBtns: HTMLButtonElement[] = [];
-  STYLE_OPTIONS.forEach((o) => {
-    const b = h(
-      'button',
-      { role: 'radio', 'aria-checked': 'false', class: 'segment-btn', onClick: () => actions.updatePersona({ style: o.id }) },
-      h('span', { class: 'segment-label' }, o.label)
-    ) as HTMLButtonElement;
-    styleBtns.push(b);
-    styleSeg.append(b);
-  });
+  function segment<T extends string>(
+    label: string,
+    options: { id: T; label: string }[],
+    onPick: (id: T) => void
+  ): { el: HTMLElement; btns: HTMLButtonElement[] } {
+    const btns: HTMLButtonElement[] = [];
+    const seg = h('div', { role: 'radiogroup', 'aria-label': label, class: 'segment' });
+    for (const o of options) {
+      const b = h(
+        'button',
+        { role: 'radio', 'aria-checked': 'false', class: 'segment-btn', onClick: () => onPick(o.id) },
+        h('span', { class: 'segment-label' }, o.label)
+      ) as HTMLButtonElement;
+      btns.push(b);
+      seg.append(b);
+    }
+    return {
+      el: h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, label), seg),
+      btns,
+    };
+  }
 
-  const voiceSeg = h('div', { role: 'radiogroup', 'aria-label': COPY.stage.voiceLabel, class: 'segment' });
+  const scen = segment(COPY.stage.scenario, SCENARIOS, (id) => actions.updateSession({ scenario: id }));
+  const mood = segment(COPY.stage.mood, MOODS, (id) => actions.updateSession({ mood: id }));
+  const style = segment(COPY.stage.style, STYLES, (id) => actions.updateSession({ style: id }));
+  const len = segment(COPY.stage.length, LENGTHS, (id) => actions.updateSession({ length: id }));
+  const voiceSeg = h('div', { role: 'radiogroup', 'aria-label': COPY.stage.voice, class: 'segment' });
   const voiceBtns: HTMLButtonElement[] = [];
-  VOICE_OPTIONS.forEach((o) => {
-    const b = h(
-      'button',
-      { role: 'radio', 'aria-checked': 'false', class: 'segment-btn', onClick: () => actions.updatePersona({ voiceId: o.id }) },
-      h('span', { class: 'segment-label' }, o.label)
-    ) as HTMLButtonElement;
-    voiceBtns.push(b);
-    voiceSeg.append(b);
-  });
 
-  const personaPane = h(
-    'div',
-    { class: 'gen-pane' },
-    h('h3', { class: 'group-label' }, COPY.stage.promptLabel),
-    promptInput,
-    h('h3', { class: 'group-label' }, COPY.stage.greetingLabel),
-    greetInput,
-    h('button', { class: 'btn btn-ghost sm', onClick: () => actions.replayGreeting() }, 'Play greeting'),
-    h('h3', { class: 'group-label' }, COPY.stage.styleLabel),
-    styleSeg,
-    h('h3', { class: 'group-label' }, COPY.stage.voiceLabel),
-    voiceSeg,
+  const sessionSheet = h(
+    'aside',
+    { class: 'panel session-sheet', hidden: true },
+    h(
+      'div',
+      { class: 'row sheet-head' },
+      h('h2', { class: 'panel-title' }, COPY.stage.setSession),
+      h('button', { class: 'chrome-btn', 'aria-label': 'Close', onClick: () => actions.closeSessionPanel() }, '×')
+    ),
+    h('p', { class: 'hint faint' }, COPY.stage.sessionNote),
+    h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, COPY.stage.nickname), nickInput),
+    scen.el,
+    mood.el,
+    style.el,
+    len.el,
+    h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, COPY.stage.voice), voiceSeg),
     h(
       'div',
       { class: 'row' },
-      h('button', { class: 'btn btn-ghost sm', onClick: () => actions.resetPersona() }, COPY.stage.reset)
-    ),
-    h('p', { class: 'hint faint' }, COPY.stage.saved)
+      h('button', { class: 'btn btn-ghost xs', onClick: () => actions.resetSession() }, COPY.stage.resetSession),
+      h('button', { class: 'btn btn-secondary xs', onClick: () => actions.closeSessionPanel() }, COPY.stage.applySession)
+    )
   );
 
-  const lookInput = h('textarea', {
-    class: 'describe-input',
-    rows: '3',
-    placeholder: COPY.stage.lookPlaceholder,
-    'aria-label': 'Look prompt',
-  }) as HTMLTextAreaElement;
-  const lookPane = h(
+  // --- save gate ---
+  const memList = h('div', { class: 'memory-list' });
+  const gateCost = h('p', { class: 'hint' });
+  const saveBtn = h('button', { class: 'btn btn-primary' }, COPY.stage.saveCta) as HTMLButtonElement;
+  const memChecks = new Map<string, HTMLInputElement>();
+  saveBtn.addEventListener('click', () => {
+    const keep = [...memChecks.entries()].filter(([, c]) => c.checked).map(([id]) => id);
+    actions.saveChapter(keep);
+  });
+  const saveGate = h(
     'div',
-    { class: 'gen-pane', hidden: true },
-    h('p', { class: 'hint' }, COPY.stage.lookNote),
-    lookInput,
+    { class: 'save-gate', hidden: true, role: 'dialog', 'aria-label': COPY.stage.saveTitle },
     h(
       'div',
-      { class: 'row' },
-      h('button', { class: 'btn btn-ghost sm', onClick: () => actions.restoreLook() }, COPY.stage.lookRestore),
+      { class: 'panel gate-card' },
+      h('h2', { class: 'panel-title' }, COPY.stage.saveTitle),
+      h('p', { class: 'hint' }, COPY.stage.saveBody),
+      h('p', { class: 'group-label' }, COPY.stage.saveList),
+      memList,
+      gateCost,
       h(
-        'button',
-        { class: 'btn btn-secondary sm', onClick: () => actions.regenerateLook(lookInput.value) },
-        COPY.stage.lookGenerate
+        'div',
+        { class: 'row' },
+        h('button', { class: 'btn btn-ghost', onClick: () => actions.continueWithoutSaving() }, COPY.stage.saveSkip),
+        saveBtn
       )
     )
   );
 
-  const tabPersona = h('button', { class: 'tab is-active', role: 'tab', 'aria-selected': 'true' }, COPY.stage.tabPersona) as HTMLButtonElement;
-  const tabLook = h('button', { class: 'tab', role: 'tab', 'aria-selected': 'false' }, COPY.stage.tabLook) as HTMLButtonElement;
-  const setTab = (look: boolean) => {
-    tabPersona.classList.toggle('is-active', !look);
-    tabLook.classList.toggle('is-active', look);
-    tabPersona.setAttribute('aria-selected', String(!look));
-    tabLook.setAttribute('aria-selected', String(look));
-    (personaPane as HTMLElement).hidden = look;
-    (lookPane as HTMLElement).hidden = !look;
-  };
-  tabPersona.addEventListener('click', () => setTab(false));
-  tabLook.addEventListener('click', () => setTab(true));
-
-  const sidePanel = h(
-    'aside',
-    { class: 'panel personalize-panel' },
-    h('h2', { class: 'panel-title' }, COPY.stage.personalize),
-    h('div', { class: 'tabs', role: 'tablist' }, tabPersona, tabLook),
-    personaPane,
-    lookPane
-  );
-
   const el = h(
     'section',
-    { class: 'step step-stage', 'aria-label': 'Resident stage' },
-    bigName,
+    { class: 'step step-stage', 'aria-label': 'Resident encounter' },
+    srOnlyName,
     h(
       'header',
       { class: 'stage-top' },
       h('button', { class: 'btn btn-ghost sm', onClick: () => actions.leaveUniverse() }, `‹ ${COPY.stage.leave}`)
     ),
-    sidePanel,
+    sessionSheet,
     info,
-    h('div', { class: 'stage-bottom' }, roster, talkBtn, chatBox)
+    roster,
+    h('div', { class: 'stage-bottom' }, talkBtn, chatBox),
+    saveGate
   );
 
-  let lastWaifu = '';
+  let lastResident = '';
   let lastChatLen = -1;
+  let lastGateOpen = false;
 
   return {
     el,
     update(s) {
-      const w = waifuById(s.waifuId);
-      const persona = s.personas[s.waifuId] ?? w.defaults;
-      el.style.setProperty('--accent', cssColor(w.accentColor));
+      const r = residentById(s.residentId);
+      const saved = s.progress[s.residentId];
+      el.style.setProperty('--accent', cssColor(r.accentColor));
 
-      if (s.waifuId !== lastWaifu) {
-        lastWaifu = s.waifuId;
-        bigName.textContent = w.name;
-        promptInput.value = persona.prompt;
-        greetInput.value = persona.greeting;
+      if (s.residentId !== lastResident) {
+        lastResident = s.residentId;
+        srOnlyName.textContent = r.name;
+        nickInput.value = s.session.nickname;
+        // The card carries three layers: the hook, who she is, and what the
+        // user gets. Full canon stays behind the story list.
         info.replaceChildren(
-          h('span', { class: 'chip chip-accent' }, 'Resident'),
-          h('h2', { class: 'card-name' }, w.name),
-          h('p', { class: 'card-title' }, w.title),
-          h('p', { class: 'card-bio' }, w.bio)
+          h('span', { class: 'chip chip-accent' }, saved?.visits ? `Visit ${saved.visits + 1}` : 'First meeting'),
+          h('h2', { class: 'card-name' }, r.name),
+          h('p', { class: 'card-series' }, r.series),
+          h('p', { class: 'card-hook' }, r.card.hook),
+          h('p', { class: 'card-bio' }, r.card.personality),
+          h('p', { class: 'card-promise' }, r.card.promise),
+          h('p', { class: 'card-setting' }, r.setting),
+          h('details', { class: 'profile-more' },
+            h('summary', {}, 'Who she is'),
+            h('p', { class: 'card-bio' }, r.profile)
+          ),
+          h('details', { class: 'episode-block profile-more' },
+            h('summary', {}, 'Her story'),
+            h('div', { class: 'episode-list' })
+          )
         );
-      } else {
-        // Keep fields in sync when reset is pressed, without stealing focus.
-        if (document.activeElement !== promptInput) promptInput.value = persona.prompt;
-        if (document.activeElement !== greetInput) greetInput.value = persona.greeting;
+        // Voice options are hers, not a shared library.
+        voiceBtns.length = 0;
+        voiceSeg.replaceChildren(
+          ...r.voices.map((v) => {
+            const b = h(
+              'button',
+              {
+                role: 'radio',
+                'aria-checked': 'false',
+                class: 'segment-btn',
+                onClick: () => actions.updateSession({ voice: v.slot }),
+              },
+              h('span', { class: 'segment-label' }, v.label)
+            ) as HTMLButtonElement;
+            voiceBtns.push(b);
+            return b;
+          })
+        );
+      }
+      if (document.activeElement !== nickInput) nickInput.value = s.session.nickname;
+
+      // Unlocked episodes read as her story opening up, locked ones as the
+      // reason to keep going.
+      const epList = info.querySelector('.episode-list');
+      if (epList) {
+        epList.replaceChildren(
+          ...r.episodes.map((ep, i) => {
+            const open = i < s.revealed;
+            return h(
+              'div',
+              { class: `episode${open ? ' is-open' : ''}` },
+              h('span', { class: 'episode-title' }, open ? ep.title : 'Locked'),
+              ...(open ? [h('p', { class: 'episode-body' }, ep.body)] : [])
+            );
+          })
+        );
       }
 
       rosterBtns.forEach((b, i) => {
-        const active = WAIFUS[i].id === s.waifuId;
+        const active = RESIDENTS[i].id === s.residentId;
         b.setAttribute('aria-checked', String(active));
         b.classList.toggle('is-active', active);
       });
-      styleBtns.forEach((b, i) =>
-        b.setAttribute('aria-checked', String(STYLE_OPTIONS[i].id === persona.style))
-      );
+      scen.btns.forEach((b, i) => b.setAttribute('aria-checked', String(SCENARIOS[i].id === s.session.scenario)));
+      mood.btns.forEach((b, i) => b.setAttribute('aria-checked', String(MOODS[i].id === s.session.mood)));
+      style.btns.forEach((b, i) => b.setAttribute('aria-checked', String(STYLES[i].id === s.session.style)));
+      len.btns.forEach((b, i) => b.setAttribute('aria-checked', String(LENGTHS[i].id === s.session.length)));
       voiceBtns.forEach((b, i) =>
-        b.setAttribute('aria-checked', String(VOICE_OPTIONS[i].id === persona.voiceId))
+        b.setAttribute('aria-checked', String(r.voices[i].slot === s.session.voice))
       );
 
       talkBtn.hidden = s.chatOpen;
       (chatBox as HTMLElement).hidden = !s.chatOpen;
+      (sessionSheet as HTMLElement).hidden = !s.sessionPanelOpen;
+
+      const left = Math.max(0, FREE_TURNS - s.turns);
+      turnsLeft.textContent = s.thinking
+        ? `${r.name.split(' ')[0]} is typing`
+        : s.voicing
+          ? `${r.name.split(' ')[0]} is finding her voice`
+          : left > 0
+          ? `${left} free ${left === 1 ? 'reply' : 'replies'} left`
+          : COPY.stage.outOfTurns;
+      turnsLeft.classList.toggle('is-thinking', s.thinking);
+      turnsLeft.classList.toggle('is-voicing', s.voicing);
+      input.disabled = left === 0 || s.thinking;
+      sendBtn.disabled = left === 0 || s.thinking;
+
       if (s.chat.length !== lastChatLen) {
         lastChatLen = s.chat.length;
         log.replaceChildren(
-          ...s.chat.map((t) =>
-            h('p', { class: `bubble bubble-${t.from}` }, t.text)
-          )
+          ...s.chat.map((t) => h('p', { class: `bubble bubble-${t.from}` }, t.text))
         );
         log.scrollTop = log.scrollHeight;
       }
+
+      (saveGate as HTMLElement).hidden = !s.saveGateOpen;
+      if (s.saveGateOpen && !lastGateOpen) {
+        const candidates = extractMemories(s.chat, s.session.nickname);
+        memChecks.clear();
+        memList.replaceChildren(
+          ...(candidates.length
+            ? candidates.map((c) => {
+                const box = h('input', { type: 'checkbox', checked: true }) as HTMLInputElement;
+                box.checked = true;
+                memChecks.set(c.text, box);
+                return h('label', { class: 'memory-item' }, box, h('span', {}, c.text));
+              })
+            : [h('p', { class: 'hint faint' }, COPY.stage.saveNothing)])
+        );
+        const canPay = s.credits > 0 && candidates.length > 0;
+        gateCost.textContent = canPay
+          ? `${COPY.stage.saveCost} You have ${s.credits}.`
+          : s.credits > 0
+            ? COPY.stage.saveNothing
+            : COPY.stage.noCredits;
+        saveBtn.disabled = !canPay;
+      }
+      lastGateOpen = s.saveGateOpen;
+
       el.classList.toggle('is-speaking', s.speaking);
     },
   };

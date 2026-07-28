@@ -1,5 +1,6 @@
 import { CHARACTERS } from '../config/characters';
-import { WAIFUS, waifuById, type WaifuPersona } from '../config/waifus';
+import { RESIDENTS, type ResidentId, type VoiceSlot } from '../config/residents';
+import type { LengthId, MoodId, ScenarioId, StyleId } from '../config/residents';
 
 export type Step =
   | 'gallery' // universe picker (outer)
@@ -7,14 +8,13 @@ export type Step =
   | 'studio' // creator universe: pick character + generate
   | 'reveal' // creator universe: your Mate
   | 'joined' // creator universe: lineup
-  | 'stage'; // companion universe: waifu on the base
+  | 'stage'; // companion universe: resident on the base
 
 export type GenMode = 'text' | 'photo';
 
 export interface GenInput {
   mode: GenMode;
   text: string;
-  /** Local object URL for the uploaded photo preview. Never leaves the browser. */
   photoUrl: string | null;
   photoName: string | null;
 }
@@ -22,23 +22,64 @@ export interface GenInput {
 export type GenPhase = 'idle' | 'processing' | 'done';
 
 export interface ChatTurn {
-  from: 'user' | 'waifu';
+  from: 'user' | 'resident';
   text: string;
+}
+
+/** Session-only: applies to this encounter and is never persisted. */
+export interface SessionSetup {
+  nickname: string;
+  scenario: ScenarioId;
+  mood: MoodId;
+  style: StyleId;
+  length: LengthId;
+  voice: VoiceSlot;
+}
+
+/** Persisted per resident, and only after the user spends a credit. */
+export interface SavedProgress {
+  memories: string[];
+  revealed: number;
+  nickname: string;
+  visits: number;
+}
+
+export const FREE_TURNS = 5;
+
+function defaultSession(): SessionSetup {
+  return {
+    nickname: '',
+    scenario: 'casual',
+    mood: 'calm',
+    style: 'balanced',
+    length: 'natural',
+    voice: 'signature',
+  };
 }
 
 export interface AppState {
   step: Step;
-  /** null while browsing the gallery. */
   universeId: string | null;
 
   // --- companion universe ---
-  waifuId: string;
-  /** Per-waifu persona overrides applied on top of the config defaults. */
-  personas: Record<string, WaifuPersona>;
+  residentId: ResidentId;
+  session: SessionSetup;
+  /** Saved-and-paid progress, keyed by resident. */
+  progress: Record<string, SavedProgress>;
   chat: ChatTurn[];
   chatOpen: boolean;
-  /** True while a greeting or reply is "being spoken" (drives base pulse). */
+  /** User turns spent this session; gates the free encounter. */
+  turns: number;
   speaking: boolean;
+  /** True while her reply is in flight. */
+  thinking: boolean;
+  /** True while her voice is being rendered (seconds, not instant). */
+  voicing: boolean;
+  /** Session-scoped reveal count, seeded from saved progress. */
+  revealed: number;
+  sessionPanelOpen: boolean;
+  saveGateOpen: boolean;
+  credits: number;
 
   // --- creator universe ---
   characterId: string;
@@ -52,20 +93,22 @@ export interface AppState {
   error: string | null;
 }
 
-function defaultPersonas(): Record<string, WaifuPersona> {
-  const out: Record<string, WaifuPersona> = {};
-  for (const w of WAIFUS) out[w.id] = { ...w.defaults };
-  return out;
-}
-
 const initialState: AppState = {
   step: 'gallery',
   universeId: null,
-  waifuId: WAIFUS[0].id,
-  personas: defaultPersonas(),
+  residentId: RESIDENTS[0].id,
+  session: defaultSession(),
+  progress: {},
   chat: [],
   chatOpen: false,
+  turns: 0,
   speaking: false,
+  thinking: false,
+  voicing: false,
+  revealed: 0,
+  sessionPanelOpen: false,
+  saveGateOpen: false,
+  credits: 3,
   characterId: CHARACTERS[0].id,
   gen: { mode: 'text', text: '', photoUrl: null, photoName: null },
   genPhase: 'idle',
@@ -78,22 +121,25 @@ const initialState: AppState = {
 
 type Listener = (state: AppState, prev: AppState) => void;
 
-const STORAGE_KEY = 'heymate.personas.v1';
+const STORAGE_KEY = 'heymate.progress.v1';
 
 export class Store {
   private state: AppState = initialState;
   private listeners = new Set<Listener>();
 
   constructor() {
-    // Persona edits survive a reload; nothing else is persisted.
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const saved = JSON.parse(raw) as Record<string, WaifuPersona>;
-        this.state = { ...this.state, personas: { ...this.state.personas, ...saved } };
+        const saved = JSON.parse(raw) as { progress: Record<string, SavedProgress>; credits?: number };
+        this.state = {
+          ...this.state,
+          progress: saved.progress ?? {},
+          credits: saved.credits ?? this.state.credits,
+        };
       }
     } catch {
-      /* private mode or corrupt entry: fall back to defaults */
+      /* private mode or corrupt entry: start fresh */
     }
   }
 
@@ -116,39 +162,80 @@ export class Store {
     this.set({ step, error: null });
   }
 
+  private persist(): void {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ progress: this.state.progress, credits: this.state.credits })
+      );
+    } catch {
+      /* storage unavailable: keep the in-memory copy */
+    }
+  }
+
   // ---- companion ----
 
-  selectWaifu(id: string): void {
-    if (this.state.waifuId === id) return;
-    this.set({ waifuId: id, chat: [], chatOpen: false, speaking: false });
+  progressFor(id = this.state.residentId): SavedProgress {
+    return this.state.progress[id] ?? { memories: [], revealed: 0, nickname: '', visits: 0 };
   }
 
-  persona(id = this.state.waifuId): WaifuPersona {
-    return this.state.personas[id] ?? waifuById(id).defaults;
+  /** Start a fresh encounter with a resident, seeded by any saved progress. */
+  beginEncounter(id: ResidentId): void {
+    const saved = this.progressFor(id);
+    this.set({
+      residentId: id,
+      chat: [],
+      chatOpen: false,
+      turns: 0,
+      speaking: false,
+      thinking: false,
+      voicing: false,
+      revealed: saved.revealed,
+      sessionPanelOpen: false,
+      saveGateOpen: false,
+      session: { ...defaultSession(), nickname: saved.nickname },
+    });
   }
 
-  updatePersona(id: string, patch: Partial<WaifuPersona>): void {
-    const personas = { ...this.state.personas, [id]: { ...this.persona(id), ...patch } };
-    this.set({ personas });
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(personas));
-    } catch {
-      /* storage unavailable: keep the in-memory edit */
-    }
+  updateSession(patch: Partial<SessionSetup>): void {
+    this.set({ session: { ...this.state.session, ...patch } });
   }
 
-  resetPersona(id: string): void {
-    const personas = { ...this.state.personas, [id]: { ...waifuById(id).defaults } };
-    this.set({ personas });
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(personas));
-    } catch {
-      /* ignore */
-    }
+  resetSession(): void {
+    this.set({ session: { ...defaultSession(), nickname: this.progressFor().nickname } });
   }
 
   pushTurn(turn: ChatTurn): void {
-    this.set({ chat: [...this.state.chat, turn].slice(-40) });
+    const turns = turn.from === 'user' ? this.state.turns + 1 : this.state.turns;
+    this.set({ chat: [...this.state.chat, turn].slice(-60), turns });
+  }
+
+  get freeTurnsLeft(): number {
+    return Math.max(0, FREE_TURNS - this.state.turns);
+  }
+
+  /**
+   * Spend a credit to keep the selected memories for next time. The nickname
+   * is stored as a setting rather than a memory, so callbacks never try to
+   * say "you mentioned to call you Q".
+   */
+  saveChapter(memories: string[]): boolean {
+    if (this.state.credits < 1) return false;
+    const id = this.state.residentId;
+    const prev = this.progressFor(id);
+    const conversational = memories.filter((m) => !m.startsWith('to call you '));
+    const progress = {
+      ...this.state.progress,
+      [id]: {
+        memories: [...prev.memories, ...conversational].slice(-8),
+        revealed: this.state.revealed,
+        nickname: this.state.session.nickname || prev.nickname,
+        visits: prev.visits + 1,
+      },
+    };
+    this.set({ progress, credits: this.state.credits - 1, saveGateOpen: false });
+    this.persist();
+    return true;
   }
 
   // ---- creator ----
@@ -169,14 +256,11 @@ export class Store {
     this.setGen({ photoUrl: null, photoName: null });
   }
 
-  /** Back to the gallery; per-universe progress resets, personas persist. */
+  /** Back to the gallery. Saved progress and credits survive. */
   leaveUniverse(): void {
     const { photoUrl } = this.state.gen;
     if (photoUrl) URL.revokeObjectURL(photoUrl);
-    this.set({
-      ...initialState,
-      personas: this.state.personas,
-    });
+    this.set({ ...initialState, progress: this.state.progress, credits: this.state.credits });
   }
 
   restart(): void {

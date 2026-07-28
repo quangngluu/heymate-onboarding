@@ -1,5 +1,4 @@
-import type { Step } from '../state/store';
-import type { WaifuPersona } from '../config/waifus';
+import type { SessionSetup, Step } from '../state/store';
 
 /** Contract between the HTML overlay and the scene/app controller. */
 export interface UIActions {
@@ -8,12 +7,15 @@ export interface UIActions {
   leaveUniverse(): void;
 
   // --- companion universe ---
-  selectWaifu(id: string): void;
+  selectResident(id: string): void;
   startChat(): void;
   sendMessage(text: string): void;
-  updatePersona(patch: Partial<WaifuPersona>): void;
-  resetPersona(): void;
-  replayGreeting(): void;
+  openSessionPanel(): void;
+  closeSessionPanel(): void;
+  updateSession(patch: Partial<SessionSetup>): void;
+  resetSession(): void;
+  saveChapter(memories: string[]): void;
+  continueWithoutSaving(): void;
   regenerateLook(prompt: string): void;
   restoreLook(): void;
 

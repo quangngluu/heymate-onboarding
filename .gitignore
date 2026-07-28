@@ -6,3 +6,7 @@ dist/
 
 # Re-include app state (parent repo used to ignore any state/ dir)
 !src/state/
+
+# Local secrets
+.env
+.env*.local

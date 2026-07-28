@@ -357,24 +357,67 @@ html, body {
 .stage-info {
   position: absolute;
   right: 24px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: min(280px, calc(100vw - 32px));
+  top: 76px;
+  width: min(340px, calc(100vw - 32px));
+  max-height: 40vh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
+/* Character card: hook, who she is, what you get. Canon stays behind it. */
+.card-series {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.card-hook { font-size: 15px; font-weight: 600; line-height: 1.35; }
+.card-promise { font-size: 13px; color: var(--ivory); opacity: 0.92; line-height: 1.45; }
+.card-setting { font-size: 11.5px; color: var(--ivory-dim); font-style: italic; }
+.profile-more summary {
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ivory-dim);
+  padding: 6px 0;
+}
+.profile-more[open] summary { color: var(--ivory); }
+.episode-block { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; }
+.episode-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.episode {
+  border-left: 2px solid var(--line);
+  padding: 4px 0 4px 10px;
+}
+.episode.is-open { border-left-color: var(--accent); }
+.episode-title {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ivory-dim);
+}
+.episode.is-open .episode-title { color: var(--ivory); }
+.episode-body { font-size: 12.5px; line-height: 1.5; color: var(--ivory-dim); margin-top: 3px; }
 
 .stage-bottom {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  width: min(340px, calc(100vw - 32px));
+  max-height: 52vh;
+}
+/* Roster sits clear of the right rail so nothing stacks on the card. */
+.roster {
   position: absolute;
   left: 50%;
   bottom: 24px;
   transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  width: min(560px, calc(100vw - 32px));
+  justify-content: center;
 }
 .roster { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; pointer-events: auto; }
 .roster-chip {
@@ -410,7 +453,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 26vh;
+  max-height: 30vh;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -444,6 +487,64 @@ html, body {
   padding: 11px 16px;
 }
 .chat-input:focus-visible { outline: 2px solid var(--ivory); outline-offset: 1px; }
+.chat-input:disabled { opacity: 0.45; }
+.chat-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.turns-left.is-voicing { color: var(--accent); }
+.turns-left { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ivory-dim); }
+.btn.xs { padding: 6px 12px; font-size: 11px; }
+.bubble-resident {
+  align-self: flex-start;
+  background: color-mix(in srgb, var(--accent) 18%, rgba(255, 255, 255, 0.05));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* Session sheet: appears only after the encounter has started. */
+.session-sheet {
+  position: absolute;
+  left: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(300px, calc(100vw - 32px));
+  max-height: 78vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.session-sheet[hidden] { display: none; }
+.session-sheet .sheet-head { justify-content: space-between; align-items: center; }
+
+/* Save gate */
+.save-gate {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 8, 11, 0.62);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+  z-index: 5;
+}
+.save-gate[hidden] { display: none; }
+.gate-card {
+  width: min(440px, calc(100vw - 40px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.memory-list { display: flex; flex-direction: column; gap: 8px; }
+.memory-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.memory-item input { accent-color: var(--accent); margin-top: 2px; }
 
 /* ---------- Studio ---------- */
 .step-studio { --accent: var(--ivory); }

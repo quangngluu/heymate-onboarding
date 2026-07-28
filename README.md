@@ -39,7 +39,10 @@ mechanic is regeneration of the base 3D file from the user's input.
 | Faction environments | **Real generated 360° panoramas** (user-provided), crossfaded per selected faction as skybox + image-based lighting |
 | Character thumbnails | **Real** — each GLB is rendered once offscreen |
 | Photo input | **Real, local-only** object URL; never uploaded |
-| **Mate regeneration** | **Simulated, deterministic, local.** The real product re-generates the model from the base file plus the user prompt through a generation service. This mockup hashes the input (FNV-1a) and applies a faction-approved colorway tint to a clone of the base model (`applyVariantTint` in `src/three/champions.ts`). Same input, same result. No network calls. |
+| **Waifu Universe chat** | **Real.** DeepSeek runs behind a Vercel edge function (`api/chat.ts`); the API key is a server-side env var and never reaches the browser. The system prompt is built from each resident's locked canon plus the session settings (`src/chat/prompt.ts`). If the endpoint is missing or failing, the app silently falls back to the scripted engine, so `npm run dev` and any static host still answer. |
+| Reveal schedule | **App-owned.** The model is told which episode to work in; it is never left to invent canon. |
+| Saved progress | **Real, local.** Spending a credit writes the selected memories to localStorage; the next visit opens on a callback instead of the greeting. Credits are a mock wallet. |
+| **Mate regeneration** (Afterburn) | **Simulated, deterministic, local.** Hashes the prompt and tints a clone of the base model (`applyVariantTint`). Same input, same result. |
 | Ambient audio + cues | Procedural WebAudio stand-in |
 
 ## Architecture

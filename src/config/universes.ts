@@ -1,5 +1,5 @@
 import { FACTIONS, type FactionConfig } from './factions';
-import { WAIFUS, type WaifuConfig } from './waifus';
+import { RESIDENTS, type ResidentConfig } from './residents';
 
 /**
  * Two experience kinds share one engine:
@@ -19,7 +19,7 @@ export interface UniverseConfig {
   /** Populated for kind === 'creator'. */
   factions?: FactionConfig[];
   /** Populated for kind === 'companion'. */
-  waifus?: WaifuConfig[];
+  residents?: ResidentConfig[];
   env: {
     background: number;
     fog: { color: number; near: number; far: number };
@@ -38,7 +38,7 @@ export const UNIVERSES: UniverseConfig[] = [
     kind: 'companion',
     accentColor: 0xc98bb0,
     posterUrl: 'assets/posters/waifu-universe.webp',
-    waifus: WAIFUS,
+    residents: RESIDENTS,
     env: {
       background: 0x14121a,
       fog: { color: 0x14121a, near: 14, far: 34 },

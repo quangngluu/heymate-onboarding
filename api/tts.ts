@@ -1,0 +1,95 @@
+// Serverless text-to-speech. Keys stay server-side; the browser only ever
+// receives a URL to a finished audio file.
+//
+// The provider is asynchronous: submit text, then poll until the export is
+// done. We poll here rather than in the browser so the client stays a single
+// await, and we cap the wait so a slow render degrades to text-only instead
+// of hanging the conversation.
+
+export const config = { runtime: 'edge' };
+
+const ENDPOINT = 'https://spoonai-tts-api.lucylab.io/json-rpc';
+const POLL_INTERVAL_MS = 1500;
+const MAX_WAIT_MS = 25000;
+
+interface TtsRequest {
+  text: string;
+  /** Per-resident voice; falls back to the account default. */
+  voiceId?: string;
+  speed?: number;
+}
+
+async function rpc(key: string, method: string, input: unknown): Promise<Record<string, unknown>> {
+  const res = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    body: JSON.stringify({ method, input }),
+    signal: AbortSignal.timeout(20000),
+  });
+  const data = (await res.json()) as { result?: Record<string, unknown>; error?: { message?: string } };
+  if (data.error) throw new Error(data.error.message ?? 'rpc-error');
+  return data.result ?? {};
+}
+
+export default async function handler(req: Request): Promise<Response> {
+  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+
+  const key = process.env.SPOON_API_KEY;
+  const defaultVoice = process.env.SPOON_VOICE_ID;
+  if (!key || !defaultVoice) return Response.json({ error: 'not-configured' }, { status: 503 });
+
+  let body: TtsRequest;
+  try {
+    body = (await req.json()) as TtsRequest;
+  } catch {
+    return Response.json({ error: 'bad-request' }, { status: 400 });
+  }
+
+  const text = String(body.text ?? '').trim().slice(0, 600);
+  if (!text) return Response.json({ error: 'empty-text' }, { status: 400 });
+
+  try {
+    // The account allows one export at a time; a burst of lines can collide,
+    // so back off briefly rather than dropping the line.
+    let submitted: Record<string, unknown> | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        submitted = await rpc(key, 'ttsLongText', {
+          text,
+          userVoiceId: body.voiceId || defaultVoice,
+          speed: body.speed ?? 1,
+        });
+        break;
+      } catch (e) {
+        if (!String(e).includes('export in progress') || attempt === 2) throw e;
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+    }
+    if (!submitted) return Response.json({ error: 'busy' }, { status: 503 });
+    const jobId = submitted.projectExportId as string | undefined;
+    if (!jobId) return Response.json({ error: 'no-job' }, { status: 502 });
+
+    const deadline = Date.now() + MAX_WAIT_MS;
+    for (;;) {
+      const status = await rpc(key, 'getExportStatus', { projectExportId: jobId });
+      const state = status.state as string;
+      if (state === 'completed' && typeof status.url === 'string') {
+        // The provider echoes its CORS headers three times, which browsers
+        // treat as invalid, so we relay the bytes from our own origin.
+        const audio = await fetch(status.url, { signal: AbortSignal.timeout(20000) });
+        if (!audio.ok) return Response.json({ error: 'fetch-audio' }, { status: 502 });
+        return new Response(audio.body, {
+          headers: {
+            'Content-Type': 'audio/wav',
+            'Cache-Control': 'public, max-age=86400',
+          },
+        });
+      }
+      if (state === 'failed') return Response.json({ error: 'render-failed' }, { status: 502 });
+      if (Date.now() > deadline) return Response.json({ error: 'timeout', jobId }, { status: 504 });
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    }
+  } catch (e) {
+    return Response.json({ error: 'upstream', detail: String(e).slice(0, 120) }, { status: 502 });
+  }
+}

@@ -47,20 +47,48 @@ async function journey(page, tag) {
   await sleep(1600);
   await shot('0-gallery');
 
-  // --- Waifu Universe: pick a resident, talk to her ---
+  // --- Waifu Universe: meet a resident, talk, tune the session, save ---
   await clickByText(page, '.universe-tile', 'Waifu Universe');
   await sleep(11000);
-  await shot('1-stage');
-  await clickByText(page, '.roster-chip', 'NYX');
+  await shot('1-encounter');
+  await clickByText(page, '.roster-chip', 'KAGURA');
   await sleep(2600);
-  await shot('2-stage-nyx');
+  await shot('2-resident-kagura');
+
   await page.evaluate(() => document.querySelector('.talk-btn').click());
   await sleep(1500);
-  await page.type('.chat-input', 'who are you?');
+  await page.type('.chat-input', 'i am preparing for a design review');
   await page.keyboard.press('Enter');
   await sleep(1800);
   await shot('3-chat');
-  await clickByText(page, '.btn', 'All universes');
+
+  // Session setup appears only now, and never shows a raw prompt.
+  await clickByText(page, '.chat-foot .btn', 'Set this session');
+  await sleep(600);
+  await clickByText(page, '.session-sheet .segment-btn', 'Playful');
+  await clickByText(page, '.session-sheet .segment-btn', 'Take the lead');
+  await sleep(400);
+  await shot('4-session');
+  await clickByText(page, '.session-sheet .btn-secondary', 'Apply');
+  await sleep(500);
+
+  // Spend the rest of the free encounter to reach the save gate.
+  // Model replies take a few seconds each; wait for the input to re-enable
+  // rather than guessing.
+  for (const line of ['i love late night walks', 'what breaks first?', 'my project is late', 'thanks']) {
+    await page.type('.chat-input', line);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => !document.querySelector('.chat-input')?.disabled ||
+      document.querySelector('.turns-left')?.textContent?.includes('free encounter'), { timeout: 30000 });
+    await sleep(400);
+  }
+  await page.waitForFunction(() => !document.querySelector('.save-gate')?.hidden, { timeout: 20000 });
+  await sleep(600);
+  await shot('5-save-gate');
+  await clickByText(page, '.gate-card .btn-primary', 'Use 1 credit');
+  await sleep(1200);
+
+  await clickByText(page, '.stage-top .btn', 'All universes');
   await sleep(1800);
 
   // --- Afterburn City: the creator flow ---

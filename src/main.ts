@@ -19,10 +19,12 @@ import { createRevealFx, type RevealFx } from './three/reveal';
 import { Nameplate } from './three/nameplate';
 import { FactionBackdrop } from './three/backdrop';
 import { WaifuStage } from './three/waifu-stage';
-import { reply as chatReply, speakingDuration } from './chat/engine';
-import { waifuById, type WaifuPersona } from './config/waifus';
+import { openingLine, speakingDuration } from './chat/engine';
+import { getReply } from './chat/client';
+import { cancelSpeech, renderSpeech } from './chat/voice';
+import { residentById, type ResidentId } from './config/residents';
 import { Ambience } from './audio/ambience';
-import { store, type Step } from './state/store';
+import { FREE_TURNS, store, type SessionSetup, type Step } from './state/store';
 import { mountUI } from './ui/overlay';
 import type { UIActions } from './ui/actions';
 import { CAMERA_PRESETS } from './config/cameras';
@@ -55,7 +57,7 @@ class App implements UIActions {
   private rimTarget = 0;
   private selectedId: string | null = null;
 
-  private waifuStage: WaifuStage | null = null;
+  private residentStage: WaifuStage | null = null;
   private speakTimer = 0;
 
   private photoSeed = 0;
@@ -110,7 +112,7 @@ class App implements UIActions {
     this.picker.onPick = (id) => {
       const step = store.get().step;
       if (step === 'studio') this.selectCharacter(id);
-      else if (step === 'stage') this.selectWaifu(id);
+      else if (step === 'stage') this.selectResident(id);
     };
 
     this.rig.applyPreset(CAMERA_PRESETS.gallery);
@@ -236,7 +238,7 @@ class App implements UIActions {
         this.centerTopY = box2.max.y - box2.min.y;
         this.stage.centerPedestal.visible = false;
         this.mate?.root.position.setY(this.centerTopY);
-        this.waifuStage?.setBaseTop(this.centerTopY);
+        this.residentStage?.setBaseTop(this.centerTopY);
       })
       .catch(() => {
         console.warn('Portal base GLB missing; placeholder pedestal stays.');
@@ -290,7 +292,7 @@ class App implements UIActions {
       i++;
     }
     this.mate?.updatePresentation(t, 0.7, dt);
-    this.waifuStage?.update(t, dt);
+    this.residentStage?.update(t, dt);
     for (const rim of [this.rimA, this.rimB]) {
       rim.intensity += (this.rimTarget - rim.intensity) * Math.min(1, dt * 4);
     }
@@ -354,8 +356,8 @@ class App implements UIActions {
     store.set({ universeId: id });
 
     if (universe.kind === 'companion') {
-      const studio = universe.env.studio!;
-      this.backdrop.showStudio(studio.top, studio.bottom, studio.intensity);
+      const first = residentById(store.get().residentId);
+      this.backdrop.showStudio(first.visual.domeTop, first.visual.domeBottom, 0.8);
       this.setPlinthsVisible(false);
       this.portalTarget = 0.35;
       store.goto('stage');
@@ -370,53 +372,96 @@ class App implements UIActions {
 
   private openStage(): void {
     const s = store.get();
-    if (!this.waifuStage) {
-      this.waifuStage = new WaifuStage(this.engine.scene, this.centerTopY);
-      void this.waifuStage.load(s.waifuId, (id) => {
-        // The hero takes the base the moment her model lands.
-        if (id === store.get().waifuId) {
-          this.waifuStage!.setHero(id);
+    if (!this.residentStage) {
+      this.residentStage = new WaifuStage(this.engine.scene, this.centerTopY);
+      void this.residentStage.load(s.residentId, (id) => {
+        if (id === store.get().residentId) {
+          this.residentStage!.setHero(id);
           this.applyStageAccent();
           this.greet();
         }
-        this.picker.setPickSet(this.waifuStage!.pickTargets());
+        this.picker.setPickSet(this.residentStage!.pickTargets());
       });
     } else {
-      this.waifuStage.setHero(s.waifuId);
+      this.residentStage.setHero(s.residentId);
       this.applyStageAccent();
     }
     void this.rig.flyTo(CAMERA_PRESETS.stage, this.engine.reducedMotion ? 0 : 1.4);
   }
 
+  /**
+   * Her canon is the stage direction: the dome she stands in, the two rim
+   * colours behind her and the motes in the air all come from her story.
+   */
   private applyStageAccent(): void {
-    const w = waifuById(store.get().waifuId);
-    this.waifuStage?.setAccent(w.accentColor);
+    const r = residentById(store.get().residentId);
+    const v = r.visual;
+    this.residentStage?.setAccent(r.accentColor);
+    this.residentStage?.setMotes(v.moteColor, v.moteMotif);
+    this.backdrop.showStudio(v.domeTop, v.domeBottom, 0.8);
     const camPos = new THREE.Vector3(...CAMERA_PRESETS.stage.pos);
     const heroPos = new THREE.Vector3(0, 0, 0);
-    this.placeRims(heroPos, camPos, w.accentColor);
-    this.nameplate.transitionTo(w.name, w.accentColor, heroPos, camPos);
+    this.placeRims(heroPos, camPos, v.rimKey);
+    this.rimB.color.setHex(v.rimFill);
+    // Her display name is her given name, not the full series title.
+    this.nameplate.transitionTo(r.name.split(' ')[0], r.accentColor, heroPos, camPos);
   }
 
-  /** Speak the greeting: prerecorded audio when present, always on screen. */
+  /**
+   * Her opening line. On a return visit she opens on an unfinished thread
+   * instead of the default greeting — that callback is the whole point of
+   * having saved the previous chapter.
+   */
   private greet(): void {
     const s = store.get();
-    const w = waifuById(s.waifuId);
-    const line = (s.personas[s.waifuId] ?? w.defaults).greeting;
-    store.set({ chat: [{ from: 'waifu', text: line }] });
-    this.speak(line, w.voiceUrl);
+    const r = residentById(s.residentId);
+    const saved = store.progressFor(s.residentId);
+    const line = openingLine(r, saved.memories, saved.nickname);
+    store.set({ chat: [{ from: 'resident', text: line }] });
+    const voice = r.voices.find((v) => v.slot === s.session.voice) ?? r.voices[0];
+    // Only the authored signature greeting has audio; a callback is text.
+    this.speak(line, saved.memories.length ? undefined : voice.url);
   }
 
-  /** Drive the speaking pulse for as long as the line lasts. */
+  /**
+   * Drive the speaking pulse, and render her voice if the service is up.
+   * Text is already on screen by now: the pulse runs on an estimate, then
+   * re-syncs to the real clip when it arrives.
+   */
   private speak(text: string, voiceUrl?: string): void {
     window.clearTimeout(this.speakTimer);
+    cancelSpeech();
     store.set({ speaking: true });
-    this.waifuStage?.setSpeaking(true);
-    if (voiceUrl) this.ambience.playClip(voiceUrl);
-    const secs = speakingDuration(text);
-    this.speakTimer = window.setTimeout(() => {
-      store.set({ speaking: false });
-      this.waifuStage?.setSpeaking(false);
-    }, secs * 1000);
+    this.residentStage?.setSpeaking(true);
+
+    const stopAfter = (secs: number) => {
+      window.clearTimeout(this.speakTimer);
+      this.speakTimer = window.setTimeout(() => {
+        store.set({ speaking: false });
+        this.residentStage?.setSpeaking(false);
+      }, secs * 1000);
+    };
+
+    if (voiceUrl) {
+      this.ambience.playClip(voiceUrl);
+      stopAfter(speakingDuration(text));
+      return;
+    }
+
+    stopAfter(speakingDuration(text));
+    store.set({ voicing: true });
+    const speakerId = store.get().residentId;
+    const r = residentById(speakerId);
+    const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
+    void renderSpeech(text, slot.voiceId).then((url) => {
+      store.set({ voicing: false });
+      // She may have been swapped out while the audio rendered.
+      if (!url || store.get().residentId !== speakerId) return;
+      this.ambience.playClip(url);
+      store.set({ speaking: true });
+      this.residentStage?.setSpeaking(true);
+      stopAfter(speakingDuration(text) + 1);
+    });
   }
 
   leaveUniverse(): void {
@@ -425,8 +470,9 @@ class App implements UIActions {
     window.clearTimeout(this.genTimer);
     this.controls.enabled = false;
     this.ambience.stopClip();
-    this.waifuStage?.dispose();
-    this.waifuStage = null;
+    cancelSpeech();
+    this.residentStage?.dispose();
+    this.residentStage = null;
     this.mate?.dispose();
     this.mate = null;
     this.revealFx?.dispose();
@@ -448,13 +494,14 @@ class App implements UIActions {
 
   // ---------- Companion actions ----------
 
-  selectWaifu(id: string): void {
-    if (store.get().step !== 'stage' || store.get().waifuId === id) return;
-    store.selectWaifu(id);
-    this.waifuStage?.setHero(id);
+  selectResident(id: string): void {
+    if (store.get().step !== 'stage' || store.get().residentId === id) return;
+    store.beginEncounter(id as ResidentId);
+    this.residentStage?.restoreHero();
+    this.residentStage?.setHero(id);
     this.applyStageAccent();
     this.greet();
-    this.picker.setPickSet(this.waifuStage?.pickTargets() ?? []);
+    this.picker.setPickSet(this.residentStage?.pickTargets() ?? []);
   }
 
   startChat(): void {
@@ -464,49 +511,86 @@ class App implements UIActions {
 
   sendMessage(text: string): void {
     const s = store.get();
-    const w = waifuById(s.waifuId);
-    const persona = s.personas[s.waifuId] ?? w.defaults;
+    if (s.turns >= FREE_TURNS || s.thinking) return;
+    const r = residentById(s.residentId);
     store.pushTurn({ from: 'user', text });
-    const answer = chatReply(text, { name: w.name, title: w.title, persona });
-    // A beat of "thinking" before she answers reads as conversation.
-    window.setTimeout(() => {
-      if (store.get().waifuId !== s.waifuId) return; // switched residents
-      store.pushTurn({ from: 'waifu', text: answer });
-      this.speak(answer);
-    }, this.engine.reducedMotion ? 120 : 520);
+    store.set({ thinking: true });
+
+    const after = store.get();
+    const ctx = {
+      resident: r,
+      session: after.session,
+      revealed: after.revealed,
+      memories: store.progressFor(s.residentId).memories,
+      turn: after.turns,
+    };
+    // History excludes the turn we just pushed; the message is sent separately.
+    const history = after.chat.slice(0, -1);
+
+    void getReply(text, ctx, history).then((result) => {
+      if (store.get().residentId !== s.residentId) return; // switched residents
+      store.set({ thinking: false });
+      store.pushTurn({ from: 'resident', text: result.text });
+      if (result.revealedRung !== undefined) {
+        store.set({ revealed: result.revealedRung + 1 });
+      }
+      this.speak(result.text);
+      // The free encounter ends by offering to keep what was said, not by
+      // blocking the conversation mid-sentence.
+      if (store.get().turns >= FREE_TURNS) {
+        window.setTimeout(() => store.set({ saveGateOpen: true }), 1200);
+      }
+    });
   }
 
-  updatePersona(patch: Partial<WaifuPersona>): void {
-    store.updatePersona(store.get().waifuId, patch);
+  openSessionPanel(): void {
+    store.set({ sessionPanelOpen: true });
   }
 
-  resetPersona(): void {
-    store.resetPersona(store.get().waifuId);
+  closeSessionPanel(): void {
+    store.set({ sessionPanelOpen: false });
   }
 
-  replayGreeting(): void {
-    this.greet();
+  updateSession(patch: Partial<SessionSetup>): void {
+    store.updateSession(patch);
+    if (patch.voice) {
+      const r = residentById(store.get().residentId);
+      const v = r.voices.find((x) => x.slot === patch.voice);
+      if (v?.url) this.ambience.playClip(v.url);
+    }
+  }
+
+  resetSession(): void {
+    store.resetSession();
+  }
+
+  saveChapter(memories: string[]): void {
+    if (!store.saveChapter(memories)) {
+      this.flashError(COPY.stage.noCredits);
+      return;
+    }
+    this.ambience.chime(880);
+  }
+
+  continueWithoutSaving(): void {
+    store.set({ saveGateOpen: false });
   }
 
   regenerateLook(prompt: string): void {
-    const s = store.get();
-    const w = waifuById(s.waifuId);
     if (!prompt.trim()) {
       this.flashError(COPY.errors.emptyInput);
       return;
     }
     const seed = fnv1a(prompt.trim().toLowerCase());
-    this.waifuStage?.tintHero(seed);
+    this.residentStage?.tintHero(seed);
     store.set({ variantSeed: seed, variantLabel: `Look ${(seed % 900) + 100}` });
     this.ambience.chime(720 + (seed % 5) * 40);
-    void w; // accent unchanged: the sculpt and faction colors stay on model
   }
 
   restoreLook(): void {
-    this.waifuStage?.restoreHero();
+    this.residentStage?.restoreHero();
     store.set({ variantSeed: null, variantLabel: null });
   }
-
   // ---------- Creator actions ----------
 
   enterUniverse(): void {
