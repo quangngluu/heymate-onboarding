@@ -18,9 +18,9 @@ const GHOST_HEIGHT = 1.05;
 
 /** Waiting spots behind and to the left of the base, matching the layout. */
 export const GHOST_SLOTS: [number, number, number][] = [
-  [-2.7, 0, -0.4],
-  [-5.0, 0, -2.6],
-  [-2.2, 0, -5.2],
+  [-2.4, 0, 0.5],
+  [-4.7, 0, -1.9],
+  [-2.6, 0, -4.4],
 ];
 
 interface Entry {
@@ -103,6 +103,7 @@ export class WaifuStage {
 
   /** Load every resident; the hero is fetched first. */
   async load(heroId: string, onReady: (id: string) => void): Promise<void> {
+    this.heroId ??= heroId;
     const order = [heroId, ...RESIDENTS.map((r) => r.id).filter((id) => id !== heroId)];
     for (const id of order) {
       const cfg = RESIDENTS.find((r) => r.id === id)!;
@@ -123,7 +124,9 @@ export class WaifuStage {
         });
         this.entries.set(id, entry);
         this.scene.add(model);
-        this.place(id, id === this.heroId || id === heroId);
+        // Re-lay the whole set: placing only the new arrival would give every
+        // late model the same waiting slot and stack them on each other.
+        this.setHero(this.heroId ?? heroId);
         onReady(id);
       } catch {
         console.warn(`Waifu model failed to load: ${id}`);
