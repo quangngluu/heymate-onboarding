@@ -14,11 +14,7 @@ export interface UIActions {
   closeSessionPanel(): void;
   updateSession(patch: Partial<SessionSetup>): void;
   resetSession(): void;
-  openQuestPanel(): void;
-  closeQuestPanel(): void;
   startQuest(id: string): void;
-  openVoicePanel(): void;
-  closeVoicePanel(): void;
   speakCustomText(text: string): void;
   saveChapter(memories: string[]): void;
   continueWithoutSaving(): void;

@@ -726,31 +726,15 @@ class App implements UIActions {
   }
 
   openSessionPanel(): void {
-    store.set({ sessionPanelOpen: true, questPanelOpen: false, voicePanelOpen: false });
+    store.set({ sessionPanelOpen: true });
   }
 
   closeSessionPanel(): void {
     store.set({ sessionPanelOpen: false });
   }
 
-  openQuestPanel(): void {
-    store.set({ questPanelOpen: true, sessionPanelOpen: false, voicePanelOpen: false });
-  }
-
-  closeQuestPanel(): void {
-    store.set({ questPanelOpen: false });
-  }
-
   startQuest(id: string): void {
     if (store.startQuest(id)) this.ambience.chime(760);
-  }
-
-  openVoicePanel(): void {
-    store.set({ voicePanelOpen: true, sessionPanelOpen: false, questPanelOpen: false });
-  }
-
-  closeVoicePanel(): void {
-    store.set({ voicePanelOpen: false });
   }
 
   /** Render a user-authored short line in the active resident's own voice. */
@@ -771,7 +755,7 @@ class App implements UIActions {
     const r = residentById(residentId);
     const slot = r.voices.find((voice) => voice.slot === s.session.voice) ?? r.voices[0];
     this.cancelIdleNudge();
-    store.set({ voicing: true, voicePanelOpen: false });
+    store.set({ voicing: true });
     void renderSpeech(line, slot.voiceId, slot.speed).then(async (url) => {
       if (store.get().residentId !== residentId || store.get().step !== 'stage') return;
       const buffer = url ? await this.ambience.prepareClip(url) : null;

@@ -88,9 +88,7 @@ export interface AppState {
   /** Session-scoped reveal count, seeded from saved progress. */
   revealed: number;
   sessionPanelOpen: boolean;
-  questPanelOpen: boolean;
   activeQuestId: string | null;
-  voicePanelOpen: boolean;
   saveGateOpen: boolean;
   /** Full 360 inspection, bought or unlocked by code. Per resident. */
   viewUnlocked: Record<string, boolean>;
@@ -126,9 +124,7 @@ const initialState: AppState = {
   voicing: false,
   revealed: 0,
   sessionPanelOpen: false,
-  questPanelOpen: false,
   activeQuestId: null,
-  voicePanelOpen: false,
   saveGateOpen: false,
   viewUnlocked: {},
   unlockGateOpen: false,
@@ -248,10 +244,8 @@ export class Store {
       voicing: false,
       revealed: saved.revealed,
       sessionPanelOpen: false,
-      questPanelOpen: false,
-      activeQuestId: null,
-      voicePanelOpen: false,
-      saveGateOpen: false,
+          activeQuestId: null,
+          saveGateOpen: false,
       unlockGateOpen: false,
       session: { ...defaultSession(), nickname: saved.nickname, persona: saved.persona },
     });
@@ -349,7 +343,7 @@ export class Store {
     const saved = this.progressFor();
     const next = questsForResident(quest.residentId).find((item) => !saved.completedQuests.includes(item.id));
     if (next?.id !== id) return false;
-    this.set({ activeQuestId: id, questPanelOpen: false });
+    this.set({ activeQuestId: id });
     return true;
   }
 
@@ -374,8 +368,7 @@ export class Store {
       progress,
       revealed: Math.max(this.state.revealed, quest.rewardEpisode + 1),
       activeQuestId: null,
-      questPanelOpen: false,
-    });
+        });
     this.persist();
     return quest;
   }

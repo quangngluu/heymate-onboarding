@@ -124,8 +124,17 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     roster.append(b);
   });
 
-  // --- chat ---
-  const log = h('div', { class: 'chat-log', 'aria-live': 'polite' });
+  // --- conversation ---
+  //
+  // What she says lives next to her, as cards on the stage. The controls live
+  // in one dock at the bottom centre, so the scene is never behind a box.
+  const log = h('div', { class: 'speech-log', 'aria-live': 'polite' });
+
+  // "Để em nói hộ" is a mode of the same input, not another panel: the bar
+  // changes what it does and says so, and one tap puts it back.
+  let speakMode = false;
+  let voiceLeftText = '';
+
   const input = h('input', {
     type: 'text',
     class: 'chat-input',
@@ -137,40 +146,31 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     const v = input.value.trim();
     if (!v) return;
     input.value = '';
-    actions.sendMessage(v);
+    if (speakMode) actions.speakCustomText(v);
+    else actions.sendMessage(v);
   };
   input.addEventListener('keydown', (e) => {
     if ((e as KeyboardEvent).key === 'Enter') send();
   });
   const sendBtn = h('button', { class: 'btn btn-primary', onClick: send }, COPY.stage.send) as HTMLButtonElement;
   const turnsLeft = h('span', { class: 'turns-left' });
-  const questBtn = h(
+  const dockHint = h('p', { class: 'dock-hint', hidden: true });
+  const voiceBudget = h('p', { class: 'hint voice-budget' });
+
+  const questChip = h('button', { class: 'dock-chip' }, COPY.stage.quest) as HTMLButtonElement;
+  const speakChip = h('button', { class: 'dock-chip' }, COPY.stage.speakAs) as HTMLButtonElement;
+  const setChip = h(
     'button',
-    { class: 'btn btn-ghost xs', onClick: () => actions.openQuestPanel() },
-    COPY.stage.quest
+    { class: 'dock-chip', onClick: () => actions.openSessionPanel() },
+    COPY.stage.setSessionShort
   ) as HTMLButtonElement;
-  const voiceBtn = h(
-    'button',
-    { class: 'btn btn-ghost xs', onClick: () => actions.openVoicePanel() },
-    COPY.stage.speakAs
-  ) as HTMLButtonElement;
-  const chatBox = h(
+
+  const dock = h(
     'div',
-    { class: 'panel chat-box', hidden: true },
-    log,
-    h('div', { class: 'chat-row' }, input, sendBtn),
-    h(
-      'div',
-      { class: 'chat-foot' },
-      turnsLeft,
-      h(
-        'div',
-        { class: 'chat-actions' },
-        questBtn,
-        voiceBtn,
-        h('button', { class: 'btn btn-ghost xs', onClick: () => actions.openSessionPanel() }, COPY.stage.setSessionShort)
-      )
-    )
+    { class: 'stage-dock', hidden: true },
+    h('div', { class: 'dock-top' }, h('div', { class: 'dock-chips' }, questChip, speakChip, setChip), turnsLeft),
+    dockHint,
+    h('div', { class: 'dock-bar' }, input, sendBtn)
   );
   // The invitation is a glass card in her rail, level with her, not a slab at
   // the screen edge: you hear her before you decide, and the line you hear is
@@ -191,7 +191,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   // One rail on the right does one job at a time: who she is, then her
   // invitation, then the conversation. On phones the identity card steps
   // aside once the conversation starts.
-  const rail = h('div', { class: 'stage-rail' }, info, inviteCard, chatBox);
+  const rail = h('div', { class: 'stage-rail' }, info, inviteCard, log);
 
   // --- session sheet (only after the encounter) ---
   const nickInput = h('input', {
@@ -240,9 +240,9 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   const voiceSeg = h('div', { role: 'radiogroup', 'aria-label': COPY.stage.voice, class: 'segment' });
   const voiceBtns: HTMLButtonElement[] = [];
 
-  const sessionSheet = h(
+  const sessionCard = h(
     'aside',
-    { class: 'panel session-sheet', hidden: true },
+    { class: 'panel session-sheet' },
     h(
       'div',
       { class: 'row sheet-head' },
@@ -268,7 +268,32 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       { class: 'row' },
       h('button', { class: 'btn btn-ghost xs', onClick: () => actions.resetSession() }, COPY.stage.resetSession),
       h('button', { class: 'btn btn-secondary xs', onClick: () => actions.closeSessionPanel() }, COPY.stage.applySession)
+    ),
+    h(
+      'div',
+      { class: 'voice-upcoming' },
+      h('h3', { class: 'group-label' }, COPY.stage.voiceMessagePricing),
+      voiceBudget,
+      h('p', { class: 'hint faint' }, COPY.stage.voiceMessagePricingNote),
+      h('button', { class: 'btn btn-secondary xs', disabled: true }, COPY.stage.voiceMessageTopUp),
+      h('h3', { class: 'group-label' }, COPY.stage.personalVoiceTitle),
+      h('p', { class: 'hint faint' }, COPY.stage.personalVoiceLead),
+      h('p', { class: 'hint faint' }, COPY.stage.personalVoiceNote)
     )
+  );
+  const sessionSheet = h(
+    'div',
+    {
+      class: 'modal-scrim',
+      hidden: true,
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-label': COPY.stage.setSession,
+      onClick: (e: Event) => {
+        if (e.target === e.currentTarget) actions.closeSessionPanel();
+      },
+    },
+    sessionCard
   );
 
   // --- save gate ---
@@ -300,70 +325,40 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     )
   );
 
-  // --- quest mode ---
+  // --- quests, folded into her card ---
+  //
+  // A quest is a reason to keep talking to *her*, so it belongs with her
+  // story rather than in a panel of its own.
   const questList = h('div', { class: 'quest-list' });
-  const questPanel = h(
-    'aside',
-    { class: 'panel session-sheet quest-sheet', hidden: true },
-    h(
-      'div',
-      { class: 'row sheet-head' },
-      h('h2', { class: 'panel-title' }, COPY.stage.questTitle),
-      h('button', { class: 'chrome-btn', 'aria-label': 'Đóng nhiệm vụ', onClick: () => actions.closeQuestPanel() }, '×')
-    ),
+  const questBlock = h(
+    'details',
+    { class: 'episode-block profile-more quest-block' },
+    h('summary', {}, COPY.stage.questTitle),
     h('p', { class: 'hint faint' }, COPY.stage.questLead),
-    questList,
-    h('button', { class: 'btn btn-ghost xs', onClick: () => actions.closeQuestPanel() }, COPY.stage.questClose)
-  );
+    questList
+  ) as HTMLDetailsElement;
+  questChip.addEventListener('click', () => {
+    questBlock.open = !questBlock.open;
+    if (questBlock.open) questBlock.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
 
-  // --- speak-for-me TTS ---
-  const voiceText = h('textarea', {
-    id: 'voice-message-text',
-    class: 'persona-input voice-text',
-    rows: '3',
-    placeholder: COPY.stage.voiceMessagePlaceholder,
-    'aria-label': COPY.stage.voiceMessageLabel,
-    maxlength: '280',
-  }) as HTMLTextAreaElement;
-  const voiceBudget = h('p', { class: 'hint voice-budget' });
-  const speakTextBtn = h(
-    'button',
-    {
-      class: 'btn btn-primary',
-      onClick: () => {
-        const text = voiceText.value.trim();
-        if (!text) return actions.speakCustomText('');
-        voiceText.value = '';
-        actions.speakCustomText(text);
-      },
-    },
-    COPY.stage.voiceMessageSend
-  ) as HTMLButtonElement;
-  const voicePanel = h(
-    'aside',
-    { class: 'panel session-sheet voice-sheet', hidden: true },
-    h(
-      'div',
-      { class: 'row sheet-head' },
-      h('h2', { class: 'panel-title' }, COPY.stage.voiceMessageTitle),
-      h('button', { class: 'chrome-btn', 'aria-label': 'Đóng phần để em nói hộ', onClick: () => actions.closeVoicePanel() }, '×')
-    ),
-    h('p', { class: 'hint' }, COPY.stage.voiceMessageLead),
-    h('label', { class: 'group-label', for: 'voice-message-text' }, COPY.stage.voiceMessageLabel),
-    voiceText,
-    voiceBudget,
-    h('div', { class: 'row' }, h('button', { class: 'btn btn-ghost xs', onClick: () => actions.closeVoicePanel() }, COPY.stage.voiceMessageClose), speakTextBtn),
-    h(
-      'div',
-      { class: 'voice-upcoming' },
-      h('h3', { class: 'group-label' }, COPY.stage.voiceMessagePricing),
-      h('p', { class: 'hint faint' }, COPY.stage.voiceMessagePricingNote),
-      h('button', { class: 'btn btn-secondary xs', disabled: true }, COPY.stage.voiceMessageTopUp),
-      h('h3', { class: 'group-label' }, COPY.stage.personalVoiceTitle),
-      h('p', { class: 'hint faint' }, COPY.stage.personalVoiceLead),
-      h('p', { class: 'hint faint' }, COPY.stage.personalVoiceNote)
-    )
-  );
+  // --- speak-for-me: a mode of the dock, wired here ---
+  speakChip.addEventListener('click', () => {
+    speakMode = !speakMode;
+    applyDockMode();
+    input.focus();
+  });
+  /** The dock states what the bar will do before the visitor commits to it. */
+  function applyDockMode(): void {
+    speakChip.classList.toggle('is-active', speakMode);
+    speakChip.setAttribute('aria-pressed', String(speakMode));
+    dock.classList.toggle('is-speak', speakMode);
+    input.placeholder = speakMode ? COPY.stage.voiceMessagePlaceholder : COPY.stage.inputPlaceholder;
+    sendBtn.textContent = speakMode ? COPY.stage.voiceMessageSend : COPY.stage.send;
+    (dockHint as HTMLElement).hidden = !speakMode;
+    dockHint.textContent = `${COPY.stage.voiceMessageLead} ${voiceLeftText}`;
+  }
+  applyDockMode();
 
   // --- turn-around unlock gate ---
   const codeInput = h('input', {
@@ -413,10 +408,9 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       h('button', { class: 'btn btn-ghost sm', onClick: () => actions.leaveUniverse() }, `‹ ${COPY.stage.leave}`)
     ),
     sessionSheet,
-    questPanel,
-    voicePanel,
     roster,
     rail,
+    dock,
     saveGate,
     unlockGate
   );
@@ -460,7 +454,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           h('details', { class: 'episode-block profile-more' },
             h('summary', {}, 'Câu chuyện của em'),
             h('div', { class: 'episode-list' })
-          )
+          ),
+          questBlock
         );
         // Voice options are hers, not a shared library.
         voiceBtns.length = 0;
@@ -516,11 +511,10 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
 
       inviteCard.hidden = s.chatOpen;
       rail.classList.toggle('is-chatting', s.chatOpen);
-      (chatBox as HTMLElement).hidden = !s.chatOpen;
+      (dock as HTMLElement).hidden = !s.chatOpen;
       (sessionSheet as HTMLElement).hidden = !s.sessionPanelOpen;
-      (questPanel as HTMLElement).hidden = !s.questPanelOpen;
-      (voicePanel as HTMLElement).hidden = !s.voicePanelOpen;
-      questBtn.textContent = s.activeQuestId ? COPY.stage.questActive : COPY.stage.quest;
+      questChip.textContent = s.activeQuestId ? COPY.stage.questActive : COPY.stage.quest;
+      questChip.classList.toggle('is-active', s.activeQuestId !== null);
 
       const left = Math.max(0, FREE_TURNS - s.turns);
       turnsLeft.textContent = s.thinking
@@ -532,8 +526,11 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           : COPY.stage.outOfTurns;
       turnsLeft.classList.toggle('is-thinking', s.thinking);
       turnsLeft.classList.toggle('is-voicing', s.voicing);
-      input.disabled = left === 0 || s.thinking;
-      sendBtn.disabled = left === 0 || s.thinking;
+      // Free turns gate the conversation; the voice budget gates speak-for-me.
+      const voiceSpent = s.voiceFreeUses >= FREE_VOICE_MESSAGES && s.voiceCredits <= 0;
+      const blocked = s.thinking || s.voicing || (speakMode ? voiceSpent : left === 0);
+      input.disabled = blocked;
+      sendBtn.disabled = blocked;
 
       if (s.chat.length !== lastChatLen) {
         lastChatLen = s.chat.length;
@@ -599,10 +596,13 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         })
       );
 
-      voiceBudget.textContent = s.voiceFreeUses < FREE_VOICE_MESSAGES
+      const voiceLeft = s.voiceFreeUses < FREE_VOICE_MESSAGES
         ? COPY.stage.voiceMessageFree.replace('{count}', String(FREE_VOICE_MESSAGES - s.voiceFreeUses))
         : COPY.stage.voiceMessageCredits.replace('{count}', String(s.voiceCredits));
-      speakTextBtn.disabled = s.thinking || s.voicing || (s.voiceFreeUses >= FREE_VOICE_MESSAGES && s.voiceCredits <= 0);
+      voiceBudget.textContent = voiceLeft;
+      // The dock states what the bar will do and what it costs, live.
+      voiceLeftText = `${voiceLeft}.`;
+      applyDockMode();
 
       el.classList.toggle('is-speaking', s.speaking);
     },
