@@ -24,7 +24,7 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
   ) as HTMLButtonElement;
   const muteBtn = h(
     'button',
-    { class: 'chrome-btn mute-btn', 'aria-label': 'Toggle sound', 'aria-pressed': 'false' },
+    { class: 'chrome-btn mute-btn', 'aria-label': 'Bật hoặc tắt âm thanh', 'aria-pressed': 'false' },
     '♪'
   ) as HTMLButtonElement;
   muteBtn.addEventListener('click', () => {

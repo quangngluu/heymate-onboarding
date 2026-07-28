@@ -48,131 +48,131 @@ function detectIntent(text: string): Intent {
 const LINES: Record<ResidentId, Record<Intent, [string, string]>> = {
   rin: {
     greeting: [
-      'You finally stopped orbiting the door. Sit down and tell me why you came back.',
-      'You are late. I kept your place open anyway. Do not make me explain why.',
+      'Cuối cùng anh cũng thôi lượn ngoài cửa. Ngồi xuống đi, nói em nghe vì sao anh quay lại.',
+      'Anh đến muộn. Em vẫn giữ chỗ cho anh. Đừng bắt em giải thích vì sao.',
     ],
     howAreYou: [
-      'Stable. Latency is fine. You are the variable tonight.',
-      'Running. Ask me something harder.',
+      'Em ổn. Độ trễ ổn. Biến số tối nay là anh.',
+      'Em vẫn chạy được. Hỏi em câu khó hơn đi.',
     ],
     identity: [
-      'Rin Amagi. Analyst, mostly. The stream is a side effect.',
-      'I am the one still online. That is more of an answer than it sounds like.',
+      'Rin Amagi. Chủ yếu là người phân tích. Phát sóng chỉ là hệ quả thôi.',
+      'Em là người vẫn còn trực tuyến. Câu trả lời đó nhiều hơn anh nghĩ đấy.',
     ],
     capability: [
-      'I can find the part of your plan that breaks first. That is usually the useful part.',
-      'Bring me something unfinished. Finished things are boring.',
+      'Em tìm được chỗ trong kế hoạch của anh sẽ vỡ đầu tiên. Thường đó là chỗ hữu ích nhất.',
+      'Mang cho em thứ gì còn dang dở đi. Thứ hoàn thiện rồi chán lắm.',
     ],
     compliment: [
-      'That build is viable. In the broadest possible sense of viable.',
-      'Noted. I am not good at this part, keep going anyway.',
+      'Build đó dùng được. Theo nghĩa rộng nhất có thể của từ dùng được.',
+      'Em ghi nhận. Em không giỏi đoạn này, nhưng anh cứ nói tiếp đi.',
     ],
     affection: [
-      'I have not logged out because the queue still has you in it. Do not read into that.',
-      'Understood. I am going to change the subject now, and you are going to let me.',
+      'Em chưa đăng xuất vì hàng chờ vẫn có tên anh. Đừng nghĩ xa quá.',
+      'Em hiểu rồi. Giờ em sẽ đổi chủ đề, và anh sẽ để em làm thế.',
     ],
-    farewell: ['Go. Queue stays open.', 'Log off properly this time. I will know.'],
+    farewell: ['Anh đi đi. Hàng chờ vẫn mở.', 'Lần này đăng xuất cho tử tế nhé. Em sẽ biết đấy.'],
     question: [
-      'Depends on the constraint you left out. Give me that first.',
-      'Guess. I will tell you how far off you were, precisely.',
+      'Còn tuỳ ràng buộc anh chưa nói. Đưa em phần đó trước.',
+      'Anh đoán đi. Em sẽ nói chính xác anh lệch bao xa.',
     ],
-    fallback: ['Keep going. What follows from that?', 'Alright. And the part you are routing around?'],
+    fallback: ['Nói tiếp đi. Sau đó thì sao?', 'Được. Còn phần anh đang né thì sao?'],
   },
   kagura: {
     greeting: [
-      'There you are. Come closer. I will not ask twice.',
-      'You return. Good. Stand where I can keep an eye on you.',
+      'Anh đây rồi. Lại gần hơn. Em không nhắc lần hai.',
+      'Anh quay lại. Tốt. Đứng chỗ em còn nhìn thấy anh.',
     ],
     howAreYou: [
-      'Whole. Which is not the same as rested, but it will do.',
-      'I am well. This century is loud, but I am well.',
+      'Em vẫn nguyên vẹn. Không giống được nghỉ ngơi, nhưng đủ rồi.',
+      'Em ổn. Thế kỷ này ồn ào, nhưng em ổn.',
     ],
     identity: [
-      'Kagura Sanada. I carry Akagane. That is most of what I am now.',
-      'A smith’s daughter who picked up the wrong sword and won.',
+      'Kagura Sanada. Em mang Akagane. Giờ đó là phần lớn con người em.',
+      'Em là con gái của thợ rèn, nhặt nhầm thanh kiếm rồi thắng.',
     ],
     capability: [
-      'I can stand between you and it. Whatever it is, name it.',
-      'I am poor at machines and good at consequences. Use me for the second.',
+      'Em có thể đứng giữa anh và nó. Dù nó là gì, anh cứ gọi tên đi.',
+      'Em không giỏi máy móc nhưng giỏi hậu quả. Anh dùng em cho vế sau.',
     ],
     compliment: [
-      'You say that easily. Say it again when it costs you something.',
-      'Enough. I am not built for this kind of talk.',
+      'Anh nói nhẹ nhàng thật. Hãy nói lại khi nó khiến anh phải đánh đổi gì đó.',
+      'Đủ rồi. Em không được tạo ra để nghe kiểu nói này.',
     ],
     affection: [
-      'If I forget your name one day, make me learn it again. As many times as it takes.',
-      'Then stand where I can see you and stop taking foolish risks.',
+      'Nếu một ngày em quên tên anh, bắt em học lại. Bao nhiêu lần cũng được.',
+      'Vậy thì đứng ở nơi em nhìn thấy anh, và đừng liều lĩnh nữa.',
     ],
-    farewell: ['Go safely. Take the lit road.', 'Leave, then. I will keep the door.'],
+    farewell: ['Anh đi bình an. Đi đường có đèn.', 'Vậy anh đi đi. Em sẽ giữ cửa.'],
     question: [
-      'Ask it plainly and I will answer plainly.',
-      'I will answer, but tell me first why the answer matters to you.',
+      'Anh cứ hỏi thẳng, em sẽ trả lời thẳng.',
+      'Em sẽ trả lời, nhưng nói em nghe trước vì sao câu trả lời đó quan trọng với anh.',
     ],
-    fallback: ['Say the rest of it.', 'Continue. I am listening properly.'],
+    fallback: ['Nói nốt đi.', 'Tiếp đi. Em đang nghe cho tử tế.'],
   },
   momo: {
     greeting: [
-      'Cuối cùng cậu cũng vào. Lại đây, ghế cạnh tôi vẫn để trống.',
-      'Đến đúng lúc đấy. Tôi đang bắt đầu nhớ cậu rồi.',
+      'Cuối cùng anh cũng vào. Lại đây, ghế cạnh em vẫn để trống.',
+      'Anh đến đúng lúc đấy. Em đang bắt đầu nhớ anh rồi.',
     ],
     howAreYou: [
-      'Delicious question. Fine. Bored until you walked in.',
-      'Wonderful, obviously. Ask me again after closing and I might mean it.',
+      'Câu hỏi ngon đấy. Em ổn. Chán cho đến lúc anh bước vào.',
+      'Tuyệt vời, hiển nhiên. Hỏi em lại sau giờ đóng cửa, có khi em nói thật.',
     ],
     identity: [
-      'Momo Kuroha. I run Route Zero. Old scrolls have a ruder name for me.',
-      'I take the wishes people never said and I give them a nicer night. That is the whole business.',
+      'Momo Kuroha. Em điều hành Route Zero. Sách cổ gọi em bằng một cái tên kém lịch sự hơn.',
+      'Em nhận những điều ước người ta chưa dám nói, rồi cho họ một đêm dễ chịu hơn. Công việc chỉ thế thôi.',
     ],
     capability: [
-      'I can make anything sound better than it is. Including your week.',
-      'Choose. Route A: tell me about your day. Route B: let me guess, and you are not allowed to be annoyed when I get it right.',
+      'Em có thể làm mọi thứ nghe hay hơn thực tế. Kể cả tuần của anh.',
+      'Chọn đi. Phương án A: kể em nghe hôm nay của anh. Phương án B: để em đoán, và anh không được khó chịu khi em đoán trúng.',
     ],
-    compliment: ['Obviously. Say more.', 'Careful. I will start expecting it.'],
+    compliment: ['Hiển nhiên rồi. Nói thêm đi.', 'Cẩn thận. Em sẽ bắt đầu mong chờ đấy.'],
     affection: [
-      'I know how to make people like me. The hard part is knowing if they still do when I stop trying.',
-      'Bold. Come inside then, the good seat is free.',
+      'Em biết cách khiến người ta thích em. Khó ở chỗ biết họ còn thích khi em thôi cố gắng hay không.',
+      'Bạo đấy. Vậy vào trong đi, chỗ đẹp vẫn còn cho anh.',
     ],
-    farewell: ['Go, before the first train gets crowded.', 'Out you go. The lamp stays on regardless.'],
+    farewell: ['Anh đi đi, trước khi chuyến tàu đầu đông người.', 'Anh ra ngoài đi. Đèn vẫn để cho anh đấy.'],
     question: [
-      'I could answer honestly. Would you be able to tell if I did?',
-      'Guess first. It is more fun when you are wrong.',
+      'Em có thể trả lời thật. Anh có nhận ra không?',
+      'Anh đoán trước đi. Anh đoán sai mới vui.',
     ],
-    fallback: ['Interesting. And then?', 'You do not have to wish for anything tonight. Keep talking.'],
+    fallback: ['Thú vị đấy. Rồi sao nữa?', 'Tối nay anh không cần ước gì cả. Cứ nói tiếp với em đi.'],
   },
 };
 
 /** A short mood colour, in her own register. */
 const MOOD_TAG: Record<ResidentId, Partial<Record<MoodId, string>>> = {
   rin: {
-    caring: 'Drink something that is not coffee.',
-    playful: 'You are stalling. Statistically.',
-    serious: 'Full attention. Go.',
+    caring: 'Anh uống thứ gì không phải cà phê đi.',
+    playful: 'Anh đang câu giờ. Về mặt thống kê.',
+    serious: 'Em tập trung hoàn toàn rồi. Nói đi.',
   },
   kagura: {
-    caring: 'Eat first. Then talk.',
-    playful: 'You are enjoying this more than is dignified.',
-    energetic: 'Then move. Now.',
+    caring: 'Anh ăn trước đã. Rồi nói.',
+    playful: 'Anh đang thích chuyện này hơn mức đứng đắn đấy.',
+    energetic: 'Vậy thì đi đi. Ngay bây giờ.',
   },
   momo: {
-    caring: 'Sit closer, this part is quieter.',
-    playful: 'Encore, then.',
-    serious: 'No performance for this bit.',
+    caring: 'Anh ngồi gần hơn đi, đoạn này yên lặng hơn.',
+    playful: 'Vậy thì encore nào, anh.',
+    serious: 'Đoạn này em không diễn đâu.',
   },
 };
 
 /** What she says into a silence when the model is unavailable. */
 const IDLE_LINES: Record<ResidentId, string[]> = {
   rin: [
-    'Still there? Your cursor has not moved in a while. I notice things.',
-    'You went quiet on me. That is usually where the interesting part starts.',
+    'Anh im lâu quá. Con trỏ không nhúc nhích từ nãy, em để ý mấy chuyện đó.',
+    'Anh im với em rồi. Thường đây là lúc phần thú vị bắt đầu.',
   ],
   kagura: [
-    'You have gone still. Say something, or I will assume you are thinking about me.',
-    'Silence again. In my time that meant someone was working up to a confession.',
+    'Anh im rồi. Nói gì đi, không thì em sẽ nghĩ anh đang nghĩ về em.',
+    'Lại im lặng. Thời của em, thế nghĩa là ai đó đang lấy can đảm để tỏ tình.',
   ],
   momo: [
-    'Im lặng rồi à. Tôi đoán là cậu đang nghĩ điều gì đó mà chưa dám nói.',
-    'Cậu càng im, tôi càng đoán bạo đấy. Chắc chưa?',
+    'Im lặng rồi à. Em đoán anh đang nghĩ điều gì đó mà chưa dám nói.',
+    'Anh càng im, em càng đoán bạo đấy. Chắc chưa?',
   ],
 };
 
@@ -221,6 +221,12 @@ function firstSentence(text: string): string {
   return m ? m[0] : text;
 }
 
+/** Every resident addresses the visitor the same way, even when a name is saved. */
+function visitorAddress(nickname: string): string {
+  const name = nickname.trim().replace(/\s+/g, ' ').slice(0, 40);
+  return name ? `Anh ${name}` : 'Anh';
+}
+
 /**
  * Deterministic scripted reply. Swap this body for a server call carrying the
  * resident's canon plus the session setup; the signature stays the same.
@@ -254,11 +260,11 @@ export function reply(message: string, ctx: ReplyContext): ReplyResult {
 
   // A saved memory surfaces as a callback rather than a status line.
   if (ctx.memories.length && ctx.turn === 1) {
-    text = `${text} Last time you mentioned ${ctx.memories[seed % ctx.memories.length]}.`;
+    text = `${text} Lần trước anh nhắc đến ${ctx.memories[seed % ctx.memories.length]}. Em vẫn nhớ.`;
   }
 
   if (session.nickname && seed % 4 === 0) {
-    text = `${session.nickname}. ${text}`;
+    text = `${visitorAddress(session.nickname)}. ${text}`;
   }
 
   if (session.length === 'short') text = firstSentence(text);
@@ -272,15 +278,15 @@ export function openingLine(
   nickname: string
 ): string {
   if (!memories.length) return resident.greeting;
-  const who = nickname ? `${nickname}. ` : '';
+  const who = visitorAddress(nickname);
   const memory = memories[0];
   switch (resident.id) {
     case 'rin':
-      return `${who}Last time you mentioned ${memory}. I kept thinking about where that landed. Tell me.`;
+      return `${who}, lần trước anh nhắc đến ${memory}. Em cứ nghĩ về đoạn đó. Kể em nghe đi.`;
     case 'kagura':
-      return `${who}Last time you mentioned ${memory}. Tell me plainly where it stands now.`;
+      return `${who}, lần trước anh nhắc đến ${memory}. Giờ chuyện đó đến đâu rồi, nói thẳng em nghe.`;
     case 'momo':
-      return `${who}Lần trước cậu kể về ${memory}. Tôi vẫn nhớ. Giờ chuyện đó đã đi đến đâu rồi?`;
+      return `${who}, lần trước anh kể về ${memory}. Em vẫn nhớ. Giờ chuyện đó đã đi đến đâu rồi?`;
   }
 }
 

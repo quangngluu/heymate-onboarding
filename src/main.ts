@@ -688,6 +688,8 @@ class App implements UIActions {
     const r = residentById(s.residentId);
     this.cancelIdleNudge();
     store.pushTurn({ from: 'user', text });
+    const completedQuest = store.completeActiveQuest(text);
+    if (completedQuest) this.ambience.chime(980);
     store.set({ thinking: true });
 
     const after = store.get();
@@ -724,11 +726,72 @@ class App implements UIActions {
   }
 
   openSessionPanel(): void {
-    store.set({ sessionPanelOpen: true });
+    store.set({ sessionPanelOpen: true, questPanelOpen: false, voicePanelOpen: false });
   }
 
   closeSessionPanel(): void {
     store.set({ sessionPanelOpen: false });
+  }
+
+  openQuestPanel(): void {
+    store.set({ questPanelOpen: true, sessionPanelOpen: false, voicePanelOpen: false });
+  }
+
+  closeQuestPanel(): void {
+    store.set({ questPanelOpen: false });
+  }
+
+  startQuest(id: string): void {
+    if (store.startQuest(id)) this.ambience.chime(760);
+  }
+
+  openVoicePanel(): void {
+    store.set({ voicePanelOpen: true, sessionPanelOpen: false, questPanelOpen: false });
+  }
+
+  closeVoicePanel(): void {
+    store.set({ voicePanelOpen: false });
+  }
+
+  /** Render a user-authored short line in the active resident's own voice. */
+  speakCustomText(text: string): void {
+    const line = text.trim();
+    const s = store.get();
+    if (!line) {
+      this.flashError(COPY.stage.voiceMessageEmpty);
+      return;
+    }
+    if (s.speaking || s.thinking || s.voicing) return;
+    if (store.voiceFreeRemaining === 0 && s.voiceCredits === 0) {
+      this.flashError(COPY.stage.voiceMessageNoCredits);
+      return;
+    }
+
+    const residentId = s.residentId;
+    const r = residentById(residentId);
+    const slot = r.voices.find((voice) => voice.slot === s.session.voice) ?? r.voices[0];
+    this.cancelIdleNudge();
+    store.set({ voicing: true, voicePanelOpen: false });
+    void renderSpeech(line, slot.voiceId, slot.speed).then(async (url) => {
+      if (store.get().residentId !== residentId || store.get().step !== 'stage') return;
+      const buffer = url ? await this.ambience.prepareClip(url) : null;
+      if (store.get().residentId !== residentId || store.get().step !== 'stage') return;
+      if (!buffer) {
+        store.set({ voicing: false });
+        this.flashError(COPY.errors.generic);
+        this.armIdleNudge();
+        return;
+      }
+      if (store.spendVoiceMessage() === 'none') {
+        store.set({ voicing: false });
+        this.flashError(COPY.stage.voiceMessageNoCredits);
+        return;
+      }
+      store.set({ voicing: false });
+      store.pushTurn({ from: 'resident', text: line });
+      this.speakPrepared(line, buffer);
+      this.armIdleNudge();
+    });
   }
 
   updateSession(patch: Partial<SessionSetup>): void {
@@ -798,7 +861,7 @@ class App implements UIActions {
     }
     const seed = fnv1a(prompt.trim().toLowerCase());
     this.residentStage?.tintHero(seed);
-    store.set({ variantSeed: seed, variantLabel: `Look ${(seed % 900) + 100}` });
+    store.set({ variantSeed: seed, variantLabel: `Diện mạo ${(seed % 900) + 100}` });
     this.ambience.chime(720 + (seed % 5) * 40);
   }
 

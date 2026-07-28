@@ -18,7 +18,8 @@ import {
   STYLES,
   residentById,
 } from '../config/residents';
-import { FREE_TURNS } from '../state/store';
+import { questsForResident } from '../config/quests';
+import { FREE_TURNS, FREE_VOICE_MESSAGES } from '../state/store';
 import { extractMemories } from '../chat/memory';
 
 export interface StepView {
@@ -58,15 +59,15 @@ export function galleryStep(actions: UIActions): StepView {
         'span',
         { class: 'tile-meta' },
         u.kind === 'companion'
-          ? `${u.residents?.length ?? 0} residents · talk`
-          : `${u.factions?.length ?? 0} factions · create`
+          ? `${u.residents?.length ?? 0} nhân vật để trò chuyện`
+          : `${u.factions?.length ?? 0} phe để tạo Mate`
       )
     );
   });
 
   const el = h(
     'section',
-    { class: 'step step-gallery', 'aria-label': 'Choose a universe' },
+    { class: 'step step-gallery', 'aria-label': 'Chọn một vũ trụ' },
     h(
       'div',
       { class: 'gallery-wrap' },
@@ -90,7 +91,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   const info = h('aside', { class: 'panel stage-info' });
 
   // --- roster ---
-  const roster = h('div', { role: 'radiogroup', 'aria-label': 'Residents', class: 'roster' });
+  const roster = h('div', { role: 'radiogroup', 'aria-label': 'Các nhân vật', class: 'roster' });
   const rosterBtns: HTMLButtonElement[] = [];
   RESIDENTS.forEach((r) => {
     const b = h(
@@ -115,7 +116,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     type: 'text',
     class: 'chat-input',
     placeholder: COPY.stage.inputPlaceholder,
-    'aria-label': 'Message',
+    'aria-label': 'Tin nhắn cho em',
     maxlength: '220',
   }) as HTMLInputElement;
   const send = () => {
@@ -129,6 +130,16 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   });
   const sendBtn = h('button', { class: 'btn btn-primary', onClick: send }, COPY.stage.send) as HTMLButtonElement;
   const turnsLeft = h('span', { class: 'turns-left' });
+  const questBtn = h(
+    'button',
+    { class: 'btn btn-ghost xs', onClick: () => actions.openQuestPanel() },
+    COPY.stage.quest
+  ) as HTMLButtonElement;
+  const voiceBtn = h(
+    'button',
+    { class: 'btn btn-ghost xs', onClick: () => actions.openVoicePanel() },
+    COPY.stage.speakAs
+  ) as HTMLButtonElement;
   const chatBox = h(
     'div',
     { class: 'panel chat-box', hidden: true },
@@ -138,7 +149,13 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       'div',
       { class: 'chat-foot' },
       turnsLeft,
-      h('button', { class: 'btn btn-ghost xs', onClick: () => actions.openSessionPanel() }, COPY.stage.setSession)
+      h(
+        'div',
+        { class: 'chat-actions' },
+        questBtn,
+        voiceBtn,
+        h('button', { class: 'btn btn-ghost xs', onClick: () => actions.openSessionPanel() }, COPY.stage.setSession)
+      )
     )
   );
   const talkBtn = h(
@@ -156,6 +173,14 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     maxlength: '24',
   }) as HTMLInputElement;
   nickInput.addEventListener('change', () => actions.updateSession({ nickname: nickInput.value }));
+  const personaInput = h('textarea', {
+    class: 'persona-input',
+    rows: '3',
+    placeholder: COPY.stage.personaPlaceholder,
+    'aria-label': COPY.stage.persona,
+    maxlength: '180',
+  }) as HTMLTextAreaElement;
+  personaInput.addEventListener('input', () => actions.updateSession({ persona: personaInput.value }));
 
   function segment<T extends string>(
     label: string,
@@ -193,10 +218,17 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       'div',
       { class: 'row sheet-head' },
       h('h2', { class: 'panel-title' }, COPY.stage.setSession),
-      h('button', { class: 'chrome-btn', 'aria-label': 'Close', onClick: () => actions.closeSessionPanel() }, '×')
+      h('button', { class: 'chrome-btn', 'aria-label': 'Đóng thiết lập', onClick: () => actions.closeSessionPanel() }, '×')
     ),
     h('p', { class: 'hint faint' }, COPY.stage.sessionNote),
     h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, COPY.stage.nickname), nickInput),
+    h(
+      'div',
+      { class: 'custom-group' },
+      h('h3', { class: 'group-label' }, COPY.stage.persona),
+      personaInput,
+      h('p', { class: 'hint faint' }, COPY.stage.personaNote)
+    ),
     scen.el,
     mood.el,
     style.el,
@@ -239,11 +271,76 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     )
   );
 
+  // --- quest mode ---
+  const questList = h('div', { class: 'quest-list' });
+  const questPanel = h(
+    'aside',
+    { class: 'panel session-sheet quest-sheet', hidden: true },
+    h(
+      'div',
+      { class: 'row sheet-head' },
+      h('h2', { class: 'panel-title' }, COPY.stage.questTitle),
+      h('button', { class: 'chrome-btn', 'aria-label': 'Đóng nhiệm vụ', onClick: () => actions.closeQuestPanel() }, '×')
+    ),
+    h('p', { class: 'hint faint' }, COPY.stage.questLead),
+    questList,
+    h('button', { class: 'btn btn-ghost xs', onClick: () => actions.closeQuestPanel() }, COPY.stage.questClose)
+  );
+
+  // --- speak-for-me TTS ---
+  const voiceText = h('textarea', {
+    id: 'voice-message-text',
+    class: 'persona-input voice-text',
+    rows: '3',
+    placeholder: COPY.stage.voiceMessagePlaceholder,
+    'aria-label': COPY.stage.voiceMessageLabel,
+    maxlength: '280',
+  }) as HTMLTextAreaElement;
+  const voiceBudget = h('p', { class: 'hint voice-budget' });
+  const speakTextBtn = h(
+    'button',
+    {
+      class: 'btn btn-primary',
+      onClick: () => {
+        const text = voiceText.value.trim();
+        if (!text) return actions.speakCustomText('');
+        voiceText.value = '';
+        actions.speakCustomText(text);
+      },
+    },
+    COPY.stage.voiceMessageSend
+  ) as HTMLButtonElement;
+  const voicePanel = h(
+    'aside',
+    { class: 'panel session-sheet voice-sheet', hidden: true },
+    h(
+      'div',
+      { class: 'row sheet-head' },
+      h('h2', { class: 'panel-title' }, COPY.stage.voiceMessageTitle),
+      h('button', { class: 'chrome-btn', 'aria-label': 'Đóng phần để em nói hộ', onClick: () => actions.closeVoicePanel() }, '×')
+    ),
+    h('p', { class: 'hint' }, COPY.stage.voiceMessageLead),
+    h('label', { class: 'group-label', for: 'voice-message-text' }, COPY.stage.voiceMessageLabel),
+    voiceText,
+    voiceBudget,
+    h('div', { class: 'row' }, h('button', { class: 'btn btn-ghost xs', onClick: () => actions.closeVoicePanel() }, COPY.stage.voiceMessageClose), speakTextBtn),
+    h(
+      'div',
+      { class: 'voice-upcoming' },
+      h('h3', { class: 'group-label' }, COPY.stage.voiceMessagePricing),
+      h('p', { class: 'hint faint' }, COPY.stage.voiceMessagePricingNote),
+      h('button', { class: 'btn btn-secondary xs', disabled: true }, COPY.stage.voiceMessageTopUp),
+      h('h3', { class: 'group-label' }, COPY.stage.personalVoiceTitle),
+      h('p', { class: 'hint faint' }, COPY.stage.personalVoiceLead),
+      h('p', { class: 'hint faint' }, COPY.stage.personalVoiceNote)
+    )
+  );
+
   // --- turn-around unlock gate ---
   const codeInput = h('input', {
     type: 'text',
     class: 'name-input',
-    placeholder: 'BOX CODE',
+    placeholder: 'MÃ TRONG HỘP',
     'aria-label': COPY.stage.unlockCode,
     maxlength: '16',
   }) as HTMLInputElement;
@@ -279,7 +376,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
 
   const el = h(
     'section',
-    { class: 'step step-stage', 'aria-label': 'Resident encounter' },
+    { class: 'step step-stage', 'aria-label': 'Gặp nhân vật' },
     srOnlyName,
     h(
       'header',
@@ -287,6 +384,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       h('button', { class: 'btn btn-ghost sm', onClick: () => actions.leaveUniverse() }, `‹ ${COPY.stage.leave}`)
     ),
     sessionSheet,
+    questPanel,
+    voicePanel,
     info,
     roster,
     h('div', { class: 'stage-bottom' }, talkBtn, chatBox),
@@ -309,14 +408,15 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         lastResident = s.residentId;
         srOnlyName.textContent = r.name;
         nickInput.value = s.session.nickname;
+        personaInput.value = s.session.persona;
         // The card carries three layers: the hook, who she is, and what the
         // user gets. Full canon stays behind the story list.
         info.replaceChildren(
           h(
             'div',
             { class: 'row chip-row' },
-            h('span', { class: 'chip chip-accent' }, saved?.visits ? `Visit ${saved.visits + 1}` : 'First meeting'),
-            ...(r.language === 'vi' ? [h('span', { class: 'chip' }, 'Tiếng Việt')] : [])
+            h('span', { class: 'chip chip-accent' }, saved?.visits ? `Lần gặp ${saved.visits + 1}` : 'Lần đầu gặp'),
+            h('span', { class: 'chip' }, 'Tiếng Việt')
           ),
           h('h2', { class: 'card-name' }, r.name),
           h('p', { class: 'card-series' }, r.series),
@@ -325,11 +425,11 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           h('p', { class: 'card-promise' }, r.card.promise),
           h('p', { class: 'card-setting' }, r.setting),
           h('details', { class: 'profile-more' },
-            h('summary', {}, 'Who she is'),
+            h('summary', {}, 'Em là ai'),
             h('p', { class: 'card-bio' }, r.profile)
           ),
           h('details', { class: 'episode-block profile-more' },
-            h('summary', {}, 'Her story'),
+            h('summary', {}, 'Câu chuyện của em'),
             h('div', { class: 'episode-list' })
           )
         );
@@ -353,6 +453,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         );
       }
       if (document.activeElement !== nickInput) nickInput.value = s.session.nickname;
+      if (document.activeElement !== personaInput) personaInput.value = s.session.persona;
 
       // Unlocked episodes read as her story opening up, locked ones as the
       // reason to keep going.
@@ -364,7 +465,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
             return h(
               'div',
               { class: `episode${open ? ' is-open' : ''}` },
-              h('span', { class: 'episode-title' }, open ? ep.title : 'Locked'),
+              h('span', { class: 'episode-title' }, open ? ep.title : 'Chưa mở'),
               ...(open ? [h('p', { class: 'episode-body' }, ep.body)] : [])
             );
           })
@@ -387,14 +488,17 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       talkBtn.hidden = s.chatOpen;
       (chatBox as HTMLElement).hidden = !s.chatOpen;
       (sessionSheet as HTMLElement).hidden = !s.sessionPanelOpen;
+      (questPanel as HTMLElement).hidden = !s.questPanelOpen;
+      (voicePanel as HTMLElement).hidden = !s.voicePanelOpen;
+      questBtn.textContent = s.activeQuestId ? COPY.stage.questActive : COPY.stage.quest;
 
       const left = Math.max(0, FREE_TURNS - s.turns);
       turnsLeft.textContent = s.thinking
-        ? `${r.name.split(' ')[0]} is typing`
+        ? `${r.name.split(' ')[0]} đang nghĩ`
         : s.voicing
-          ? `${r.name.split(' ')[0]} is finding her voice`
+          ? `${r.name.split(' ')[0]} đang chuẩn bị giọng nói`
           : left > 0
-          ? `${left} free ${left === 1 ? 'reply' : 'replies'} left`
+          ? `Còn ${left} lượt miễn phí`
           : COPY.stage.outOfTurns;
       turnsLeft.classList.toggle('is-thinking', s.thinking);
       turnsLeft.classList.toggle('is-voicing', s.voicing);
@@ -426,13 +530,49 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         );
         const canPay = s.credits > 0 && candidates.length > 0;
         gateCost.textContent = canPay
-          ? `${COPY.stage.saveCost} You have ${s.credits}.`
+          ? `${COPY.stage.saveCost} Anh có ${s.credits} lượt.`
           : s.credits > 0
             ? COPY.stage.saveNothing
             : COPY.stage.noCredits;
         saveBtn.disabled = !canPay;
       }
       lastGateOpen = s.saveGateOpen;
+
+      const completed = saved?.completedQuests ?? [];
+      const quests = questsForResident(r.id);
+      const nextQuest = quests.find((quest) => !completed.includes(quest.id));
+      questList.replaceChildren(
+        ...quests.map((quest) => {
+          const done = completed.includes(quest.id);
+          const available = nextQuest?.id === quest.id;
+          const active = s.activeQuestId === quest.id;
+          const status = done
+            ? COPY.stage.questDone
+            : active
+              ? COPY.stage.questActive
+              : available
+                ? COPY.stage.questStart
+                : COPY.stage.questLocked;
+          const reward = r.episodes[quest.rewardEpisode]?.title ?? COPY.stage.questReward;
+          return h(
+            'article',
+            { class: `quest-card${done ? ' is-done' : ''}${active ? ' is-active' : ''}` },
+            h('h3', { class: 'quest-title' }, quest.title),
+            h('p', { class: 'hint' }, quest.prompt),
+            h('p', { class: 'hint faint' }, `${COPY.stage.questReward}: ${reward}`),
+            h(
+              'button',
+              { class: 'btn btn-secondary xs', disabled: done || !available || active, onClick: () => actions.startQuest(quest.id) },
+              status
+            )
+          );
+        })
+      );
+
+      voiceBudget.textContent = s.voiceFreeUses < FREE_VOICE_MESSAGES
+        ? COPY.stage.voiceMessageFree.replace('{count}', String(FREE_VOICE_MESSAGES - s.voiceFreeUses))
+        : COPY.stage.voiceMessageCredits.replace('{count}', String(s.voiceCredits));
+      speakTextBtn.disabled = s.thinking || s.voicing || (s.voiceFreeUses >= FREE_VOICE_MESSAGES && s.voiceCredits <= 0);
 
       el.classList.toggle('is-speaking', s.speaking);
     },
@@ -449,7 +589,7 @@ export function arrivalStep(actions: UIActions): StepView {
   );
   const el = h(
     'section',
-    { class: 'step step-arrival', 'aria-label': 'Enter the universe' },
+    { class: 'step step-arrival', 'aria-label': 'Vào vũ trụ' },
     h(
       'div',
       { class: 'arrival-copy' },
@@ -479,7 +619,7 @@ export function studioStep(actions: UIActions, state: AppState): StepView {
   const thumbs: HTMLButtonElement[] = [];
   const sliderTrack = h('div', {
     role: 'radiogroup',
-    'aria-label': 'Characters',
+    'aria-label': 'Nhân vật',
     class: 'slider-track',
   });
   CHARACTERS.forEach((c) => {
@@ -524,9 +664,9 @@ export function studioStep(actions: UIActions, state: AppState): StepView {
   const slider = h(
     'div',
     { class: 'studio-slider' },
-    h('button', { class: 'chrome-btn slider-arrow', 'aria-label': 'Previous character', onClick: () => actions.stepCharacter(-1) }, '‹'),
+    h('button', { class: 'chrome-btn slider-arrow', 'aria-label': 'Nhân vật trước', onClick: () => actions.stepCharacter(-1) }, '‹'),
     sliderTrack,
-    h('button', { class: 'chrome-btn slider-arrow', 'aria-label': 'Next character', onClick: () => actions.stepCharacter(1) }, '›')
+    h('button', { class: 'chrome-btn slider-arrow', 'aria-label': 'Nhân vật tiếp theo', onClick: () => actions.stepCharacter(1) }, '›')
   );
 
   // --- right: generation panel ---
@@ -534,7 +674,7 @@ export function studioStep(actions: UIActions, state: AppState): StepView {
     class: 'describe-input',
     rows: '3',
     placeholder: COPY.studio.textPlaceholder,
-    'aria-label': 'Describe yourself',
+    'aria-label': 'Mô tả bản thân',
   }) as HTMLTextAreaElement;
   textArea.value = state.gen.text;
   textArea.addEventListener('input', () => actions.setGenText(textArea.value));
@@ -676,7 +816,7 @@ export function revealStep(actions: UIActions, state: AppState): StepView {
     class: 'name-input',
     placeholder: COPY.reveal.namePlaceholder,
     maxlength: '24',
-    'aria-label': 'Mate name',
+    'aria-label': 'Tên Mate',
     value: state.mateName,
   }) as HTMLInputElement;
   nameInput.addEventListener('input', () => actions.setMateName(nameInput.value));
@@ -685,7 +825,7 @@ export function revealStep(actions: UIActions, state: AppState): StepView {
 
   const el = h(
     'section',
-    { class: 'step step-reveal', 'aria-label': 'Your Mate' },
+    { class: 'step step-reveal', 'aria-label': 'Mate của anh' },
     h(
       'div',
       { class: 'panel side-cluster reveal-panel', style: `--accent:${cssColor(faction.accentColor)}` },
@@ -707,9 +847,9 @@ export function revealStep(actions: UIActions, state: AppState): StepView {
     el,
     update(s) {
       const parts: string[] = [];
-      if (s.variantLabel) parts.push(`${s.variantLabel} colorway`);
-      if (s.gen.mode === 'photo' && s.gen.photoName) parts.push('From your photo');
-      else if (s.gen.text.trim()) parts.push('From your description');
+      if (s.variantLabel) parts.push(`Phối màu ${s.variantLabel}`);
+      if (s.gen.mode === 'photo' && s.gen.photoName) parts.push('Tạo từ ảnh của anh');
+      else if (s.gen.text.trim()) parts.push('Tạo từ mô tả của anh');
       chips.replaceChildren(...parts.map((t) => h('span', { class: 'trait' }, t)));
     },
   };
@@ -721,11 +861,11 @@ export function joinedStep(actions: UIActions, state: AppState): StepView {
   const name = state.mateName.trim();
   const el = h(
     'section',
-    { class: 'step step-joined', 'aria-label': 'Welcome' },
+    { class: 'step step-joined', 'aria-label': 'Chào mừng' },
     h(
       'div',
       { class: 'panel bottom-cluster joined-panel' },
-      h('h2', { class: 'headline sm' }, name ? `${name} has joined.` : COPY.joined.headline),
+      h('h2', { class: 'headline sm' }, name ? `${name} đã gia nhập.` : COPY.joined.headline),
       h('p', { class: 'subline sm' }, COPY.joined.subline),
       h('button', { class: 'btn btn-ghost', onClick: () => actions.restart() }, COPY.joined.restart)
     )

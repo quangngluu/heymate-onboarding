@@ -33,8 +33,8 @@ export interface UniverseConfig {
 export const UNIVERSES: UniverseConfig[] = [
   {
     id: 'waifu-universe',
-    name: 'Waifu Universe',
-    tagline: 'Residents you talk to. They live on the base, not in an app.',
+    name: 'Vũ trụ Waifu',
+    tagline: 'Những nhân vật để anh trò chuyện. Các em sống trên bệ trưng bày, không chỉ trong ứng dụng.',
     kind: 'companion',
     accentColor: 0xc98bb0,
     posterUrl: 'assets/posters/waifu-universe.webp',
@@ -50,7 +50,7 @@ export const UNIVERSES: UniverseConfig[] = [
   {
     id: 'afterburn-city',
     name: 'Afterburn City',
-    tagline: 'One machine language, four ways to speak it. Build your own Mate.',
+    tagline: 'Một ngôn ngữ máy, bốn cách kể chuyện. Tạo Mate của riêng anh.',
     kind: 'creator',
     accentColor: 0xd8402c,
     posterUrl: 'assets/posters/afterburn-city.webp',

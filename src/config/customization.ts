@@ -17,27 +17,27 @@ export interface CustomizationState {
 }
 
 export const HAIR_OPTIONS: { id: HairId; label: string }[] = [
-  { id: 'crop', label: 'Soft crop' },
-  { id: 'swoop', label: 'Side swoop' },
-  { id: 'buns', label: 'Twin buns' },
+  { id: 'crop', label: 'Tóc ngắn mềm' },
+  { id: 'swoop', label: 'Tóc vuốt lệch' },
+  { id: 'buns', label: 'Tóc búi đôi' },
 ];
 
 export const EYEWEAR_OPTIONS: { id: EyewearId; label: string }[] = [
-  { id: 'none', label: 'None' },
-  { id: 'visor', label: 'Visor' },
-  { id: 'round', label: 'Round glasses' },
+  { id: 'none', label: 'Không có' },
+  { id: 'visor', label: 'Kính visor' },
+  { id: 'round', label: 'Kính tròn' },
 ];
 
 export const EXPRESSION_OPTIONS: { id: ExpressionId; label: string }[] = [
-  { id: 'calm', label: 'Calm' },
-  { id: 'confident', label: 'Confident' },
-  { id: 'playful', label: 'Playful' },
+  { id: 'calm', label: 'Điềm tĩnh' },
+  { id: 'confident', label: 'Tự tin' },
+  { id: 'playful', label: 'Tinh nghịch' },
 ];
 
 export const EMBLEM_OPTIONS: { id: EmblemPlacement; label: string }[] = [
-  { id: 'chest', label: 'Chest' },
-  { id: 'shoulder', label: 'Shoulder' },
-  { id: 'pedestal', label: 'Pedestal' },
+  { id: 'chest', label: 'Ngực' },
+  { id: 'shoulder', label: 'Vai' },
+  { id: 'pedestal', label: 'Bệ trưng bày' },
 ];
 
 export function defaultCustomization(faction: FactionConfig): CustomizationState {

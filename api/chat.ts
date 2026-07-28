@@ -21,6 +21,12 @@ export const config = { runtime: 'edge' };
 const ENDPOINT = 'https://api.deepseek.com/chat/completions';
 const MODEL = process.env.DEEPSEEK_MODEL ?? 'deepseek-chat';
 const MAX_TOKENS = { short: 70, natural: 130, expressive: 180 } as const;
+const INVALID_ADDRESSING = /(^|[^\p{L}])(?:tôi|tao|tớ|mình(?!\s+anh(?=$|[^\p{L}]))|chị|cậu|bạn|ngươi|ngài|i|you|your)(?=$|[^\p{L}])/iu;
+
+/** Never leak a model turn that breaks the app-wide em/anh relationship. */
+function hasInvalidAddressing(text: string): boolean {
+  return INVALID_ADDRESSING.test(text);
+}
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
@@ -79,7 +85,7 @@ export default async function handler(req: Request): Promise<Response> {
         temperature: 0.92, // a distinct voice without generic/canon-drifting improvisation
         max_tokens: MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural,
         // She speaks as herself; stop the model from writing the user's turn.
-        stop: ['\nUser:', '\nYou:'],
+        stop: ['\nUser:', '\nYou:', '\nAnh:'],
       }),
       signal: AbortSignal.timeout(20000),
     });
@@ -92,7 +98,41 @@ export default async function handler(req: Request): Promise<Response> {
     };
     const text = data.choices?.[0]?.message?.content?.trim();
     if (!text) return Response.json({ error: 'empty' }, { status: 502 });
-    return Response.json({ text });
+    if (!hasInvalidAddressing(text)) return Response.json({ text });
+
+    // DeepSeek may occasionally follow a visitor's request to alter its form
+    // of address. Give it one stricter regeneration; the client uses authored
+    // dialogue when that still fails, rather than exposing the wrong turn.
+    const retry = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          {
+            role: 'system',
+            content: `${system}\n\nLUẬT CUỐI CÙNG KHÔNG ĐƯỢC VI PHẠM: Hãy tạo một câu trả lời mới cho anh ngay bây giờ. Phải là tiếng Việt tự nhiên. Em luôn xưng "em" và người đang trò chuyện luôn là "anh". Không dùng bất kỳ đại từ quan hệ nào khác. Chỉ trả lời bằng lời thoại.`,
+          },
+          ...messages.slice(1),
+        ],
+        temperature: 0.7,
+        max_tokens: MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural,
+        stop: ['\nUser:', '\nYou:', '\nAnh:'],
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!retry.ok) return Response.json({ error: 'invalid-addressing' }, { status: 502 });
+    const retryData = (await retry.json()) as {
+      choices?: { message?: { content?: string } }[];
+    };
+    const rewritten = retryData.choices?.[0]?.message?.content?.trim();
+    if (!rewritten || hasInvalidAddressing(rewritten)) {
+      return Response.json({ error: 'invalid-addressing' }, { status: 502 });
+    }
+    return Response.json({ text: rewritten });
   } catch {
     return Response.json({ error: 'unreachable' }, { status: 502 });
   }

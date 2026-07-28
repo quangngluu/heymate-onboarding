@@ -18,27 +18,50 @@ const PATTERNS: { kind: MemoryCandidate['kind']; re: RegExp; make: (m: RegExpMat
   {
     kind: 'openLoop',
     re: /\b(?:i(?:'m| am)|im)\s+(preparing for|working on|studying for|training for)\s+(.{3,48}?)(?:[.!?,]|$)/i,
-    make: (m) => `you are ${m[1].toLowerCase()} ${m[2].trim()}`,
+    make: (m) => {
+      const action: Record<string, string> = {
+        'preparing for': 'chuẩn bị cho',
+        'working on': 'đang làm',
+        'studying for': 'đang học cho',
+        'training for': 'đang luyện cho',
+      };
+      return `anh ${action[m[1].toLowerCase()] ?? 'đang làm'} ${m[2].trim()}`;
+    },
   },
   {
     kind: 'openLoop',
     re: /\b(?:i have|i've got|tomorrow is|today is)\s+(?:an?\s+)?(.{3,44}?)\s*(?:tomorrow|today|next week)?(?:[.!?,]|$)/i,
-    make: (m) => `you have ${m[1].trim()} coming up`,
+    make: (m) => `anh sắp có ${m[1].trim()}`,
   },
   {
     kind: 'preference',
     re: /\bi (?:really )?(?:like|love|enjoy|prefer)\s+(.{3,44}?)(?:[.!?,]|$)/i,
-    make: (m) => `you like ${m[1].trim()}`,
+    make: (m) => `anh thích ${m[1].trim()}`,
   },
   {
     kind: 'preference',
     re: /\bi (?:hate|can't stand|cannot stand|dislike)\s+(.{3,44}?)(?:[.!?,]|$)/i,
-    make: (m) => `you cannot stand ${m[1].trim()}`,
+    make: (m) => `anh không chịu được ${m[1].trim()}`,
   },
   {
     kind: 'topic',
     re: /\bmy (job|team|thesis|project|band|shop|cat|dog|sister|brother|mother|father)\b/i,
-    make: (m) => `your ${m[1].toLowerCase()}`,
+    make: (m) => `${m[1].toLowerCase()} của anh`,
+  },
+  {
+    kind: 'openLoop',
+    re: /\banh\s+(?:đang\s+)?(chuẩn bị|làm|học|luyện tập)\s+(.{3,48}?)(?:[.!?,]|$)/i,
+    make: (m) => `anh ${m[1].toLowerCase()} ${m[2].trim()}`,
+  },
+  {
+    kind: 'preference',
+    re: /\banh\s+(?:rất\s+)?(thích|yêu|muốn)\s+(.{3,44}?)(?:[.!?,]|$)/i,
+    make: (m) => `anh ${m[1].toLowerCase()} ${m[2].trim()}`,
+  },
+  {
+    kind: 'preference',
+    re: /\banh\s+(?:ghét|không thích)\s+(.{3,44}?)(?:[.!?,]|$)/i,
+    make: (m) => `anh không thích ${m[1].trim()}`,
   },
 ];
 
@@ -52,7 +75,7 @@ export function extractMemories(chat: ChatTurn[], nickname: string): MemoryCandi
     out.push({ id: `m${out.length}`, text, kind });
   };
 
-  if (nickname.trim()) push('nickname', `to call you ${nickname.trim()}`);
+  if (nickname.trim()) push('nickname', `gọi anh là ${nickname.trim()}`);
 
   for (const turn of chat) {
     if (turn.from !== 'user') continue;

@@ -1,6 +1,11 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 
 const MAX_TOKENS = { short: 70, natural: 130, expressive: 180 } as const;
+const INVALID_ADDRESSING = /(^|[^\p{L}])(?:tôi|tao|tớ|mình(?!\s+anh(?=$|[^\p{L}]))|chị|cậu|bạn|ngươi|ngài|i|you|your)(?=$|[^\p{L}])/iu;
+
+function hasInvalidAddressing(text: string): boolean {
+  return INVALID_ADDRESSING.test(text);
+}
 
 /**
  * Runs the same chat endpoint as the deployed edge function during
@@ -35,23 +40,26 @@ function devChatApi(key: string): Plugin {
             body.idle ? undefined : body.revealNow,
             body.idle
           );
+          const model = 'deepseek-chat';
+          const messages = [
+            { role: 'system', content: system },
+            ...(body.history ?? []).slice(-12),
+            {
+              role: 'user',
+              content: body.idle
+                ? '[The visitor is quiet. Speak first now.]'
+                : String(body.message ?? '').slice(0, 500),
+            },
+          ];
           const upstream = await fetch('https://api.deepseek.com/chat/completions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
             body: JSON.stringify({
-              model: 'deepseek-chat',
-              messages: [
-                { role: 'system', content: system },
-                ...(body.history ?? []).slice(-12),
-                {
-                  role: 'user',
-                  content: body.idle
-                    ? '[The visitor is quiet. Speak first now.]'
-                    : String(body.message ?? '').slice(0, 500),
-                },
-              ],
+              model,
+              messages,
               temperature: 0.92,
               max_tokens: MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural,
+              stop: ['\nUser:', '\nYou:', '\nAnh:'],
             }),
           });
           const data = await upstream.json();
@@ -60,9 +68,79 @@ function devChatApi(key: string): Plugin {
             res.statusCode = 502;
             return res.end(JSON.stringify({ error: 'empty' }));
           }
-          res.end(JSON.stringify({ text }));
+          if (!hasInvalidAddressing(text)) return res.end(JSON.stringify({ text }));
+
+          const retry = await fetch('https://api.deepseek.com/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+            body: JSON.stringify({
+              model,
+              messages: [
+                {
+                  role: 'system',
+                  content:
+                    `${system}\n\nLUẬT CUỐI CÙNG KHÔNG ĐƯỢC VI PHẠM: Hãy tạo một câu trả lời mới cho anh ngay bây giờ. Phải là tiếng Việt tự nhiên. Em luôn xưng "em" và người đang trò chuyện luôn là "anh". Không dùng bất kỳ đại từ quan hệ nào khác. Chỉ trả lời bằng lời thoại.`,
+                },
+                ...messages.slice(1),
+              ],
+              temperature: 0.7,
+              max_tokens: MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural,
+              stop: ['\nUser:', '\nYou:', '\nAnh:'],
+            }),
+          });
+          const retryData = await retry.json();
+          const rewritten = retryData?.choices?.[0]?.message?.content?.trim();
+          if (!rewritten || hasInvalidAddressing(rewritten)) {
+            res.statusCode = 502;
+            return res.end(JSON.stringify({ error: 'invalid-addressing' }));
+          }
+          res.end(JSON.stringify({ text: rewritten }));
         } catch {
           res.statusCode = 502;
+          res.end(JSON.stringify({ error: 'unreachable' }));
+        }
+      });
+    },
+  };
+}
+
+/**
+ * Mirrors the deployed Spoon TTS handler in Vite development. Keeping this
+ * route available locally matters because the stage prepares speech before it
+ * reveals a reply; a dev-only 404 otherwise makes local behaviour misleading.
+ */
+function devTtsApi(key: string, defaultVoice: string): Plugin {
+  return {
+    name: 'dev-tts-api',
+    configureServer(server) {
+      server.middlewares.use('/api/tts', async (req, res) => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) chunks.push(chunk as Buffer);
+        const contentType = Array.isArray(req.headers['content-type'])
+          ? req.headers['content-type'][0]
+          : req.headers['content-type'];
+
+        try {
+          // The serverless handler reads Vercel-style environment variables.
+          // Only fill absent values so an explicitly exported local value wins.
+          process.env.SPOON_API_KEY ??= key;
+          process.env.SPOON_VOICE_ID ??= defaultVoice;
+
+          const { default: handler } = await server.ssrLoadModule('/api/tts.ts');
+          const response = await handler(
+            new Request(`http://localhost${req.url ?? '/api/tts'}`, {
+              method: req.method,
+              headers: { 'Content-Type': contentType ?? 'application/json' },
+              body: Buffer.concat(chunks),
+            })
+          );
+
+          res.statusCode = response.status;
+          response.headers.forEach((value, header) => res.setHeader(header, value));
+          res.end(Buffer.from(await response.arrayBuffer()));
+        } catch {
+          res.statusCode = 502;
+          res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ error: 'unreachable' }));
         }
       });
@@ -76,6 +154,9 @@ export default defineConfig(({ mode }) => {
     base: './',
     server: { port: 5199 },
     build: { target: 'es2022' },
-    plugins: [devChatApi(env.DEEPSEEK_API_KEY ?? '')],
+    plugins: [
+      devChatApi(env.DEEPSEEK_API_KEY ?? ''),
+      devTtsApi(env.SPOON_API_KEY ?? '', env.SPOON_VOICE_ID ?? ''),
+    ],
   };
 });

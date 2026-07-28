@@ -1,5 +1,6 @@
 import { CHARACTERS } from '../config/characters';
 import { RESIDENTS, type ResidentId, type VoiceSlot } from '../config/residents';
+import { questById, questsForResident, type QuestDefinition } from '../config/quests';
 import type { LengthId, MoodId, ScenarioId, StyleId } from '../config/residents';
 
 export type Step =
@@ -29,6 +30,8 @@ export interface ChatTurn {
 /** Session-only: applies to this encounter and is never persisted. */
 export interface SessionSetup {
   nickname: string;
+  /** Visitor preference for the resident's conversational presence, never canon. */
+  persona: string;
   scenario: ScenarioId;
   mood: MoodId;
   style: StyleId;
@@ -41,10 +44,13 @@ export interface SavedProgress {
   memories: string[];
   revealed: number;
   nickname: string;
+  persona: string;
   visits: number;
+  completedQuests: string[];
 }
 
 export const FREE_TURNS = 5;
+export const FREE_VOICE_MESSAGES = 5;
 
 /** Mock unlock code, as if printed on the figurine's box. */
 export const UNLOCK_CODE = 'HEYMATE360';
@@ -52,6 +58,7 @@ export const UNLOCK_CODE = 'HEYMATE360';
 function defaultSession(): SessionSetup {
   return {
     nickname: '',
+    persona: '',
     scenario: 'casual',
     mood: 'calm',
     style: 'balanced',
@@ -81,11 +88,17 @@ export interface AppState {
   /** Session-scoped reveal count, seeded from saved progress. */
   revealed: number;
   sessionPanelOpen: boolean;
+  questPanelOpen: boolean;
+  activeQuestId: string | null;
+  voicePanelOpen: boolean;
   saveGateOpen: boolean;
   /** Full 360 inspection, bought or unlocked by code. Per resident. */
   viewUnlocked: Record<string, boolean>;
   unlockGateOpen: boolean;
   credits: number;
+  /** Dedicated usage economy for "let her say it" TTS requests. */
+  voiceFreeUses: number;
+  voiceCredits: number;
 
   // --- creator universe ---
   characterId: string;
@@ -113,10 +126,15 @@ const initialState: AppState = {
   voicing: false,
   revealed: 0,
   sessionPanelOpen: false,
+  questPanelOpen: false,
+  activeQuestId: null,
+  voicePanelOpen: false,
   saveGateOpen: false,
   viewUnlocked: {},
   unlockGateOpen: false,
   credits: 3,
+  voiceFreeUses: 0,
+  voiceCredits: 0,
   characterId: CHARACTERS[0].id,
   gen: { mode: 'text', text: '', photoUrl: null, photoName: null },
   genPhase: 'idle',
@@ -143,12 +161,16 @@ export class Store {
           progress: Record<string, SavedProgress>;
           credits?: number;
           viewUnlocked?: Record<string, boolean>;
+          voiceFreeUses?: number;
+          voiceCredits?: number;
         };
         this.state = {
           ...this.state,
           progress: saved.progress ?? {},
           credits: saved.credits ?? this.state.credits,
           viewUnlocked: saved.viewUnlocked ?? {},
+          voiceFreeUses: saved.voiceFreeUses ?? this.state.voiceFreeUses,
+          voiceCredits: saved.voiceCredits ?? this.state.voiceCredits,
         };
       }
     } catch {
@@ -183,6 +205,8 @@ export class Store {
           progress: this.state.progress,
           credits: this.state.credits,
           viewUnlocked: this.state.viewUnlocked,
+          voiceFreeUses: this.state.voiceFreeUses,
+          voiceCredits: this.state.voiceCredits,
         })
       );
     } catch {
@@ -193,7 +217,22 @@ export class Store {
   // ---- companion ----
 
   progressFor(id = this.state.residentId): SavedProgress {
-    return this.state.progress[id] ?? { memories: [], revealed: 0, nickname: '', visits: 0 };
+    const saved = this.state.progress[id];
+    if (saved) {
+      return {
+        ...saved,
+        persona: saved.persona ?? '',
+        completedQuests: saved.completedQuests ?? [],
+      };
+    }
+    return {
+      memories: [],
+      revealed: 0,
+      nickname: '',
+      persona: '',
+      visits: 0,
+      completedQuests: [],
+    };
   }
 
   /** Start a fresh encounter with a resident, seeded by any saved progress. */
@@ -209,9 +248,12 @@ export class Store {
       voicing: false,
       revealed: saved.revealed,
       sessionPanelOpen: false,
+      questPanelOpen: false,
+      activeQuestId: null,
+      voicePanelOpen: false,
       saveGateOpen: false,
       unlockGateOpen: false,
-      session: { ...defaultSession(), nickname: saved.nickname },
+      session: { ...defaultSession(), nickname: saved.nickname, persona: saved.persona },
     });
   }
 
@@ -220,7 +262,8 @@ export class Store {
   }
 
   resetSession(): void {
-    this.set({ session: { ...defaultSession(), nickname: this.progressFor().nickname } });
+    const saved = this.progressFor();
+    this.set({ session: { ...defaultSession(), nickname: saved.nickname, persona: saved.persona } });
   }
 
   pushTurn(turn: ChatTurn): void {
@@ -241,14 +284,16 @@ export class Store {
     if (this.state.credits < 1) return false;
     const id = this.state.residentId;
     const prev = this.progressFor(id);
-    const conversational = memories.filter((m) => !m.startsWith('to call you '));
+    const conversational = memories.filter((m) => !m.startsWith('gọi anh là '));
     const progress = {
       ...this.state.progress,
       [id]: {
         memories: [...prev.memories, ...conversational].slice(-8),
         revealed: this.state.revealed,
         nickname: this.state.session.nickname || prev.nickname,
+        persona: this.state.session.persona || prev.persona,
         visits: prev.visits + 1,
+        completedQuests: prev.completedQuests,
       },
     };
     this.set({ progress, credits: this.state.credits - 1, saveGateOpen: false });
@@ -278,6 +323,63 @@ export class Store {
     return !!this.state.viewUnlocked[this.state.residentId];
   }
 
+  get voiceFreeRemaining(): number {
+    return Math.max(0, FREE_VOICE_MESSAGES - this.state.voiceFreeUses);
+  }
+
+  /** Consume a free TTS use first, then a paid voice credit. */
+  spendVoiceMessage(): 'free' | 'credit' | 'none' {
+    if (this.voiceFreeRemaining > 0) {
+      this.set({ voiceFreeUses: this.state.voiceFreeUses + 1 });
+      this.persist();
+      return 'free';
+    }
+    if (this.state.voiceCredits > 0) {
+      this.set({ voiceCredits: this.state.voiceCredits - 1 });
+      this.persist();
+      return 'credit';
+    }
+    return 'none';
+  }
+
+  /** Start the next quest in a resident's ordered story path. */
+  startQuest(id: string): boolean {
+    const quest = questById(id);
+    if (!quest || quest.residentId !== this.state.residentId) return false;
+    const saved = this.progressFor();
+    const next = questsForResident(quest.residentId).find((item) => !saved.completedQuests.includes(item.id));
+    if (next?.id !== id) return false;
+    this.set({ activeQuestId: id, questPanelOpen: false });
+    return true;
+  }
+
+  /** A thoughtful answer completes the active quest and permanently unlocks its story beat. */
+  completeActiveQuest(message: string): QuestDefinition | null {
+    const id = this.state.activeQuestId;
+    const quest = id ? questById(id) : undefined;
+    if (!quest || quest.residentId !== this.state.residentId || message.trim().length < quest.minCharacters) {
+      return null;
+    }
+    const prev = this.progressFor();
+    if (prev.completedQuests.includes(quest.id)) return null;
+    const progress = {
+      ...this.state.progress,
+      [quest.residentId]: {
+        ...prev,
+        revealed: Math.max(prev.revealed, quest.rewardEpisode + 1),
+        completedQuests: [...prev.completedQuests, quest.id],
+      },
+    };
+    this.set({
+      progress,
+      revealed: Math.max(this.state.revealed, quest.rewardEpisode + 1),
+      activeQuestId: null,
+      questPanelOpen: false,
+    });
+    this.persist();
+    return quest;
+  }
+
   // ---- creator ----
 
   selectCharacter(id: string): void {
@@ -305,6 +407,8 @@ export class Store {
       progress: this.state.progress,
       credits: this.state.credits,
       viewUnlocked: this.state.viewUnlocked,
+      voiceFreeUses: this.state.voiceFreeUses,
+      voiceCredits: this.state.voiceCredits,
     });
   }
 
