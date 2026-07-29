@@ -10,7 +10,7 @@ export const COPY = {
     send: 'Gửi',
     inputPlaceholder: 'Viết gì đó cho em...',
     leave: 'Tất cả vũ trụ',
-    outOfTurns: 'Hết credit rồi.',
+    outOfTurns: 'Không đủ credit cho lượt này.',
 
     // Session setup: only what the user understands. Never a raw prompt.
     setSession: 'Thiết lập cuộc trò chuyện',
@@ -29,8 +29,7 @@ export const COPY = {
     identity: 'Anh bước vào với tư cách ai?',
     identityPlaceholder: 'Chính anh, một nhân vật anh thích, hay ai đó anh tự nghĩ ra',
     identityNote:
-      'Gõ bất cứ danh tính nào. Em sẽ đối xử với anh như chính người đó, chứ không phải như người đang đóng vai. Để trống thì anh là anh.',
-    spoilers: 'Em được biết bao nhiêu về câu chuyện của anh?',
+      'Gõ bất cứ danh tính nào. Em biết câu chuyện của người đó và sẽ đối xử với anh như chính họ, chứ không phải như người đang đóng vai. Để trống thì anh là anh.',
     persona: 'Cách em đồng hành với anh',
     personaPlaceholder: 'Ví dụ: trêu nhẹ, nói thẳng và nhớ hỏi về ngày của anh.',
     personaNote: 'Đây là gu trò chuyện của anh, không thay đổi ký ức hay bản chất của em.',
@@ -58,9 +57,8 @@ export const COPY = {
     voiceMessageEmpty: 'Anh hãy nhập câu muốn em nói.',
     voiceMessageNoCredits: 'Không đủ credit cho một câu nói. Nhập mã để nạp thêm.',
     voiceMessageClose: 'Đóng',
-    brokeHint: 'Không đủ {cost} credit. Mở Thiết lập và nhập mã {code} để nạp thêm 50.',
     walletTitle: 'Credit',
-    walletNote: 'Mỗi thứ tốn credit đều ghi giá sẵn. Hết thì nhập mã để nạp thêm 50.',
+    walletNote: 'Mỗi thứ tốn credit đều ghi giá sẵn.',
     walletPrices: 'Nhắn 2 · Để em nói hộ 6 · Lưu chương 12 · Bàn xoay 30',
     walletRedeem: 'Nhập mã',
     walletRedeemCta: 'Nạp',
@@ -85,7 +83,7 @@ export const COPY = {
     unlockCta: 'Mở bàn xoay (30 credit)',
     unlockOwn: 'Tạo phiên bản của anh',
     unlockOwnNote: 'Một phiên bản do anh tạo, anh có thể xoay ngắm tự do.',
-    unlockCode: 'Hoặc nhập mã để nạp thêm credit',
+    unlockCode: 'Hoặc nhập mã',
     unlockCodeCta: 'Mở khoá',
     unlockSkip: 'Để sau',
     badCode: 'Mã này không khớp.',

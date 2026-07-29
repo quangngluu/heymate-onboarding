@@ -1,7 +1,7 @@
 import { CHARACTERS } from '../config/characters';
 import { RESIDENTS, type ResidentId, type VoiceSlot } from '../config/residents';
 import { questById, questsForResident, type QuestDefinition } from '../config/quests';
-import type { LengthId, MoodId, ScenarioId, SpoilerId, StyleId } from '../config/residents';
+import type { LengthId, MoodId, ScenarioId, StyleId } from '../config/residents';
 
 export type Step =
   | 'gallery' // universe picker (outer)
@@ -39,7 +39,6 @@ export interface SessionSetup {
   voice: VoiceSlot;
   /** Who the visitor is entering as. Free text; never a list. */
   identity: string;
-  spoilers: SpoilerId;
 }
 
 /** Persisted per resident, and only after the user spends a credit. */
@@ -88,7 +87,6 @@ function defaultSession(): SessionSetup {
     length: 'natural',
     voice: 'signature',
     identity: '',
-    spoilers: 'none',
   };
 }
 

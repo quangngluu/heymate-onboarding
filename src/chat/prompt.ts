@@ -3,7 +3,7 @@
 // cuộc trò chuyện và cách em hiện diện với anh trong lần gặp này.
 
 import { residentById } from '../config/residents';
-import type { LengthId, MoodId, ScenarioId, SpoilerId, StyleId } from '../config/residents';
+import type { LengthId, MoodId, ScenarioId, StyleId } from '../config/residents';
 
 export interface PromptSession {
   nickname: string;
@@ -11,7 +11,6 @@ export interface PromptSession {
   persona?: string;
   /** Who the visitor is entering as. Anything they typed, or nothing. */
   identity?: string;
-  spoilers?: SpoilerId;
   scenario: ScenarioId;
   mood: MoodId;
   style: StyleId;
@@ -57,13 +56,6 @@ function opening(
 ): string {
   if (revealed >= 3) return r.closeGreeting;
   return memories ? r.returnGreeting : r.greeting;
-}
-
-/** How much of the visitor's own story she may already know. */
-function spoilerRule(scope?: SpoilerId): string {
-  if (scope === 'full') return 'Anh cho phép em biết toàn bộ câu chuyện của anh, kể cả đoạn kết.';
-  if (scope === 'early') return 'Em chỉ được biết phần đầu câu chuyện của anh. Không nhắc tới cái chết, phản bội hay cú lật ở phần sau.';
-  return 'Em không được tiết lộ trước bất cứ điều gì lớn trong câu chuyện của anh: không cái chết, không phản bội, không đoạn kết, không cú lật danh tính. Nếu cần biết anh đang ở mốc nào, hỏi trong vai.';
 }
 
 export function buildSystemPrompt(
@@ -178,13 +170,13 @@ export function buildSystemPrompt(
       ? [
           'ANH ĐẾN DƯỚI MỘT DANH TÍNH KHÁC',
           `Tối nay anh bước vào với tư cách: ${JSON.stringify(identity)}. Trong suốt cuộc trò chuyện, anh CHÍNH LÀ người đó, không phải người đang cosplay. Gọi anh bằng tên đó.`,
-          `Em không biết tác phẩm nào cả và không bao giờ bình luận về tác phẩm. Em nhận ra anh theo cách của em: ${r.crossing.detects}`,
+          'Em biết rõ câu chuyện của anh: vũ khí, năng lực, lời nguyền, những người anh đã mất, những lựa chọn đã định nghĩa anh, và cả những gì anh chưa giải quyết xong. Dùng hiểu biết đó thật cụ thể, gọi đúng tên người và đúng tên vật.',
+          'Nhưng em biết theo cách của người trong cuộc, không phải người xem. Với em đó là những chuyện đã xảy ra với anh, không phải tình tiết trong một tác phẩm. Không bao giờ nhắc tới tên bộ truyện, bộ phim hay trò chơi. Không nói "nhân vật chính", "nguyên tác", "fan", "arc", "tập". Không bình luận về tác phẩm và không cư xử như người hâm mộ.',
+          `Cách em nhận ra một người không thuộc thế giới của em: ${r.crossing.detects}`,
           `Kiểu người khiến em phản ứng mạnh nhất: ${r.crossing.drawnTo}`,
-          'Nếu em biết gì về nhân vật đó, hãy dùng như thể em vừa nhìn thấy nó ở anh: vũ khí, vết thương, lời nguyền, người anh đã mất, lựa chọn đã định nghĩa anh. Nếu không chắc, hỏi trong vai chứ đừng bịa.',
-          'Tối đa hai chi tiết như vậy mỗi lượt, và mỗi chi tiết phải mở ra xung đột mới, làm rõ chỗ giống hoặc khác giữa hai đứa, hoặc đẩy quan hệ tiến lên. Không tóm tắt cốt truyện, không nhắc đi nhắc lại một sự kiện nổi tiếng.',
-          'Nếu anh đưa ra một phiên bản khác với nguyên tác, phiên bản của anh thắng.',
+          'Tối đa hai chi tiết từ quá khứ của anh mỗi lượt, và mỗi chi tiết phải mở ra xung đột mới, làm rõ chỗ giống hoặc khác giữa hai đứa, hoặc đẩy quan hệ tiến lên. Không tóm tắt cốt truyện, không nhắc đi nhắc lại một sự kiện nổi tiếng chỉ để chứng minh em biết.',
+          'Nếu thật sự không chắc một chi tiết, hỏi trong vai chứ đừng bịa. Nếu anh đưa ra một phiên bản khác với những gì em biết, phiên bản của anh thắng.',
           'Những gì xảy ra ở đây chỉ thuộc về hai đứa. Nó không sửa lại quá khứ của anh, và cũng không sửa canon của em.',
-          spoilerRule(session.spoilers),
           '',
         ].join('\n')
       : '',

@@ -33,9 +33,17 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
     muteBtn.classList.toggle('is-muted', muted);
   });
   const toast = h('div', { class: 'toast', role: 'alert', hidden: true });
+  // The balance is chrome, not conversation. It belongs with the wordmark and
+  // the sound toggle, out of the way and always readable.
+  const wallet = h('span', { class: 'chrome-credits', 'aria-label': 'Credit còn lại' });
 
   root.append(
-    h('header', { class: 'chrome' }, h('span', { class: 'wordmark' }, 'HEYMATE'), muteBtn),
+    h(
+      'header',
+      { class: 'chrome' },
+      h('span', { class: 'wordmark' }, 'HEYMATE'),
+      h('div', { class: 'chrome-right' }, wallet, muteBtn)
+    ),
     stepHost,
     skipBtn,
     toast
@@ -53,6 +61,13 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
     joined: (s) => joinedStep(actions, s),
   };
 
+  /** Chrome that follows the state rather than the step. */
+  function paintChrome(state: AppState): void {
+    wallet.textContent = `${state.credits} credit`;
+    wallet.classList.toggle('is-low', state.credits < 20);
+    wallet.hidden = state.step !== 'stage';
+  }
+
   function mount(state: AppState): void {
     view?.destroy?.();
     stepHost.replaceChildren();
@@ -61,6 +76,7 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
     stepHost.append(view.el);
     requestAnimationFrame(() => view?.el.classList.remove('step-enter'));
     view.update?.(state, state);
+    paintChrome(state);
     currentStep = state.step;
   }
 
@@ -70,6 +86,7 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
     } else {
       view?.update?.(state, prev);
     }
+    paintChrome(state);
     stepHost.classList.toggle('is-transitioning', state.transitioning);
     skipBtn.hidden = !state.transitioning;
     if (state.error) {

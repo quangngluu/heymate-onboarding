@@ -15,13 +15,12 @@ import {
   MOODS,
   RESIDENTS,
   SCENARIOS,
-  SPOILERS,
   STYLES,
   residentById,
 } from '../config/residents';
 import { questById, questsForResident } from '../config/quests';
 import { segments, segmentsUpTo } from '../chat/dialogue';
-import { COST, TOPUP_CODE, store } from '../state/store';
+import { COST, store } from '../state/store';
 import { extractMemories } from '../chat/memory';
 
 export interface StepView {
@@ -207,12 +206,10 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   const questOptions = h('div', { class: 'quest-options' });
   const questStrip = h('div', { class: 'quest-strip', hidden: true }, questLine, questOptions);
 
-  const brokeNote = h('p', { class: 'dock-broke', hidden: true });
   const dock = h(
     'div',
     { class: 'stage-dock' },
     questStrip,
-    brokeNote,
     h('div', { class: 'dock-top' }, h('div', { class: 'dock-chips' }, questChip, speakChip, micChip, setChip), turnsLeft),
     dockHint,
     h('div', { class: 'dock-bar' }, modeTag, h('div', { class: 'field-wrap' }, input), sendBtn)
@@ -279,9 +276,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     };
   }
 
-  const spoilerSeg = segment(COPY.stage.spoilers, SPOILERS, (id) =>
-    actions.updateSession({ spoilers: id })
-  );
   const scen = segment(COPY.stage.scenario, SCENARIOS, (id) => actions.updateSession({ scenario: id }));
   const mood = segment(COPY.stage.mood, MOODS, (id) => actions.updateSession({ mood: id }));
   const style = segment(COPY.stage.style, STYLES, (id) => actions.updateSession({ style: id }));
@@ -306,8 +300,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         { class: 'custom-group' },
         h('h3', { class: 'group-label' }, COPY.stage.identity),
         identityInput,
-        h('p', { class: 'hint faint' }, COPY.stage.identityNote),
-        spoilerSeg.el
+        h('p', { class: 'hint faint' }, COPY.stage.identityNote)
       ),
       h(
         'div',
@@ -552,9 +545,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         b.setAttribute('aria-checked', String(active));
         b.classList.toggle('is-active', active);
       });
-      spoilerSeg.btns.forEach((b, i) =>
-        b.setAttribute('aria-checked', String(SPOILERS[i].id === s.session.spoilers))
-      );
       scen.btns.forEach((b, i) => b.setAttribute('aria-checked', String(SCENARIOS[i].id === s.session.scenario)));
       mood.btns.forEach((b, i) => b.setAttribute('aria-checked', String(MOODS[i].id === s.session.mood)));
       style.btns.forEach((b, i) => b.setAttribute('aria-checked', String(STYLES[i].id === s.session.style)));
@@ -581,14 +571,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       // One balance, and the price of whatever the bar is about to do.
       const price = speakMode ? COST.speakForMe : COST.turn;
       turnsLeft.textContent =
-        s.credits >= price
-          ? `${s.credits} credit · lượt này ${price}`
-          : `${s.credits} credit · không đủ ${price}`;
+        s.credits >= price ? `Lượt này ${price} credit` : COPY.stage.outOfTurns;
       turnsLeft.classList.toggle('is-broke', s.credits < price);
-      (brokeNote as HTMLElement).hidden = s.credits >= price;
-      brokeNote.textContent = COPY.stage.brokeHint
-        .replace('{cost}', String(price))
-        .replace('{code}', TOPUP_CODE);
       const blocked = s.thinking || s.voicing || s.credits < price;
       input.disabled = blocked;
       sendBtn.disabled = blocked;

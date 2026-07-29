@@ -12,8 +12,6 @@ export type MoodId = 'calm' | 'playful' | 'caring' | 'energetic' | 'serious';
 export type ScenarioId = 'casual' | 'latenight' | 'study' | 'yourday' | 'challenge';
 export type StyleId = 'listen' | 'balanced' | 'lead';
 export type LengthId = 'short' | 'natural' | 'expressive';
-/** How much of the visitor's own story she is allowed to already know. */
-export type SpoilerId = 'none' | 'early' | 'full';
 export type VoiceSlot = 'signature' | 'alternate';
 
 export interface ResidentVoice {
@@ -164,12 +162,6 @@ export const STYLES: { id: StyleId; label: string }[] = [
   { id: 'listen', label: 'Lắng nghe nhiều hơn' },
   { id: 'balanced', label: 'Cân bằng' },
   { id: 'lead', label: 'Chủ động dẫn dắt' },
-];
-
-export const SPOILERS: { id: SpoilerId; label: string }[] = [
-  { id: 'none', label: 'Đừng tiết lộ gì' },
-  { id: 'early', label: 'Chỉ phần đầu' },
-  { id: 'full', label: 'Biết hết' },
 ];
 
 export const LENGTHS: { id: LengthId; label: string }[] = [

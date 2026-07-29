@@ -730,13 +730,21 @@ html, body {
 .chat-input:disabled { opacity: 0.45; }
 .turns-left.is-voicing { color: var(--accent); }
 .turns-left.is-broke { color: #e8a08f; }
-.dock-broke {
-  font-size: 12px;
-  line-height: 1.45;
-  color: #e8a08f;
-  padding: 0 6px;
+.chrome-right { display: flex; align-items: center; gap: 10px; pointer-events: auto; }
+.chrome-credits {
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ivory-dim);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 13px;
+  background: rgba(12, 16, 22, 0.5);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
-.dock-broke[hidden] { display: none; }
+.chrome-credits.is-low { color: #e8a08f; border-color: rgba(232, 160, 143, 0.4); }
+.chrome-credits[hidden] { display: none; }
 .hint.is-good { color: #9fd6a8; }
 .turns-left { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ivory-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btn.xs { padding: 6px 12px; font-size: 11px; }
