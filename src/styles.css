@@ -519,6 +519,42 @@ html, body {
   pointer-events: auto;
 }
 .stage-dock[hidden] { display: none; }
+.quest-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 4px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.quest-strip[hidden] { display: none; }
+.quest-line {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.quest-options { display: flex; flex-wrap: wrap; gap: 7px; }
+.quest-option {
+  flex: 1 1 auto;
+  text-align: left;
+  background: color-mix(in srgb, var(--accent) 10%, rgba(239, 230, 212, 0.04));
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  border-radius: 12px;
+  color: var(--ivory);
+  font-family: var(--font);
+  font-size: 12.5px;
+  line-height: 1.4;
+  padding: 9px 12px;
+  cursor: pointer;
+  transition: border-color 0.18s, background 0.18s;
+}
+.quest-option:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, rgba(239, 230, 212, 0.04));
+}
+.quest-option:focus-visible { outline: 2px solid var(--ivory); outline-offset: 2px; }
+.stage-dock.is-quest { border-color: color-mix(in srgb, var(--accent) 40%, rgba(239, 230, 212, 0.2)); }
+
 .dock-top {
   display: flex;
   align-items: center;

@@ -18,7 +18,7 @@ import {
   STYLES,
   residentById,
 } from '../config/residents';
-import { questsForResident } from '../config/quests';
+import { questById, questsForResident } from '../config/quests';
 import { FREE_TURNS, FREE_VOICE_MESSAGES } from '../state/store';
 import { extractMemories } from '../chat/memory';
 
@@ -165,9 +165,16 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   // A tag inside the field, plus quote marks around it: the bar has to look
   // like a line she will say out loud, not a message you are sending her.
   const modeTag = h('span', { class: 'field-tag', hidden: true }, COPY.stage.speakAs) as HTMLElement;
+  // While a scene is open the dock carries it: what she asked, and three
+  // answers a visitor could honestly give. Typing is always still open.
+  const questLine = h('p', { class: 'quest-line' });
+  const questOptions = h('div', { class: 'quest-options' });
+  const questStrip = h('div', { class: 'quest-strip', hidden: true }, questLine, questOptions);
+
   const dock = h(
     'div',
     { class: 'stage-dock' },
+    questStrip,
     h('div', { class: 'dock-top' }, h('div', { class: 'dock-chips' }, questChip, speakChip, setChip), turnsLeft),
     dockHint,
     h('div', { class: 'dock-bar' }, modeTag, h('div', { class: 'field-wrap' }, input), sendBtn)
@@ -417,6 +424,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   );
 
   let lastResident = '';
+  let lastQuestId = '';
   let lastChatLen = -1;
   let lastGateOpen = false;
 
@@ -512,6 +520,20 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       (sessionSheet as HTMLElement).hidden = !s.sessionPanelOpen;
       questChip.textContent = s.activeQuestId ? COPY.stage.questActive : COPY.stage.quest;
       questChip.classList.toggle('is-active', s.activeQuestId !== null);
+
+      const openQuest = s.activeQuestId ? questById(s.activeQuestId) : undefined;
+      (questStrip as HTMLElement).hidden = !openQuest;
+      dock.classList.toggle('is-quest', !!openQuest);
+      if (openQuest && openQuest.id !== lastQuestId) {
+        lastQuestId = openQuest.id;
+        questLine.textContent = openQuest.objective;
+        questOptions.replaceChildren(
+          ...openQuest.options.map((option) =>
+            h('button', { class: 'quest-option', onClick: () => actions.sendMessage(option) }, option)
+          )
+        );
+      }
+      if (!openQuest) lastQuestId = '';
 
       const left = Math.max(0, FREE_TURNS - s.turns);
       turnsLeft.textContent = s.thinking

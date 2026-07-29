@@ -45,6 +45,7 @@ export class WaifuStage {
 
   readonly ring: THREE.Mesh;
   private ringMat: THREE.MeshBasicMaterial;
+  private maxAnisotropy = 8;
   private glow: THREE.PointLight;
   private upLight: THREE.SpotLight;
   private motes: THREE.Points;
@@ -53,8 +54,10 @@ export class WaifuStage {
   constructor(
     private scene: THREE.Scene,
     /** Top surface of the center base; the hero stands here. */
-    baseTopY: number
+    baseTopY: number,
+    maxAnisotropy = 8
   ) {
+    this.maxAnisotropy = maxAnisotropy;
     this.heroY = baseTopY;
     this.ringMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
@@ -120,11 +123,21 @@ export class WaifuStage {
           targetYaw: 0,
           loaded: true,
         };
+        const maxAniso = this.maxAnisotropy;
         model.traverse((o) => {
           const m = o as THREE.Mesh;
           if (!m.isMesh) return;
           const mats = Array.isArray(m.material) ? m.material : [m.material];
-          for (const mat of mats) entry.materials.push(mat);
+          for (const mat of mats) {
+            entry.materials.push(mat);
+            const std = mat as THREE.MeshStandardMaterial;
+            for (const map of [std.map, std.normalMap, std.roughnessMap, std.metalnessMap, std.aoMap, std.emissiveMap]) {
+              if (map && map.anisotropy !== maxAniso) {
+                map.anisotropy = maxAniso;
+                map.needsUpdate = true;
+              }
+            }
+          }
         });
         this.entries.set(id, entry);
         this.scene.add(model);

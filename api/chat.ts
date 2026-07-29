@@ -52,7 +52,8 @@ export default async function handler(req: Request): Promise<Response> {
       body.memories ?? [],
       body.revealed ?? 0,
       body.revealNow,
-      body.idle
+      body.idle,
+      body.quest
     );
   } catch {
     return Response.json({ error: 'unknown-resident' }, { status: 400 });

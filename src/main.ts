@@ -23,6 +23,7 @@ import { idleLine, openingLine, speakingDuration } from './chat/engine';
 import { getReply } from './chat/client';
 import { cancelSpeech, renderSpeech } from './chat/voice';
 import { residentById, type ResidentId } from './config/residents';
+import { questById } from './config/quests';
 import { Ambience } from './audio/ambience';
 import { FREE_TURNS, store, type SessionSetup, type Step } from './state/store';
 import { mountUI } from './ui/overlay';
@@ -43,7 +44,9 @@ const STAGE_AZIMUTH = Math.atan2(CAMERA_PRESETS.stage.pos[0], CAMERA_PRESETS.sta
 const FREE_ARC = Math.PI / 3;
 
 /** Keep the reply hidden briefly for a synchronized voice start, never indefinitely. */
-const VOICE_REVEAL_WAIT_MS = 3500;
+// How long the text waits for the voice before it goes out on its own. The
+// clip is never discarded when this expires; it simply arrives late.
+const VOICE_REVEAL_WAIT_MS = 5000;
 
 class App implements UIActions {
   private engine: Engine;
@@ -69,6 +72,8 @@ class App implements UIActions {
   private residentStage: WaifuStage | null = null;
   private speakTimer = 0;
   private idleTimer = 0;
+  /** Bumped whenever a newer line takes over, so a late clip stays quiet. */
+  private speechToken = 0;
   /** She breaks a silence at most twice per encounter. */
   private idleSpoken = 0;
 
@@ -386,7 +391,11 @@ class App implements UIActions {
   private openStage(): void {
     const s = store.get();
     if (!this.residentStage) {
-      this.residentStage = new WaifuStage(this.engine.scene, this.centerTopY);
+      this.residentStage = new WaifuStage(
+        this.engine.scene,
+        this.centerTopY,
+        this.engine.renderer.capabilities.getMaxAnisotropy()
+      );
       void this.residentStage.load(s.residentId, (id) => {
         if (id === store.get().residentId) {
           this.residentStage!.setHero(id);
@@ -562,22 +571,35 @@ class App implements UIActions {
   private async prepareReplySpeech(text: string, residentId: ResidentId): Promise<AudioBuffer | null> {
     const r = residentById(residentId);
     const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
+    const token = ++this.speechToken;
     const prepared = renderSpeech(text, slot.voiceId, slot.speed).then(async (url) => {
       return url ? this.ambience.prepareClip(url) : null;
     });
-    const buffer = await Promise.race([
+    const LATE = Symbol('late');
+    const first = await Promise.race([
       prepared,
-      new Promise<null>((resolve) => window.setTimeout(resolve, VOICE_REVEAL_WAIT_MS)),
+      new Promise<typeof LATE>((resolve) => window.setTimeout(() => resolve(LATE), VOICE_REVEAL_WAIT_MS)),
     ]);
-    // Do not permit a slow clip to arrive after the message has been revealed.
-    if (!buffer && store.get().residentId === residentId && store.get().step === 'stage') cancelSpeech();
-    return buffer;
+    if (first !== LATE) return first as AudioBuffer | null;
+    // The provider is slower than the reveal deadline more often than not.
+    // Letting the line go out on its own is right; throwing the clip away was
+    // not, and it is why replies read silently. It plays when it lands, unless
+    // something newer has taken over by then.
+    void prepared.then((buffer) => {
+      const s = store.get();
+      if (!buffer || token !== this.speechToken) return;
+      if (s.residentId !== residentId || s.step !== 'stage') return;
+      this.speakPrepared(text, buffer);
+    });
+    return null;
   }
 
   /** Start a reply that has already been prepared, with text and voice together. */
   private speakPrepared(text: string, buffer: AudioBuffer | null): void {
     window.clearTimeout(this.speakTimer);
-    cancelSpeech();
+    // Only cancel when we actually have a clip to play. Cancelling on the
+    // silent path would abort the render that is still on its way.
+    if (buffer) cancelSpeech();
     store.set({ speaking: true });
     this.residentStage?.setSpeaking(true);
     if (buffer) this.ambience.playBuffer(buffer);
@@ -594,6 +616,7 @@ class App implements UIActions {
    */
   private speak(text: string, voiceUrl?: string): void {
     window.clearTimeout(this.speakTimer);
+    this.speechToken++;
     cancelSpeech();
     store.set({ speaking: true });
     this.residentStage?.setSpeaking(true);
@@ -662,6 +685,7 @@ class App implements UIActions {
   selectResident(id: string): void {
     if (store.get().step !== 'stage' || store.get().residentId === id) return;
     this.controls.enabled = false;
+    this.speechToken++;
     store.beginEncounter(id as ResidentId);
     this.residentStage?.restoreHero();
     this.residentStage?.setHero(id);
@@ -692,8 +716,11 @@ class App implements UIActions {
     };
     // History excludes the turn we just pushed; the message is sent separately.
     const history = after.chat.slice(0, -1);
+    const openQuest = s.activeQuestId ? questById(s.activeQuestId) : undefined;
 
-    void getReply(text, ctx, history).then(async (result) => {
+    void getReply(text, ctx, history, {
+      quest: openQuest && { prompt: openQuest.prompt, objective: openQuest.objective },
+    }).then(async (result) => {
       if (store.get().residentId !== s.residentId) return; // switched residents
       // Retain the typing state for a bounded voice pre-roll. The chat turn is
       // only committed after the audio has decoded, so there is no visible gap.
@@ -724,7 +751,14 @@ class App implements UIActions {
   }
 
   startQuest(id: string): void {
-    if (store.startQuest(id)) this.ambience.chime(760);
+    if (!store.startQuest(id)) return;
+    this.ambience.chime(760);
+    // She sets the scene herself. A quest that only changes a badge is a task
+    // list; a quest she says out loud is a turn in the conversation.
+    const quest = questById(id);
+    if (!quest) return;
+    store.pushTurn({ from: 'resident', text: quest.prompt });
+    this.speak(quest.prompt);
   }
 
   /** Render a user-authored short line in the active resident's own voice. */
