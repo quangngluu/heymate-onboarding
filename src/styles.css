@@ -729,6 +729,15 @@ html, body {
 .chat-input:focus-visible { outline: 2px solid var(--ivory); outline-offset: 1px; }
 .chat-input:disabled { opacity: 0.45; }
 .turns-left.is-voicing { color: var(--accent); }
+.turns-left.is-broke { color: #e8a08f; }
+.dock-broke {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #e8a08f;
+  padding: 0 6px;
+}
+.dock-broke[hidden] { display: none; }
+.hint.is-good { color: #9fd6a8; }
 .turns-left { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ivory-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btn.xs { padding: 6px 12px; font-size: 11px; }
 .bubble-resident {

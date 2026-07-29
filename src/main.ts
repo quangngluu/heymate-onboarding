@@ -26,7 +26,7 @@ import { spoken } from './chat/dialogue';
 import { residentById, type ResidentId } from './config/residents';
 import { questById } from './config/quests';
 import { Ambience } from './audio/ambience';
-import { FREE_TURNS, store, type SessionSetup, type Step } from './state/store';
+import { COST, store, type SessionSetup, type Step } from './state/store';
 import { mountUI } from './ui/overlay';
 import type { UIActions } from './ui/actions';
 import { CAMERA_PRESETS } from './config/cameras';
@@ -544,7 +544,7 @@ class App implements UIActions {
       turn: s.turns,
     };
     const chatLength = s.chat.length;
-    void getReply(idleLine(r, spokenIndex), ctx, s.chat, { idle: true }).then(async (result) => {
+    void getReply(idleLine(r, spokenIndex), ctx, s.chat, { idle: true, level: store.level }).then(async (result) => {
       // Do not insert a late nudge after the visitor has started talking, or
       // after the encounter has changed while the request was in flight.
       const current = store.get();
@@ -815,7 +815,8 @@ class App implements UIActions {
 
   sendMessage(text: string): void {
     const s = store.get();
-    if (s.turns >= FREE_TURNS || s.thinking) return;
+    if (s.thinking) return;
+    if (!store.spend('turn')) return;
     const r = residentById(s.residentId);
     this.cancelIdleNudge();
     store.pushTurn({ from: 'user', text });
@@ -836,6 +837,7 @@ class App implements UIActions {
     const openQuest = s.activeQuestId ? questById(s.activeQuestId) : undefined;
 
     void getReply(text, ctx, history, {
+      level: store.level,
       quest: openQuest && { prompt: openQuest.prompt, objective: openQuest.objective },
     }).then(async (result) => {
       if (store.get().residentId !== s.residentId) return; // switched residents
@@ -850,7 +852,9 @@ class App implements UIActions {
       this.streamIn(store.get().chat.length - 1, result.text, prepared);
       // The free encounter ends by offering to keep what was said, not by
       // blocking the conversation mid-sentence.
-      if (store.get().turns >= FREE_TURNS) {
+      // Offer to keep the chapter once there is one worth keeping, rather
+      // than at a turn count.
+      if (store.get().turns === 5) {
         window.setTimeout(() => store.set({ saveGateOpen: true }), 1200);
       }
     });
@@ -885,7 +889,8 @@ class App implements UIActions {
       return;
     }
     if (s.speaking || s.thinking || s.voicing) return;
-    if (store.voiceFreeRemaining === 0 && s.voiceCredits === 0) {
+    if (!store.canAfford('speakForMe')) {
+      store.set({ broke: 'speakForMe' });
       this.flashError(COPY.stage.voiceMessageNoCredits);
       return;
     }
@@ -905,7 +910,7 @@ class App implements UIActions {
         this.armIdleNudge();
         return;
       }
-      if (store.spendVoiceMessage() === 'none') {
+      if (!store.spend('speakForMe')) {
         store.set({ voicing: false });
         this.flashError(COPY.stage.voiceMessageNoCredits);
         return;

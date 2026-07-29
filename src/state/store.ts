@@ -1,7 +1,7 @@
 import { CHARACTERS } from '../config/characters';
 import { RESIDENTS, type ResidentId, type VoiceSlot } from '../config/residents';
 import { questById, questsForResident, type QuestDefinition } from '../config/quests';
-import type { LengthId, MoodId, ScenarioId, StyleId } from '../config/residents';
+import type { LengthId, MoodId, ScenarioId, SpoilerId, StyleId } from '../config/residents';
 
 export type Step =
   | 'gallery' // universe picker (outer)
@@ -37,6 +37,9 @@ export interface SessionSetup {
   style: StyleId;
   length: LengthId;
   voice: VoiceSlot;
+  /** Who the visitor is entering as. Free text; never a list. */
+  identity: string;
+  spoilers: SpoilerId;
 }
 
 /** Persisted per resident, and only after the user spends a credit. */
@@ -45,12 +48,32 @@ export interface SavedProgress {
   revealed: number;
   nickname: string;
   persona: string;
+  /** Who he came in as last time, so she can greet that person again. */
+  identity: string;
   visits: number;
   completedQuests: string[];
 }
 
-export const FREE_TURNS = 5;
-export const FREE_VOICE_MESSAGES = 5;
+/**
+ * One wallet for everything that costs something.
+ *
+ * Separate allowances for turns, for her voice, for saving and for the
+ * turntable meant four different ways to be told no, each with its own
+ * number. A visitor cannot plan against that. One balance, published prices,
+ * and the choice of what to spend it on is theirs.
+ */
+export const START_CREDITS = 100;
+export const TOPUP_CODE = 'MATEWAIFU';
+export const TOPUP_AMOUNT = 50;
+
+export const COST = {
+  turn: 2,
+  speakForMe: 6,
+  saveChapter: 12,
+  turntable: 30,
+} as const;
+
+export type Spend = keyof typeof COST;
 
 /** Mock unlock code, as if printed on the figurine's box. */
 export const UNLOCK_CODE = 'HEYMATE360';
@@ -64,6 +87,8 @@ function defaultSession(): SessionSetup {
     style: 'balanced',
     length: 'natural',
     voice: 'signature',
+    identity: '',
+    spoilers: 'none',
   };
 }
 
@@ -99,9 +124,8 @@ export interface AppState {
   viewUnlocked: Record<string, boolean>;
   unlockGateOpen: boolean;
   credits: number;
-  /** Dedicated usage economy for "let her say it" TTS requests. */
-  voiceFreeUses: number;
-  voiceCredits: number;
+  /** Set when a spend was refused, so the dock can say which one and why. */
+  broke: Spend | null;
 
   // --- creator universe ---
   characterId: string;
@@ -133,9 +157,9 @@ const initialState: AppState = {
   saveGateOpen: false,
   viewUnlocked: {},
   unlockGateOpen: false,
-  credits: 3,
-  voiceFreeUses: 0,
-  voiceCredits: 0,
+  credits: START_CREDITS,
+  broke: null,
+
   characterId: CHARACTERS[0].id,
   gen: { mode: 'text', text: '', photoUrl: null, photoName: null },
   genPhase: 'idle',
@@ -162,16 +186,14 @@ export class Store {
           progress: Record<string, SavedProgress>;
           credits?: number;
           viewUnlocked?: Record<string, boolean>;
-          voiceFreeUses?: number;
-          voiceCredits?: number;
+
         };
         this.state = {
           ...this.state,
           progress: saved.progress ?? {},
           credits: saved.credits ?? this.state.credits,
           viewUnlocked: saved.viewUnlocked ?? {},
-          voiceFreeUses: saved.voiceFreeUses ?? this.state.voiceFreeUses,
-          voiceCredits: saved.voiceCredits ?? this.state.voiceCredits,
+
         };
       }
     } catch {
@@ -206,8 +228,7 @@ export class Store {
           progress: this.state.progress,
           credits: this.state.credits,
           viewUnlocked: this.state.viewUnlocked,
-          voiceFreeUses: this.state.voiceFreeUses,
-          voiceCredits: this.state.voiceCredits,
+
         })
       );
     } catch {
@@ -223,6 +244,7 @@ export class Store {
       return {
         ...saved,
         persona: saved.persona ?? '',
+        identity: saved.identity ?? '',
         completedQuests: saved.completedQuests ?? [],
       };
     }
@@ -231,6 +253,7 @@ export class Store {
       revealed: 0,
       nickname: '',
       persona: '',
+      identity: '',
       visits: 0,
       completedQuests: [],
     };
@@ -252,7 +275,12 @@ export class Store {
           activeQuestId: null,
           saveGateOpen: false,
       unlockGateOpen: false,
-      session: { ...defaultSession(), nickname: saved.nickname, persona: saved.persona },
+      session: {
+        ...defaultSession(),
+        nickname: saved.nickname,
+        persona: saved.persona,
+        identity: saved.identity,
+      },
     });
   }
 
@@ -262,7 +290,9 @@ export class Store {
 
   resetSession(): void {
     const saved = this.progressFor();
-    this.set({ session: { ...defaultSession(), nickname: saved.nickname, persona: saved.persona } });
+    this.set({
+      session: { ...defaultSession(), nickname: saved.nickname, persona: saved.persona },
+    });
   }
 
   pushTurn(turn: ChatTurn): void {
@@ -270,8 +300,40 @@ export class Store {
     this.set({ chat: [...this.state.chat, turn].slice(-60), turns });
   }
 
-  get freeTurnsLeft(): number {
-    return Math.max(0, FREE_TURNS - this.state.turns);
+  /**
+   * How close she is, 0 to 5. It tracks opened memories, and those only open
+   * through a quest the visitor actually chose to finish, so the ladder can
+   * never be climbed by talking a lot.
+   */
+  get level(): number {
+    return Math.min(5, this.progressFor().revealed);
+  }
+
+  /** What a given action would leave her, or -1 when it cannot be afforded. */
+  canAfford(what: Spend): boolean {
+    return this.state.credits >= COST[what];
+  }
+
+  /**
+   * Take the price of an action. Refusal is recorded rather than thrown, so
+   * the dock can name which action ran out instead of failing silently.
+   */
+  spend(what: Spend): boolean {
+    if (!this.canAfford(what)) {
+      this.set({ broke: what });
+      return false;
+    }
+    this.set({ credits: this.state.credits - COST[what], broke: null });
+    this.persist();
+    return true;
+  }
+
+  /** Redeem the box code for more credits. */
+  redeem(code: string): 'ok' | 'bad-code' {
+    if (code.trim().toUpperCase() !== TOPUP_CODE) return 'bad-code';
+    this.set({ credits: this.state.credits + TOPUP_AMOUNT, broke: null });
+    this.persist();
+    return 'ok';
   }
 
   /**
@@ -280,7 +342,10 @@ export class Store {
    * say "you mentioned to call you Q".
    */
   saveChapter(memories: string[]): boolean {
-    if (this.state.credits < 1) return false;
+    if (!this.canAfford('saveChapter')) {
+      this.set({ broke: 'saveChapter' });
+      return false;
+    }
     const id = this.state.residentId;
     const prev = this.progressFor(id);
     const conversational = memories.filter((m) => !m.startsWith('gọi anh là '));
@@ -291,11 +356,17 @@ export class Store {
         revealed: this.state.revealed,
         nickname: this.state.session.nickname || prev.nickname,
         persona: this.state.session.persona || prev.persona,
+        identity: this.state.session.identity || prev.identity,
         visits: prev.visits + 1,
         completedQuests: prev.completedQuests,
       },
     };
-    this.set({ progress, credits: this.state.credits - 1, saveGateOpen: false });
+    this.set({
+      progress,
+      credits: this.state.credits - COST.saveChapter,
+      saveGateOpen: false,
+      broke: null,
+    });
     this.persist();
     return true;
   }
@@ -305,14 +376,20 @@ export class Store {
     if (withCode === '__owned') {
       // A variant the user made is theirs; no purchase involved.
     } else if (withCode !== undefined) {
-      if (withCode.trim().toUpperCase() !== UNLOCK_CODE) return 'bad-code';
-    } else if (this.state.credits < 1) {
+      // The box code and the top-up code both open the turntable; a visitor
+      // who has just paid for credits should not be told no twice.
+      const given = withCode.trim().toUpperCase();
+      if (given !== UNLOCK_CODE && given !== TOPUP_CODE) return 'bad-code';
+      if (given === TOPUP_CODE) this.set({ credits: this.state.credits + TOPUP_AMOUNT });
+    } else if (!this.canAfford('turntable')) {
+      this.set({ broke: 'turntable' });
       return 'no-credits';
     }
     this.set({
       viewUnlocked: { ...this.state.viewUnlocked, [this.state.residentId]: true },
-      credits: withCode === undefined ? this.state.credits - 1 : this.state.credits,
+      credits: withCode === undefined ? this.state.credits - COST.turntable : this.state.credits,
       unlockGateOpen: false,
+      broke: null,
     });
     this.persist();
     return 'ok';
@@ -322,24 +399,7 @@ export class Store {
     return !!this.state.viewUnlocked[this.state.residentId];
   }
 
-  get voiceFreeRemaining(): number {
-    return Math.max(0, FREE_VOICE_MESSAGES - this.state.voiceFreeUses);
-  }
 
-  /** Consume a free TTS use first, then a paid voice credit. */
-  spendVoiceMessage(): 'free' | 'credit' | 'none' {
-    if (this.voiceFreeRemaining > 0) {
-      this.set({ voiceFreeUses: this.state.voiceFreeUses + 1 });
-      this.persist();
-      return 'free';
-    }
-    if (this.state.voiceCredits > 0) {
-      this.set({ voiceCredits: this.state.voiceCredits - 1 });
-      this.persist();
-      return 'credit';
-    }
-    return 'none';
-  }
 
   /** Start the next quest in a resident's ordered story path. */
   startQuest(id: string): boolean {
@@ -405,8 +465,6 @@ export class Store {
       progress: this.state.progress,
       credits: this.state.credits,
       viewUnlocked: this.state.viewUnlocked,
-      voiceFreeUses: this.state.voiceFreeUses,
-      voiceCredits: this.state.voiceCredits,
     });
   }
 

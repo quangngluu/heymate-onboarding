@@ -23,7 +23,7 @@ export async function getReply(
   message: string,
   ctx: ReplyContext,
   history: ChatTurn[],
-  opts: { idle?: boolean; quest?: { prompt: string; objective: string } } = {}
+  opts: { idle?: boolean; level?: number; quest?: { prompt: string; objective: string } } = {}
 ): Promise<ChatOutcome> {
   // An idle nudge is already-authored dialogue, not a user message that the
   // scripted engine should try to answer. The model may vary it, but offline
@@ -43,6 +43,7 @@ export async function getReply(
         revealed: ctx.revealed,
         revealNow: opts.idle ? undefined : (dueEpisodeIndex(ctx) ?? undefined),
         idle: opts.idle,
+        level: opts.level ?? 0,
         quest: opts.quest,
         history: history.map((t) => ({
           role: t.from === 'user' ? 'user' : 'assistant',

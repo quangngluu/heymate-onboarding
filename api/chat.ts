@@ -11,6 +11,8 @@ interface ChatRequest {
   revealed: number;
   revealNow?: number;
   idle?: boolean;
+  level?: number;
+  quest?: { prompt: string; objective: string };
   history: { role: 'user' | 'assistant'; content: string }[];
   message: string;
 }
@@ -69,6 +71,7 @@ export default async function handler(req: Request): Promise<Response> {
       body.revealed ?? 0,
       body.revealNow,
       body.idle,
+      body.level ?? 0,
       body.quest
     );
   } catch {

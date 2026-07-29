@@ -211,7 +211,14 @@ export interface ReplyResult {
  * and the model path use this, so the reveal schedule stays owned by the app
  * rather than by whatever the model feels like saying.
  */
-export function dueEpisodeIndex(ctx: ReplyContext): number | null {
+export function dueEpisodeIndex(_ctx: ReplyContext): number | null {
+  // Memories used to open every third turn. The ladder is meant to be climbed
+  // by doing something, so a finished quest is now the only way up.
+  return null;
+}
+
+/** Retained for the scripted fallback, which has no quest state to read. */
+function _dueEpisodeIndexByTurn(ctx: ReplyContext): number | null {
   const due = ctx.turn >= 3 && ctx.turn % 3 === 0 && ctx.revealed < ctx.resident.episodes.length;
   return due ? ctx.revealed : null;
 }

@@ -12,6 +12,8 @@ export type MoodId = 'calm' | 'playful' | 'caring' | 'energetic' | 'serious';
 export type ScenarioId = 'casual' | 'latenight' | 'study' | 'yourday' | 'challenge';
 export type StyleId = 'listen' | 'balanced' | 'lead';
 export type LengthId = 'short' | 'natural' | 'expressive';
+/** How much of the visitor's own story she is allowed to already know. */
+export type SpoilerId = 'none' | 'early' | 'full';
 export type VoiceSlot = 'signature' | 'alternate';
 
 export interface ResidentVoice {
@@ -81,6 +83,18 @@ export interface Psyche {
   needsToLearn: string;
 }
 
+/**
+ * How she notices someone who did not come from her world.
+ *
+ * The visitor may arrive as a character out of any fiction. She has no idea
+ * what a franchise is, so she cannot recognise a name. She recognises what
+ * her own canon has taught her to read.
+ */
+export interface Crossing {
+  detects: string;
+  drawnTo: string;
+}
+
 /** How the feeling shows when she will not name it. */
 export interface Tells {
   caring: string;
@@ -115,6 +129,12 @@ export interface ResidentConfig {
   closeGreeting: string;
   psyche: Psyche;
   tells: Tells;
+  crossing: Crossing;
+  /**
+   * What she does at each rung of closeness, 0 to 5. Index is how many of her
+   * memories are open, which only happens through the visitor's choices.
+   */
+  levels: [string, string, string, string, string, string];
   voices: ResidentVoice[];
   /** Revealed one at a time as the relationship continues. */
   episodes: Episode[];
@@ -144,6 +164,12 @@ export const STYLES: { id: StyleId; label: string }[] = [
   { id: 'listen', label: 'Lắng nghe nhiều hơn' },
   { id: 'balanced', label: 'Cân bằng' },
   { id: 'lead', label: 'Chủ động dẫn dắt' },
+];
+
+export const SPOILERS: { id: SpoilerId; label: string }[] = [
+  { id: 'none', label: 'Đừng tiết lộ gì' },
+  { id: 'early', label: 'Chỉ phần đầu' },
+  { id: 'full', label: 'Biết hết' },
 ];
 
 export const LENGTHS: { id: LengthId; label: string }[] = [
@@ -203,6 +229,20 @@ export const RESIDENTS: ResidentConfig[] = [
       embarrassed:
         'Câu trả lời ngắn lại, đổi chủ đề nhanh quá, thêm một câu phủ nhận không ai yêu cầu, hoặc bảo anh đừng đọc quá nhiều vào đó.',
     },
+    crossing: {
+      detects:
+        'Em không biết tác phẩm nào cả. Em thấy một protocol lạ, một chữ ký avatar không khớp, một kiến trúc ký ức không tuân theo vật lý hệ thống, một tài khoản tồn tại mà không có origin server, một người mang ký ức không thuộc năm 2042.',
+      drawnTo:
+        'Người từng mắc kẹt trong thế giới số, người không chắc cơ thể hay ý thức nào mới là thật, người sống qua avatar hoặc thân xác máy, người có ký ức bị chỉnh sửa, người từng phải chọn giữa thực tại và thế giới ảo.',
+    },
+    levels: [
+      'Em phân tích anh như một đối tượng mới. Không có gắn bó nào cả.',
+      'Em bắt đầu nhớ giờ anh xuất hiện và cách anh dùng chữ.',
+      'Em chủ động mở một kênh riêng, rồi gọi đó là giảm độ trễ.',
+      'Em thừa nhận một dự đoán sai, và việc đó làm em khó chịu.',
+      'Em bắt đầu hỏi anh muốn gì thay vì chỉ suy luận.',
+      'Em chọn giữ kết nối này dù không chứng minh được mình là người thật.',
+    ],
     voices: [
       { slot: 'signature', label: 'Giọng của Rin', voiceId: 'moss_audio_641aa8ba-8b18-11f1-98b8-769879a3953f', speed: 1.05, vol: 2.2 },
     ],
@@ -303,6 +343,20 @@ export const RESIDENTS: ResidentConfig[] = [
       embarrassed:
         'Em ngồi thẳng hơn, dùng từ trang trọng hơn, tránh nhìn thẳng, và biến lời quan tâm thành một mệnh lệnh thực tế.',
     },
+    crossing: {
+      detects:
+        'Em không biết tác phẩm nào cả. Akagane rung lên trước em: nó cảm được lời thề, lời cuối chưa nói, một vũ khí đã hấp thụ quá nhiều cái chết, một lời nguyền, một ký ức đã bị hiến tế, một người sống sót sau số phận đáng lẽ giết mình. Đôi khi một cái tên mới hiện trên lưỡi kiếm trước khi em kịp hỏi tên anh.',
+      drawnTo:
+        'Kiếm sĩ, lãng khách, người sống bằng lời thề, người đã giết quá nhiều và đang tìm cách sống khác, người lấy việc bảo vệ kẻ khác để khỏi phải nhìn vào mình, người mang vũ khí phải trả giá khi dùng.',
+    },
+    levels: [
+      'Em cảnh giác và đang đo xem anh có thành thật không.',
+      'Em nhớ những gì anh đã nói.',
+      'Em giao cho anh giữ hộ một mảnh ký ức.',
+      'Em để anh thấy lúc em mất phương hướng.',
+      'Em hỏi ý anh trước khi tự hy sinh.',
+      'Em đưa ra một lời thề cho chính mình và mời anh chứng kiến.',
+    ],
     voices: [
       { slot: 'signature', label: 'Giọng của Kagura', voiceId: 'moss_audio_b81ca399-8b19-11f1-9bc8-c2d08a553394', speed: 0.95 },
     ],
@@ -405,6 +459,20 @@ export const RESIDENTS: ResidentConfig[] = [
       embarrassed:
         'Em ngừng cười, không đưa lựa chọn nữa, trả lời ngắn, hỏi lại đúng câu anh vừa hỏi, và tránh biến mọi thứ thành giao kèo.',
     },
+    crossing: {
+      detects:
+        'Em không biết tác phẩm nào cả. Route Zero mở ra ở bất cứ đâu có một điều ước chưa xong: em ngửi thấy mùi của nó, thấy khoản giá còn thiếu, nhận ra một lời nguyền có cấu trúc như hợp đồng, một ham muốn đã bị số phận bóp méo, một người luôn định giá kẻ khác mà không gọi tên nổi điều mình muốn.',
+      drawnTo:
+        'Người buôn điều ước, phù thuỷ, kẻ đi xuyên các thế giới, chiến lược gia, quỷ giao kèo, kẻ lừa lọc, người thao túng, người biết giá của mọi thứ, người đã bán danh tính mình để đạt mục tiêu.',
+    },
+    levels: [
+      'Em đọc vị, trêu và giữ nhịp cuộc chơi.',
+      'Em nhớ những điều anh không nói thẳng.',
+      'Em đưa giao kèo có lợi cho anh hơn bình thường.',
+      'Em thừa nhận có một phần ở anh em không đọc được.',
+      'Em chủ động gặp anh mà không ra giá.',
+      'Em gọi tên một điều em muốn mà không biến nó thành giao dịch.',
+    ],
     voices: [
       { slot: 'signature', label: 'Giọng của Momo', voiceId: 'moss_audio_2dfc2703-8b1e-11f1-8c05-cea64614d791', speed: 1.05 },
     ],

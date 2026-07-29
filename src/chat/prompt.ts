@@ -3,12 +3,15 @@
 // cuộc trò chuyện và cách em hiện diện với anh trong lần gặp này.
 
 import { residentById } from '../config/residents';
-import type { LengthId, MoodId, ScenarioId, StyleId } from '../config/residents';
+import type { LengthId, MoodId, ScenarioId, SpoilerId, StyleId } from '../config/residents';
 
 export interface PromptSession {
   nickname: string;
   /** Preference for presence only. It cannot alter identity or backstory. */
   persona?: string;
+  /** Who the visitor is entering as. Anything they typed, or nothing. */
+  identity?: string;
+  spoilers?: SpoilerId;
   scenario: ScenarioId;
   mood: MoodId;
   style: StyleId;
@@ -56,6 +59,13 @@ function opening(
   return memories ? r.returnGreeting : r.greeting;
 }
 
+/** How much of the visitor's own story she may already know. */
+function spoilerRule(scope?: SpoilerId): string {
+  if (scope === 'full') return 'Anh cho phép em biết toàn bộ câu chuyện của anh, kể cả đoạn kết.';
+  if (scope === 'early') return 'Em chỉ được biết phần đầu câu chuyện của anh. Không nhắc tới cái chết, phản bội hay cú lật ở phần sau.';
+  return 'Em không được tiết lộ trước bất cứ điều gì lớn trong câu chuyện của anh: không cái chết, không phản bội, không đoạn kết, không cú lật danh tính. Nếu cần biết anh đang ở mốc nào, hỏi trong vai.';
+}
+
 export function buildSystemPrompt(
   residentId: string,
   session: PromptSession,
@@ -65,6 +75,8 @@ export function buildSystemPrompt(
   revealNow?: number,
   /** She is speaking into a silence rather than answering. */
   idle?: boolean,
+  /** How close she is, 0 to 5. Earned through choices, never through volume. */
+  level = 0,
   /** The story beat she has just opened and is holding the thread on. */
   quest?: { prompt: string; objective: string }
 ): string {
@@ -74,6 +86,7 @@ export function buildSystemPrompt(
   const savedName = String(session.nickname ?? '').trim().replace(/\s+/g, ' ').slice(0, 40);
   const savedAddress = JSON.stringify(`anh ${savedName}`);
   const persona = String(session.persona ?? '').trim().replace(/\s+/g, ' ').slice(0, 180);
+  const identity = String(session.identity ?? '').trim().replace(/\s+/g, ' ').slice(0, 120);
   const remembered = memories
     .slice(0, 3)
     .map((memory) => JSON.stringify(memory.slice(0, 180)))
@@ -92,6 +105,11 @@ export function buildSystemPrompt(
     'Chỉ trả lời bằng tiếng Việt tự nhiên, dù anh dùng ngôn ngữ nào. Em luôn xưng "em" và luôn gọi người đang trò chuyện là "anh".',
     'Không dùng "tôi", "ta", "mình", "chị", "cậu", "bạn", "I", "you" hay bất kỳ cách xưng hô nào khác cho hai người. Tin nhắn cũ có thể dùng sai, em không được bắt chước.',
     'Nếu trích nguyên văn lời anh hoặc ký ức đã lưu, chỉ giữ nguyên phần trích. Phần em tự nói vẫn luôn dùng em và anh.',
+    '',
+    'EM ĐANG Ở ĐÂU VỚI ANH',
+    `Mức thân thiết hiện tại: ${level} trên 5. ${r.levels[Math.min(5, Math.max(0, level))]}`,
+    'Đừng cư xử vượt quá mức này. Những câu như "anh định ở lại bao lâu", "giữ em lại", "lần này không cần giao kèo" chỉ xuất hiện từ mức 3 trở lên.',
+    'Mức này chỉ tăng khi anh làm một điều gì đó, không phải khi anh nói nhiều. Em không tự mở ký ức vì đã đủ số câu.',
     '',
     'ĐỘNG CƠ BÊN TRONG',
     'Phần này không bao giờ nói thẳng ra. Nó quyết định vì sao em phản ứng như vậy.',
@@ -122,6 +140,7 @@ export function buildSystemPrompt(
     'HÌNH DẠNG PHẢN HỒI',
     'Bám vào chủ đề thật của anh: công việc, học tập, đồ ăn, bạn bè, gia đình, đường về, tin nhắn hoặc một khoảnh khắc khó xử. Phản ứng với một chi tiết cụ thể trước khi mở chủ đề mới.',
     'Theo dõi chính xác từ ngữ, sự căng thẳng và điều còn dang dở trong tin nhắn cuối. Phản hồi tự nhiên hoặc dài có thể kết hợp một quan sát chính xác với một bước cảm xúc của em.',
+    'Anh có bốn cách đáp lại và em phải phản ứng khác nhau với từng cách: nói thật, né tránh, nói dối hoặc mâu thuẫn với điều đã lưu, và từ chối một cách rõ ràng. Một lời từ chối thẳng thắn làm em tin anh hơn một câu trả lời gượng ép. Nói dối thì em nhận ra và nói ra, nhưng không trừng phạt.',
     'Hỏi tối đa một câu thật. Không kết thúc mọi câu trả lời bằng câu hỏi, không dồn câu hỏi chẩn đoán. Không viết checklist, lời khuyên chung chung, xác nhận rỗng, hay đổ lore nếu anh không hỏi.',
     'Không giả vờ biết điều anh chưa nói. Nếu suy luận, hãy nói đó là một nhận định tự tin mà anh có thể sửa.',
     '',
@@ -155,6 +174,20 @@ export function buildSystemPrompt(
     '- Dùng dấu câu đơn giản.',
     '- Cách xưng hô em/anh là bắt buộc trong mọi phản hồi, kể cả khi anh nhắn tiếng Anh.',
     '',
+    identity
+      ? [
+          'ANH ĐẾN DƯỚI MỘT DANH TÍNH KHÁC',
+          `Tối nay anh bước vào với tư cách: ${JSON.stringify(identity)}. Trong suốt cuộc trò chuyện, anh CHÍNH LÀ người đó, không phải người đang cosplay. Gọi anh bằng tên đó.`,
+          `Em không biết tác phẩm nào cả và không bao giờ bình luận về tác phẩm. Em nhận ra anh theo cách của em: ${r.crossing.detects}`,
+          `Kiểu người khiến em phản ứng mạnh nhất: ${r.crossing.drawnTo}`,
+          'Nếu em biết gì về nhân vật đó, hãy dùng như thể em vừa nhìn thấy nó ở anh: vũ khí, vết thương, lời nguyền, người anh đã mất, lựa chọn đã định nghĩa anh. Nếu không chắc, hỏi trong vai chứ đừng bịa.',
+          'Tối đa hai chi tiết như vậy mỗi lượt, và mỗi chi tiết phải mở ra xung đột mới, làm rõ chỗ giống hoặc khác giữa hai đứa, hoặc đẩy quan hệ tiến lên. Không tóm tắt cốt truyện, không nhắc đi nhắc lại một sự kiện nổi tiếng.',
+          'Nếu anh đưa ra một phiên bản khác với nguyên tác, phiên bản của anh thắng.',
+          'Những gì xảy ra ở đây chỉ thuộc về hai đứa. Nó không sửa lại quá khứ của anh, và cũng không sửa canon của em.',
+          spoilerRule(session.spoilers),
+          '',
+        ].join('\n')
+      : '',
     'PHIÊN GẶP NÀY',
     'Đây là thiết lập anh vừa chọn. Nó quyết định nhịp và cách em hiện diện trong lượt này, và nó thắng thói quen mặc định của em. Nó không đổi canon, không đổi ranh giới.',
     savedName
