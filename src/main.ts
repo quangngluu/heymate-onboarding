@@ -573,7 +573,7 @@ class App implements UIActions {
     this.speechToken++;
     const line = spoken(text);
     if (!line) return Promise.resolve(null);
-    return renderSpeech(line, slot.voiceId, slot.speed).then((url) =>
+    return renderSpeech(line, slot.voiceId, slot.speed, text, store.get().session.mood, slot.vol).then((url) =>
       url ? this.ambience.prepareClip(url) : null
     );
   }
@@ -687,7 +687,7 @@ class App implements UIActions {
       store.set({ voicing: false });
       return;
     }
-    void renderSpeech(line, slot.voiceId, slot.speed).then((url) => {
+    void renderSpeech(line, slot.voiceId, slot.speed, text, store.get().session.mood, slot.vol).then((url) => {
       store.set({ voicing: false });
       // She may have been swapped out while the audio rendered.
       if (!url || store.get().residentId !== speakerId) return;
@@ -826,7 +826,7 @@ class App implements UIActions {
     const slot = r.voices.find((voice) => voice.slot === s.session.voice) ?? r.voices[0];
     this.cancelIdleNudge();
     store.set({ voicing: true });
-    void renderSpeech(line, slot.voiceId, slot.speed).then(async (url) => {
+    void renderSpeech(line, slot.voiceId, slot.speed, undefined, s.session.mood, slot.vol).then(async (url) => {
       if (store.get().residentId !== residentId || store.get().step !== 'stage') return;
       const buffer = url ? await this.ambience.prepareClip(url) : null;
       if (store.get().residentId !== residentId || store.get().step !== 'stage') return;

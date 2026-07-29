@@ -133,3 +133,81 @@ export function spoken(text: string): string {
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+// ---------------------------------------------------------------------------
+// Delivery
+//
+// A beat is dropped from the spoken half, which leaves the two halves of a
+// line running together with no gap where the action happened. That is why
+// delivery sounds flat even when the writing is not. MiniMax gives us the
+// three things needed to put the moment back: `<#s#>` pauses, interjection
+// tags on the 2.8 models, and an emotion on the voice. All three are derived
+// from what the writer already wrote, so nobody has to annotate anything.
+
+/** Interjections MiniMax renders as sound rather than words. */
+const SOUNDS: [RegExp, string][] = [
+  [/\b(cười (phá|lớn|ph[aá] l[eê]n))|bật cười to/i, '(laughs)'],
+  [/cười|khúc khích|nhếch mép/i, '(chuckle)'],
+  [/thở dài|thở hắt/i, '(sighs)'],
+  [/hít (một )?hơi|hít vào/i, '(inhale)'],
+  [/thở ra|buông hơi/i, '(exhale)'],
+  [/hắng giọng|đằng hắng/i, '(clear-throat)'],
+  [/\bho\b|ho khan/i, '(coughs)'],
+  [/ngân nga|hát khẽ|ậm ừ/i, '(humming)'],
+  [/nín thở|hụt hơi|nghẹn/i, '(gasps)'],
+  [/khịt mũi/i, '(sniffs)'],
+  [/\bừm\b|ậm/i, '(emm)'],
+];
+
+/** What a beat says about how the next line should land. */
+const FEELINGS: [RegExp, string][] = [
+  [/cười|tủm tỉm|nheo mắt|trêu|nhếch mép/i, 'happy'],
+  [/thở dài|cúi (đầu|mặt)|lặng|buồn|khẽ nói/i, 'sad'],
+  [/nhíu mày|siết|gắt|lườm/i, 'angry'],
+  [/nhướn mày|khựng|sững|tròn mắt|ngẩng phắt/i, 'surprised'],
+];
+
+export type Delivery = { text: string; emotion?: string };
+
+function match(table: [RegExp, string][], beat: string): string | undefined {
+  for (const [re, value] of table) if (re.test(beat)) return value;
+  return undefined;
+}
+
+/**
+ * Turn a written reply into something a voice can perform: the spoken half,
+ * with a breath where each action happened, the action rendered as a sound
+ * when it makes one, and an emotion taken from the first beat that names one.
+ *
+ * `mood` is the session setting, used when no beat says otherwise.
+ */
+export function delivery(raw: string, mood?: string): Delivery {
+  const parts: string[] = [];
+  let emotion: string | undefined;
+
+  for (const seg of segments(raw)) {
+    if (seg.kind === 'speech') {
+      parts.push(seg.text);
+      continue;
+    }
+    emotion ??= match(FEELINGS, seg.text);
+    const sound = match(SOUNDS, seg.text);
+    // The action itself takes a moment, whether or not it makes a noise.
+    parts.push(sound ? `${sound}<#0.25#>` : '<#0.4#>');
+  }
+
+  return {
+    // A short rest between sentences matches the rhythm of the bubbles
+    // arriving one after another on screen.
+    text: parts.join(' ').replace(/([.!?…])\s+(?=\S)/g, '$1<#0.22#> ').trim(),
+    emotion: emotion ?? MOOD_FEELING[mood ?? ''],
+  };
+}
+
+const MOOD_FEELING: Record<string, string | undefined> = {
+  calm: 'calm',
+  playful: 'happy',
+  caring: 'calm',
+  energetic: 'happy',
+  serious: 'fluent',
+};

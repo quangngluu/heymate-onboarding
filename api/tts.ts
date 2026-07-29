@@ -6,6 +6,8 @@
 // await, and we cap the wait so a slow render degrades to text-only instead
 // of hanging the conversation.
 
+import { delivery } from '../src/chat/dialogue';
+
 export const config = { runtime: 'edge' };
 
 const ENDPOINT = 'https://spoonai-tts-api.lucylab.io/json-rpc';
@@ -18,6 +20,15 @@ interface TtsRequest {
   /** Per-resident voice; falls back to the account default. */
   voiceId?: string;
   speed?: number;
+  /**
+   * The written line with its *beats* intact, and the session mood. Only
+   * MiniMax can use them, so the markup is composed here rather than in the
+   * browser: a provider that cannot read a pause tag would say it out loud.
+   */
+  raw?: string;
+  mood?: string;
+  /** Per-voice loudness trim; clips from different clones do not match. */
+  vol?: number;
 }
 
 async function rpc(key: string, method: string, input: unknown): Promise<Record<string, unknown>> {
@@ -42,15 +53,18 @@ async function minimax(body: TtsRequest, text: string): Promise<Response> {
   const defaultVoice = process.env.MINIMAX_VOICE_ID;
   if (!key) return Response.json({ error: 'not-configured' }, { status: 503 });
 
+  const performed = body.raw ? delivery(body.raw, body.mood) : { text, emotion: undefined };
   const upstream = await fetch(MINIMAX_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
     body: JSON.stringify({
       model: process.env.MINIMAX_MODEL || 'speech-2.8-turbo',
-      text,
+      text: performed.text || text,
       voice_setting: {
         voice_id: body.voiceId || defaultVoice,
         speed: body.speed ?? 1,
+        vol: body.vol ?? 1,
+        ...(performed.emotion ? { emotion: performed.emotion } : {}),
       },
       audio_setting: { format: 'mp3', sample_rate: 32000 },
       language_boost: 'Vietnamese',
