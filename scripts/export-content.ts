@@ -60,6 +60,20 @@ for (const r of RESIDENTS) {
   p(`- **Khi cảm xúc chạm tới:** ${r.conversation.emotionalTurn}`);
   p(`- **Tránh:** ${r.conversation.avoid}`);
   p();
+  p('### Vòng chưa đóng');
+  p();
+  p(`- **Thứ còn thiếu:** ${r.loop.missing}`);
+  p(`- **Em đề nghị:** ${r.loop.offer}`);
+  p('- **Ba cách anh đáp:**');
+  for (const a of r.loop.answers) p(`  - ${a}`);
+  p(`- **Hình ảnh để lại:** ${r.loop.closingImage}`);
+  p();
+  p('### Bối cảnh cho ảnh sinh tự động');
+  p();
+  p(`- **Nơi chốn:** ${r.imagery.places}`);
+  p(`- **Đồ vật:** ${r.imagery.props}`);
+  p(`- **Ánh sáng, chất liệu:** ${r.imagery.air}`);
+  p();
   p('### Ký ức (mở dần theo nhiệm vụ)');
   p();
   r.episodes.forEach((e, i) => {
@@ -72,13 +86,25 @@ for (const r of RESIDENTS) {
   p('### Nhiệm vụ');
   p();
   for (const q of QUESTS.filter((x) => x.residentId === r.id)) {
-    p(`**${q.title}** — mở ký ức "${r.episodes[q.rewardEpisode]?.title ?? '(không rõ)'}"`);
+    p(`**${q.title}** — mở tới ký ức "${r.episodes[q.rewardEpisode]?.title ?? '(không rõ)'}"`);
     p();
-    p(`- *Em mời:* ${q.prompt}`);
+    p(`- *Tóm tắt:* ${q.synopsis}`);
     p(`- *Mục tiêu hiện trên UI:* ${q.objective}`);
-    p('- *Ba lựa chọn cho người dùng:*');
-    for (const o of q.options) p(`  - ${o}`);
     p();
+    for (const node of q.nodes) {
+      p(`  **Chặng \`${node.id}\`${node.id === q.startNodeId ? ' (mở đầu)' : ''}**`);
+      p();
+      p(`  - *Em hỏi:* ${node.prompt}`);
+      for (const c of node.choices) {
+        p(`  - *Anh chọn:* ${c.label}`);
+        p(`    - *Kết quả:* ${c.outcome}`);
+        if (c.nextNodeId) p(`    - *Đi tiếp tới:* \`${c.nextNodeId}\``);
+        if (c.unlockEpisode !== undefined) {
+          p(`    - *Mở ký ức:* ${r.episodes[c.unlockEpisode]?.title ?? c.unlockEpisode}`);
+        }
+      }
+      p();
+    }
   }
 }
 

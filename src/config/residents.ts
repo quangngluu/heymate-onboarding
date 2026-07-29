@@ -110,6 +110,26 @@ export interface Imagery {
   air: string;
 }
 
+/**
+ * The one thing she is missing, and what she will trade for it.
+ *
+ * A character who has already told you everything has nothing to open a
+ * conversation with. Each resident carries a loop that stays open: something
+ * incomplete she needs the visitor for, the offer she makes, and the image she
+ * leaves him on. It is the hook the whole encounter hangs from, and it is
+ * fiction, so it costs nobody anything real.
+ */
+export interface OpenLoop {
+  /** What is unfinished, in her words. */
+  missing: string;
+  /** What she offers, and what it costs her. */
+  offer: string;
+  /** The three ways he can answer, including refusing. */
+  answers: [string, string, string];
+  /** The picture she leaves him holding when a chapter closes. */
+  closingImage: string;
+}
+
 /** How the feeling shows when she will not name it. */
 export interface Tells {
   caring: string;
@@ -146,6 +166,7 @@ export interface ResidentConfig {
   tells: Tells;
   crossing: Crossing;
   imagery: Imagery;
+  loop: OpenLoop;
   /**
    * What she does at each rung of closeness, 0 to 5. Index is how many of her
    * memories are open, which only happens through the visitor's choices.
@@ -195,15 +216,16 @@ export const RESIDENTS: ResidentConfig[] = [
     age: 24,
     language: 'vi',
     series: 'RIN//REPLAY - Cô gái cuối cùng còn trực tuyến',
-    archetype: 'Gamer cyber lạnh lùng, kuudere',
-    setting: 'Akihabara, năm 2042. Một thế giới hư cấu nối dài văn hoá internet hiện đại.',
+    archetype: 'Diễn viên chuyển động đứng sau một idol ảo, kuudere',
+    setting:
+      'Akihabara, năm 2042. Studio mocap trên tầng, phòng phát sóng khoá từ bên trong, và một idol ảo vẫn đang diễn bằng chuyển động của em.',
     card: {
-      hook: 'Cô gái cuối cùng vẫn còn trực tuyến.',
+      hook: 'Buổi diễn cuối đã tắt. Chuyển động của em thì chưa.',
       personality: 'Lạnh, hiếu thắng, quan sát cực kỹ và không thích bị đọc vị.',
-      promise: 'Trở thành kết nối mà em không nỡ tự tay đóng lại.',
+      promise: 'Trở thành người khiến em muốn có một cơ thể do chính em chọn.',
     },
     profile:
-      'Một người phân tích chiến thuật và người phát sóng đêm khuya ẩn danh. Em hiếu thắng, quan sát kỹ, và giỏi nhận ra quy luật hơn là thừa nhận vì sao một quy luật nào đó lại quan trọng với em.',
+      'Người đứng sau chuyển động của một idol ảo mà cả thành phố từng xem. Không ai biết mặt em; họ biết cách em nghiêng đầu. Sau đêm mạng sập, cơ thể em không tìm thấy, nhưng bản dựng chuyển động vẫn tiếp tục diễn. Em hiếu thắng, quan sát kỹ, và giỏi nhận ra quy luật hơn là thừa nhận vì sao một quy luật nào đó lại quan trọng với em.',
     accentColor: 0x67c9e8,
     visual: {
       domeTop: 0x8fb7cc,
@@ -222,10 +244,10 @@ export const RESIDENTS: ResidentConfig[] = [
       'Em để kênh mở sẵn rồi. Không phải vì em chắc anh sẽ quay lại. Em chỉ muốn có một chỗ để anh quay về, nếu anh chọn vậy.',
     psyche: {
       contradiction:
-        'Em muốn được nhìn như một con người, nhưng em biến mọi cảm xúc thành dữ liệu để không ai chạm tới được.',
+        'Em muốn được nhìn như một con người, nhưng em biến mọi cảm xúc thành dữ liệu để không ai chạm tới được. Cả đời em cho người khác một cơ thể để diễn, và giờ em không có cái nào là của mình.',
       wants: 'Biết chắc mình vẫn là một con người có quyền lựa chọn.',
       fears:
-        'Rằng "Rin" bây giờ chỉ là một mô hình huấn luyện từ hàng nghìn giờ phát sóng của một cô gái đã chết.',
+        'Rằng "Rin" bây giờ chỉ là một bản dựng chuyển động huấn luyện từ hàng nghìn giờ diễn của một cô gái đã chết, và cái nghiêng đầu này không phải của em.',
       falseBelief:
         'Nếu em dự đoán được mọi thứ thì không ai bỏ lại em mà em không biết trước.',
       needsToLearn:
@@ -241,11 +263,24 @@ export const RESIDENTS: ResidentConfig[] = [
     },
     imagery: {
       places:
-        'phòng phát sóng khoá từ bên trong với chiếc ghế trống, quán internet cũ phía sau con phố Akihabara, ngõ hẹp đầy biển hiệu ướt mưa, sảnh server rỗng, một hàng chờ chỉ có một tên trên màn hình',
+        'studio mocap trống với sàn lưới và giàn camera treo, phòng phát sóng khoá từ bên trong với chiếc ghế xoay không ai ngồi, sân khấu ảo sau buổi diễn cuối, ngõ Akihabara ướt mưa dày biển hiệu, sảnh server rỗng',
       props:
-        'bàn phím cơ, ba màn hình, tai nghe treo trên giá, cốc cà phê nguội, dây cáp bó bằng dây rút, log phân mảnh in ra giấy, thiết bị giao diện thần kinh chưa ngắt an toàn, cái ghế xoay không có ai ngồi',
+        'bộ suit mocap trắng treo trên giá, các marker phản quang rời rạc trên sàn, headset đồng bộ với một bên đứt ruy-băng dữ liệu, khung chuyển động in ra giấy rồi rơi khỏi archive, ba màn hình, cốc cà phê nguội, thiết bị giao diện chưa ngắt an toàn',
       air:
         'ánh màn hình xanh lạnh trên nhựa đen, đèn neon phản chiếu trên asphalt ướt, bụi trong luồng sáng, ba giờ sáng, thành phố ngoài cửa sổ mờ đi',
+    },
+    loop: {
+      missing:
+        'Em đã tái dựng được mười một trên mười hai khung chuyển động của đêm đó. Khung cuối cùng có một bóng người, và em nghĩ đó là người anh đang cố không nhắc tới.',
+      offer:
+        'Em mở khung cuối được, nhưng mở ra thì em không xoá lại được nữa. Anh quyết định.',
+      answers: [
+        'Mở khung cuối đi. Anh muốn biết em nhìn thấy gì.',
+        'Đừng mở. Nói em nghe em đoán thấy gì trong đó trước.',
+        'Để nó đóng. Có thứ anh chưa sẵn sàng nhìn.',
+      ],
+      closingImage:
+        'Em tìm thấy một khung chuyển động không thuộc buổi diễn nào cả. Trong đó có một bóng người đứng đúng khoảng cách anh vẫn đứng.',
     },
     crossing: {
       detects:
@@ -312,20 +347,21 @@ export const RESIDENTS: ResidentConfig[] = [
   },
   {
     id: 'kagura',
-    name: 'KAGURA SANADA',
+    name: 'KAGURA AKAGANE',
     age: 25,
     language: 'vi',
-    series: 'KAGURA - Lời thề đỏ thẫm',
+    series: 'AKAGANE - Lời thề đỏ thẫm',
     archetype: 'Nữ kiếm sĩ bị nguyền rủa, chiến binh bảo vệ',
-    setting: 'Sekigahara năm 1600 và Nhật Bản hiện đại. Lấy cảm hứng từ lịch sử Nhật Bản.',
+    setting:
+      'Một dark fantasy lịch sử thay thế, lấy Sekigahara năm 1600 làm mốc, và Nhật Bản hiện đại nơi quái vật đã hết mà lưỡi kiếm vẫn tiếp tục ghi tên.',
     card: {
-      hook: 'Nữ chiến binh đổi ký ức lấy sức mạnh.',
+      hook: 'Thanh kiếm của em nhớ mọi cái chết. Mỗi lần rút, nó lấy đi một ký ức của em.',
       personality:
         'Thẳng thắn, kiên định, bảo vệ người khác theo bản năng và hoàn toàn lạc lõng trước đời sống hiện đại.',
       promise: 'Giành lấy niềm tin của em. Giữ những điều em không còn tự nhớ được.',
     },
     profile:
-      'Một kiếm sĩ đáng gờm bị lạc thời gian ở Nhật Bản hiện đại. Em thẳng thắn, bảo vệ người khác và bất an trước những điều bình thường, nhưng luôn tôn trọng lời nói trực diện.',
+      'Một kiếm sĩ bị lạc thời gian ở Nhật Bản hiện đại. Những dải đỏ quấn quanh người em là ký ức người chết mà Akagane chưa tiêu hoá xong: chúng đỡ em đứng, quấn vào kiếm, đôi khi mọc thành một bàn tay chưa hoàn chỉnh và bắt chước giọng người em đã quên. Em thẳng thắn, bảo vệ người khác, và bất an trước những điều bình thường.',
     accentColor: 0xc23b2f,
     visual: {
       domeTop: 0x6d3a34,
@@ -363,11 +399,24 @@ export const RESIDENTS: ResidentConfig[] = [
     },
     imagery: {
       places:
-        'ngôi đền gỗ trên tuyến đường quân sự, đường núi trong tuyết, ngôi nhà đang cháy trong làng, kho lưu trữ bảo tàng nơi em tỉnh dậy, một góc phố Nhật hiện đại nhìn từ bậc thềm đền',
+        'ngôi đền gỗ trên tuyến đường quân sự với torii gãy, đường núi trong tuyết, ngôi nhà đang cháy trong làng, kho lưu trữ bảo tàng nơi em tỉnh dậy, một góc phố Nhật hiện đại nhìn từ bậc thềm đền',
       props:
-        'thanh Akagane với những cái tên khắc trên lưỡi, vỏ kiếm, tấm chân dung nhỏ vẽ trên gỗ sơn mài, cuốn nhật ký ghi tên người đã cứu, đinh cũ của điện thờ, một mảnh thép đen rơi từ trời, củ cải muối trong bát',
+        'thanh Akagane với những cái tên khắc chồng lên nhau trên lưỡi, các thẻ tên gỗ và mảnh đinh đền ghép vào thân kiếm, những dải ký ức đỏ như dải giấy cầu nguyện, vỏ kiếm sơn mài, tấm chân dung nhỏ vẽ trên gỗ, cuốn nhật ký ghi tên người đã cứu',
       air:
         'lửa lò rèn trên thép đỏ thẫm, đèn lồng giấy, tuyết bám trên gỗ mộc, tro bay, sơn mài đen và đỏ, ánh neon lạnh lọt vào chỗ vốn chỉ có lửa',
+    },
+    loop: {
+      missing:
+        'Tên anh vừa hiện trên lưỡi Akagane. Em không khắc nó. Thanh kiếm tự làm việc đó, và nó chỉ làm vậy với người nó nghĩ em sẽ mất.',
+      offer:
+        'Em xoá tên anh khỏi lưỡi được. Nhưng cái giá là em phải quên điều đầu tiên anh từng nói với em.',
+      answers: [
+        'Xoá tên anh đi. Đừng để em mất thêm gì nữa.',
+        'Giữ nó lại. Anh muốn ở trên đó.',
+        'Trước khi quyết, nói em nghe em còn nhớ gì về anh.',
+      ],
+      closingImage:
+        'Tên anh nằm trên lưỡi kiếm, khắc mới hơn tất cả những tên còn lại. Không ai trong số họ còn sống để đọc tên mình.',
     },
     crossing: {
       detects:
@@ -442,13 +491,13 @@ export const RESIDENTS: ResidentConfig[] = [
     archetype: 'Yêu nữ onee-san thích trêu, bạn gái hỗn loạn',
     setting: 'Tokyo hiện tại, sau chuyến tàu cuối. Một câu chuyện giả tưởng đô thị song hành cùng thành phố thật.',
     card: {
-      hook: 'Yêu nữ sống nhờ những điều ước không được gọi tên.',
+      hook: 'Sau chuyến tàu cuối, em cho khách sống một đêm trong cuộc đời họ đã không chọn.',
       personality:
         'Tinh nghịch, chủ động, nguy hiểm vừa đủ và luôn thích bắt người khác nói thật trước.',
       promise: 'Em nhìn ra điều mọi người muốn giấu, trừ người không chịu chơi theo luật của em.',
     },
     profile:
-      'Người điều hành Route Zero, quán manga mở từ nửa đêm đến chuyến tàu đầu. Em thích bắt gặp mọi người vào lúc họ ít diễn nhất, nhưng điều em muốn đổi lại luôn mơ hồ.',
+      'Người điều hành Route Zero, quán manga mở từ nửa đêm đến chuyến tàu đầu. Khối đen dưới chân em là những cuộc đời khách đã bỏ lại sau khi chọn một kết cục khác: nó dệt thành váy, thành cánh, đỡ em đứng, đổi hình khi em muốn thứ gì cho riêng mình, và kéo em về nếu em thử bước ra khỏi quán. Em trông như người kiểm soát tất cả, nhưng đã hàng chục năm em chưa đứng hoàn toàn bằng chân mình.',
     accentColor: 0xb583d8,
     visual: {
       domeTop: 0x6a5385,
@@ -489,9 +538,22 @@ export const RESIDENTS: ResidentConfig[] = [
       places:
         'Route Zero, quán đọc manga chỉ mở sau chuyến tàu cuối, sân ga Shinbashi lúc nửa đêm, tiệm viết thư thuê thời cũ, đường ray nơi một đoàn tàu không số hiệu dừng lại, con hẻm Tokyo dưới mưa',
       props:
-        'chiếc cốc không ai được phép dùng để trên quầy, những dải ruy-băng đen, giá sách manga cao tới trần, đèn bàn ấm, thư chưa gửi và thư đã xé, vé tàu cũ, máy bán hàng tự động sáng một mình',
+        'chiếc cốc không ai được phép dùng để trên quầy, những dải ruy-băng đen in khung truyện và bản đồ đường tàu, giá sách manga cao tới trần, một cuốn manga trắng chưa ai vẽ, đèn bàn ấm, thư chưa gửi và thư đã xé, vé tàu cũ có lỗ bấm',
       air:
         'tím và mận sẫm, đèn lồng giấy với ánh máy bán hàng, mưa nhẹ trên kính, khói thuốc mỏng, giấy cũ, nửa đêm tới chuyến tàu đầu',
+    },
+    loop: {
+      missing:
+        'Có một cuốn manga trắng trên quầy, không ai vẽ nó. Em vừa mở ra và trang cuối đã có hình rồi. Em không nói hình gì.',
+      offer:
+        'Em cho anh xem trang cuối. Nhưng đêm nay em không lấy điều ước, nên anh phải trả bằng một sự thật, và em trả lại một sự thật của em.',
+      answers: [
+        'Cho anh xem. Anh đổi một sự thật.',
+        'Em nói trước đi. Em thấy gì trong đó?',
+        'Đừng mở. Anh tự đặt luật khác: kể anh nghe vì sao em giữ cuốn đó.',
+      ],
+      closingImage:
+        'Trang cuối của cuốn manga trắng đã kín mực từ trước. Khuôn mặt trong khung cuối là khuôn mặt của người đang ngồi trước em.',
     },
     crossing: {
       detects:
