@@ -58,6 +58,53 @@ export function loadRawModel(url: string): Promise<THREE.Group> {
   });
 }
 
+/**
+ * Where the figure actually stands, which is not where its bounding box says.
+ * A sword held out to one side or a cape thrown to the other drags the box
+ * centre away from the display disc, and the disc is the part that has to sit
+ * concentric with the speaker. So the centre is taken from the footprint: the
+ * horizontal extents of everything in the lowest slab of the model.
+ */
+function footCenter(src: THREE.Object3D, box: THREE.Box3): THREE.Vector3 {
+  const height = box.max.y - box.min.y;
+  const cut = box.min.y + Math.max(1e-4, height * 0.05);
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  let hits = 0;
+  const v = new THREE.Vector3();
+
+  src.updateWorldMatrix(true, true);
+  src.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const pos = mesh.geometry.getAttribute('position');
+    if (!pos) return;
+    // Every few vertices is plenty to bound a disc, and keeps a million-vertex
+    // scan off the load path.
+    const step = Math.max(1, Math.floor(pos.count / 20000));
+    for (let i = 0; i < pos.count; i += step) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+      if (v.y > cut) continue;
+      hits++;
+      if (v.x < minX) minX = v.x;
+      if (v.x > maxX) maxX = v.x;
+      if (v.z < minZ) minZ = v.z;
+      if (v.z > maxZ) maxZ = v.z;
+    }
+  });
+
+  const box_ = box.getCenter(new THREE.Vector3());
+  if (hits < 24) return box_;
+  const foot = new THREE.Vector3((minX + maxX) / 2, box_.y, (minZ + maxZ) / 2);
+  // A footprint wider than the whole figure means the slab caught something
+  // other than a base; the bounding box is the safer answer then.
+  const span = Math.max(maxX - minX, maxZ - minZ);
+  const full = Math.max(box.max.x - box.min.x, box.max.z - box.min.z);
+  return span > full * 1.05 ? box_ : foot;
+}
+
 export function loadNormalized(url: string): Promise<THREE.Group> {
   let p = cache.get(url);
   if (!p) {
@@ -67,7 +114,7 @@ export function loadNormalized(url: string): Promise<THREE.Group> {
       const size = box.getSize(new THREE.Vector3());
       src.scale.setScalar(CHARACTER_HEIGHT / (size.y || 1));
       const box2 = new THREE.Box3().setFromObject(src);
-      const center = box2.getCenter(new THREE.Vector3());
+      const center = footCenter(src, box2);
       src.position.x -= center.x;
       src.position.z -= center.z;
       src.position.y -= box2.min.y;

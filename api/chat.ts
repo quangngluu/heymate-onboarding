@@ -20,8 +20,24 @@ export const config = { runtime: 'edge' };
 
 const ENDPOINT = 'https://api.deepseek.com/chat/completions';
 const MODEL = process.env.DEEPSEEK_MODEL ?? 'deepseek-chat';
-const MAX_TOKENS = { short: 70, natural: 130, expressive: 180 } as const;
+const MAX_TOKENS = { short: 120, natural: 220, expressive: 320 } as const;
 const INVALID_ADDRESSING = /(^|[^\p{L}])(?:tôi|tao|tớ|mình(?!\s+anh(?=$|[^\p{L}]))|chị|cậu|bạn|ngươi|ngài|i|you|your)(?=$|[^\p{L}])/iu;
+
+/**
+ * A reply stopped by the token cap ends mid-clause, which reads as a bug. Cut
+ * back to the last sentence she finished; keep the whole thing if there is no
+ * clean break to fall back to.
+ */
+function trimToSentence(text: string | undefined, finishReason?: string): string | undefined {
+  if (!text || finishReason !== 'length') return text;
+  const cut = Math.max(
+    text.lastIndexOf('.'),
+    text.lastIndexOf('!'),
+    text.lastIndexOf('?'),
+    text.lastIndexOf('\u2026')
+  );
+  return cut > text.length * 0.4 ? text.slice(0, cut + 1) : text;
+}
 
 /** Never leak a model turn that breaks the app-wide em/anh relationship. */
 function hasInvalidAddressing(text: string): boolean {
@@ -95,9 +111,12 @@ export default async function handler(req: Request): Promise<Response> {
       return Response.json({ error: 'upstream', status: upstream.status }, { status: 502 });
     }
     const data = (await upstream.json()) as {
-      choices?: { message?: { content?: string } }[];
+      choices?: { message?: { content?: string }; finish_reason?: string }[];
     };
-    const text = data.choices?.[0]?.message?.content?.trim();
+    const text = trimToSentence(
+      data.choices?.[0]?.message?.content?.trim(),
+      data.choices?.[0]?.finish_reason
+    );
     if (!text) return Response.json({ error: 'empty' }, { status: 502 });
     if (!hasInvalidAddressing(text)) return Response.json({ text });
 

@@ -558,19 +558,16 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         // Her actions and her words look different, because they are: one is
         // the room, the other is her voice. Only the second is ever spoken.
         log.replaceChildren(
-          ...s.chat.map((t, i) => {
-            if (t.from !== 'resident') return h('p', { class: 'bubble bubble-user' }, t.text);
+          ...s.chat.flatMap((t, i) => {
+            if (t.from !== 'resident') return [h('p', { class: 'bubble bubble-user' }, t.text)];
             const partial = s.reveal?.turn === i;
             const parts = partial ? segmentsUpTo(t.text, s.reveal!.words) : segments(t.text);
-            return h(
-              'p',
-              { class: `bubble bubble-resident${partial ? ' is-typing' : ''}` },
-              ...parts.map((seg) =>
-                seg.kind === 'beat'
-                  ? h('span', { class: 'beat' }, seg.text)
-                  : h('span', { class: 'said' }, seg.text)
-              )
-            );
+            return parts.map((seg, k) => {
+              const tail = partial && k === parts.length - 1 ? ' is-typing' : '';
+              return seg.kind === 'beat'
+                ? h('p', { class: `beat-line${tail}` }, seg.text)
+                : h('p', { class: `bubble bubble-resident${tail}` }, seg.text);
+            });
           }),
           ...(waiting
             ? [

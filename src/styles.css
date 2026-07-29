@@ -653,8 +653,8 @@ html, body {
 
 /* A line still arriving keeps a cursor, so a pause reads as her thinking of
    the next word rather than as the app having stopped. */
-.bubble.is-typing .said:last-child::after,
-.bubble.is-typing .beat:last-child::after {
+.bubble.is-typing::after,
+.beat-line.is-typing::after {
   content: '';
   display: inline-block;
   width: 2px;
@@ -666,22 +666,22 @@ html, body {
 }
 @keyframes caret { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
 
-/* A beat is what she is doing; it is set apart, dimmer and italic, and it is
-   the half the voice engine never receives. */
-.bubble .beat {
-  display: block;
+/* A beat is what she is doing. It sits between her bubbles rather than inside
+   one, so it never reads as speech, and it is the half the voice engine never
+   receives. */
+.beat-line {
+  align-self: flex-start;
+  max-width: 94%;
   font-style: italic;
   font-size: 12px;
   line-height: 1.45;
   color: var(--ivory-dim);
-  opacity: 0.78;
-  padding-left: 9px;
+  opacity: 0.8;
+  padding: 1px 0 1px 9px;
   border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  margin: 2px 0 5px;
 }
-.bubble .beat:last-child { margin-bottom: 0; }
-.bubble .said { display: block; }
-.bubble .said + .said { margin-top: 4px; }
+/* Consecutive bubbles from her are one utterance broken into messages. */
+.bubble-resident + .bubble-resident { margin-top: -2px; }
 
 .chat-row { display: flex; gap: 8px; }
 .chat-input {
@@ -1203,7 +1203,7 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .step, .panel, .arrival-copy, .customize-panel { transition: none; }
   .bubble.is-waiting span { animation: none; opacity: 0.6; }
-  .bubble.is-typing .said:last-child::after { animation: none; }
+  .bubble.is-typing::after, .beat-line.is-typing::after { animation: none; }
 }
 
 @media (prefers-reduced-transparency: reduce) {

@@ -23,7 +23,44 @@ export function segments(text: string): Segment[] {
   }
   const tail = text.slice(last).trim();
   if (tail) out.push({ kind: 'speech', text: tail });
-  return out.length ? out : [{ kind: 'speech', text: text.trim() }];
+  const all = out.length ? out : [{ kind: 'speech' as const, text: text.trim() }];
+  return all.flatMap((seg) => (seg.kind === 'speech' ? chunk(seg.text) : [seg]));
+}
+
+/**
+ * One long paragraph in a single bubble reads as a wall. Someone talking to
+ * you sends a couple of sentences, then a couple more. Split on sentence
+ * boundaries, keeping very short sentences with the one that follows so a
+ * two-word line never gets a bubble of its own.
+ */
+const MIN_CHUNK = 34;
+const MAX_CHUNK = 150;
+
+function chunk(text: string): Segment[] {
+  const sentences = text.match(/[^.!?\u2026]+[.!?\u2026]*\s*/g) ?? [text];
+  const out: Segment[] = [];
+  let buf = '';
+  for (const raw of sentences) {
+    const s = raw.trim();
+    if (!s) continue;
+    const next = buf ? `${buf} ${s}` : s;
+    if (buf && next.length > MAX_CHUNK) {
+      out.push({ kind: 'speech', text: buf });
+      buf = s;
+    } else {
+      buf = next;
+    }
+    if (buf.length >= MIN_CHUNK) {
+      out.push({ kind: 'speech', text: buf });
+      buf = '';
+    }
+  }
+  if (buf) {
+    // A trailing scrap joins the previous bubble rather than standing alone.
+    if (out.length && buf.length < MIN_CHUNK) out[out.length - 1].text += ` ${buf}`;
+    else out.push({ kind: 'speech', text: buf });
+  }
+  return out.length ? out : [{ kind: 'speech', text }];
 }
 
 /**
