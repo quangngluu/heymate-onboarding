@@ -17,7 +17,7 @@ export const COPY = {
     setSessionShort: 'Thiết lập',
     cardToggle: 'Hồ sơ',
     levelLabel: 'Em với anh',
-    levelNext: 'Xong một nhiệm vụ để em mở thêm một phần.',
+    levelNext: 'Đi tiếp trong mạch truyện để em mở thêm một phần.',
     levelMax: 'Em đã kể hết với anh rồi.',
     voiceChat: 'Gọi cho em',
     voiceChatLocked: 'Sắp mở: nói trực tiếp với em bằng giọng của anh.',

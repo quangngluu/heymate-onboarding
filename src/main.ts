@@ -24,7 +24,6 @@ import { getReply } from './chat/client';
 import { cancelSpeech, renderSpeech, streamSpeech } from './chat/voice';
 import { spoken } from './chat/dialogue';
 import { residentById, type ResidentId } from './config/residents';
-import { writeQuest } from './chat/questgen';
 import { drawScene } from './chat/scene';
 import { questNode } from './config/quests';
 import { Ambience } from './audio/ambience';
@@ -61,9 +60,11 @@ function storyContext(residentId: ResidentId): { flags: string[]; outcomes: stri
   const questTitles = new Map(store.questsFor(residentId).map((quest) => [quest.id, quest.title]));
   return {
     flags: state.storyFlags[residentId] ?? [],
-    outcomes: Object.entries(state.questOutcomes)
+    outcomes: Object.entries(state.questHistory)
       .filter(([questId]) => questTitles.has(questId))
-      .map(([questId, outcome]) => `${questTitles.get(questId)}: ${outcome}`),
+      .flatMap(([questId, outcomes]) =>
+        outcomes.map((outcome) => `${questTitles.get(questId)}: ${outcome}`)
+      ),
   };
 }
 
@@ -850,13 +851,14 @@ class App implements UIActions {
     };
     // History excludes the turn we just pushed; the message is sent separately.
     const history = after.chat.slice(0, -1);
-    // Generated scenes live in the store too; the reply needs the same thread
-    // whether the current scene was authored up front or written for him.
     const openQuest = s.activeQuestId ? store.questById2(s.activeQuestId) : undefined;
+    const openNode = openQuest
+      ? questNode(openQuest, s.activeQuestNodeId ?? openQuest.startNodeId)
+      : undefined;
 
     void getReply(text, ctx, history, {
       level: store.level,
-      quest: openQuest && { prompt: openQuest.prompt, objective: openQuest.objective },
+      quest: openQuest && openNode && { prompt: openNode.prompt, objective: openQuest.objective },
       story: storyContext(s.residentId),
     }).then(async (result) => {
       if (store.get().residentId !== s.residentId) return; // switched residents
@@ -932,43 +934,6 @@ class App implements UIActions {
       }, 2600);
       return;
     }
-    void this.writeScene();
-  }
-
-  /** Ask her for a scene of her own once the authored ones are finished. */
-  private async writeScene(): Promise<void> {
-    const s = store.get();
-    if (s.writingQuest) return;
-    const residentId = s.residentId;
-    store.set({ writingQuest: true });
-    try {
-      const written = await writeQuest({
-        residentId,
-        session: s.session,
-        memories: store.progressFor(residentId).memories,
-        revealed: s.revealed,
-        level: store.level,
-        used: store.questsFor(residentId).map((q) => q.title),
-      });
-      if (!written || store.get().residentId !== residentId) {
-        store.set({ writingQuest: false });
-        return;
-      }
-      store.addQuest({
-        id: `${residentId}-own-${store.questsFor(residentId).length}`,
-        residentId: residentId as ResidentId,
-        title: written.title,
-        prompt: written.prompt,
-        objective: written.objective,
-        // Nothing left to open; the reward is credits.
-        rewardEpisode: -1,
-        minCharacters: 14,
-        kind: 'side',
-        options: written.options as [string, string, string],
-      });
-    } catch {
-      store.set({ writingQuest: false });
-    }
   }
 
   /**
@@ -979,14 +944,14 @@ class App implements UIActions {
    * also the only subject a text-to-image model can keep consistent without a
    * trained likeness.
    */
-  private illustrate(turn: number, imageKey: string, text: string): void {
+  private illustrate(turn: number, imageKey: string, text: string, scene?: string): void {
     if (store.get().sceneShots[imageKey]) {
       store.showShot(turn, imageKey);
       return;
     }
     if (!store.spend('sceneImage')) return;
     const residentId = store.get().residentId;
-    void drawScene(residentId, text).then((url) => {
+    void drawScene(residentId, text, scene).then((url) => {
       if (!url) {
         // Charged for a picture that never arrived.
         store.refund('sceneImage');
@@ -1006,16 +971,17 @@ class App implements UIActions {
     // list; a quest she says out loud is a turn in the conversation.
     const quest = store.questById2(id);
     if (!quest) return;
-    store.pushTurn({ from: 'resident', text: quest.prompt });
-    this.speak(quest.prompt);
-    this.streamIn(store.get().chat.length - 1, quest.prompt, Promise.resolve(null), false);
+    const opening = questNode(quest, quest.startNodeId).prompt;
+    store.pushTurn({ from: 'resident', text: opening });
+    this.speak(opening);
+    this.streamIn(store.get().chat.length - 1, opening, Promise.resolve(null), false);
   }
 
   chooseQuest(choiceId: string): void {
     const s = store.get();
     const quest = s.activeQuestId ? store.questById2(s.activeQuestId) : undefined;
     if (!quest || s.thinking || s.voicing) return;
-    const node = questNode(quest, s.activeQuestNodeId ?? 'start');
+    const node = questNode(quest, s.activeQuestNodeId ?? quest.startNodeId);
     const choice = node.choices.find((item) => item.id === choiceId);
     if (!choice || !store.spend('turn')) return;
     this.cancelIdleNudge();
@@ -1028,10 +994,12 @@ class App implements UIActions {
     this.speak(reply);
     const turn = store.get().chat.length - 1;
     this.streamIn(turn, reply, Promise.resolve(null), false);
-    if (choice.imageKey) this.illustrate(turn, choice.imageKey, choice.outcome);
+    if (choice.imageKey) {
+      const scene = `${quest.title}. ${quest.synopsis} Vừa hỏi: ${node.prompt}`;
+      this.illustrate(turn, choice.imageKey, choice.outcome, scene);
+    }
     if (result.completed) {
       this.ambience.chime(980);
-      if (!store.nextQuest()) void this.writeScene();
     } else {
       this.ambience.chime(680);
     }

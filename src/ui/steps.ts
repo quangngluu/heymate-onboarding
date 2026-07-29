@@ -584,6 +584,17 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     unlockGate
   );
 
+  // The dock is the only thing whose height nobody controls: the quest strip
+  // makes it two or three times taller. Publish that height so the rail above
+  // can stay clear of it instead of guessing.
+  const watchDock = new ResizeObserver(([entry]) => {
+    // Border box, not content box: the dock's own padding and border are 26px
+    // of the height the rail has to clear, and measuring the content box put
+    // her last line exactly that far underneath it.
+    const box = entry.borderBoxSize?.[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
+    el.style.setProperty('--dock-h', `${Math.round(box)}px`);
+  });
+
   let lastResident = '';
   let lastQuestId = '';
   let lastChatLen = -1;
@@ -591,9 +602,13 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   let lastRevealKey = '';
   let lastShotKeys = '';
   let lastGateOpen = false;
+  watchDock.observe(dock);
 
   return {
     el,
+    destroy() {
+      watchDock.disconnect();
+    },
     update(s) {
       const r = residentById(s.residentId);
       const saved = s.progress[s.residentId];
@@ -668,7 +683,9 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       mobileSettingsBtn.setAttribute('aria-expanded', String(s.sessionPanelOpen));
 
       const openQuest = s.activeQuestId ? store.questById2(s.activeQuestId) : undefined;
-      const openNode = openQuest ? questNode(openQuest, s.activeQuestNodeId ?? 'start') : undefined;
+      const openNode = openQuest
+        ? questNode(openQuest, s.activeQuestNodeId ?? openQuest.startNodeId)
+        : undefined;
       (questStrip as HTMLElement).hidden = !openQuest;
       dock.classList.toggle('is-quest', !!openQuest);
       const questKey = openQuest && openNode ? `${openQuest.id}:${openNode.id}` : '';
@@ -798,14 +815,22 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
               : available
                 ? COPY.stage.questStart
                 : COPY.stage.questLocked;
-          const reward = r.episodes[quest.rewardEpisode]?.title ?? 'Nhánh phụ';
+          const endings = quest.nodes.reduce(
+            (count, node) => count + node.choices.filter((choice) => !choice.nextNodeId).length,
+            0
+          );
           return h(
             'article',
             { class: `quest-card${done ? ' is-done' : ''}${active ? ' is-active' : ''}` },
-            h('span', { class: 'quest-kind' }, quest.rewardEpisode >= 0 ? 'Cốt truyện chính' : 'Nhánh phụ'),
+            h('span', { class: 'quest-kind' }, 'Cốt truyện chính'),
             h('h3', { class: 'quest-title' }, quest.title),
-            h('p', { class: 'hint' }, quest.prompt),
-            h('p', { class: 'hint faint' }, `${COPY.stage.questReward}: ${reward} · +25 credit`),
+            h('p', { class: 'hint' }, quest.synopsis),
+            h('p', { class: 'hint faint' }, `${quest.nodes.length} cảnh · ${endings} kết cục`),
+            h(
+              'p',
+              { class: 'hint faint' },
+              `${COPY.stage.questReward}: ${quest.canonRef.length} chương canon · +25 credit`
+            ),
             h(
               'button',
               { class: 'btn btn-secondary xs', disabled: done || !available || active, onClick: () => actions.startQuest(quest.id) },

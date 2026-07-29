@@ -15,8 +15,10 @@ import { residentById } from '../src/config/residents';
 
 interface SceneRequest {
   residentId: string;
-  /** What she just said, or the invitation she just opened. */
+  /** The outcome of the branch: what the choice left behind. */
   text: string;
+  /** The scene it belongs to, so the drawing is of that scene and not of a mood. */
+  scene?: string;
 }
 
 export const config = { runtime: 'edge' };
@@ -32,12 +34,13 @@ const LOOK: Record<string, string> = {
   momo: 'Tokyo after the last train, violet and dark plum, paper lanterns and vending-machine light, soft rain, cinematic still',
 };
 
-const BRIEF = `Bạn viết brief cho một tấm ảnh minh hoạ bối cảnh.
-Đọc câu nói dưới đây và mô tả CẢNH VẬT hoặc ĐỒ VẬT mà nó gợi ra.
+const BRIEF = `Bạn viết brief cho một tấm ảnh minh hoạ bối cảnh trong một câu chuyện cụ thể.
 Luật:
 - Tuyệt đối không có người, không khuôn mặt, không cơ thể, không bóng người.
-- Chỉ nơi chốn và đồ vật: căn phòng, con đường, chiếc cốc, màn hình, thanh kiếm, ô cửa.
-- Một câu tiếng Anh, dưới 30 từ, chỉ danh từ và tính từ thị giác.
+- Chỉ nơi chốn và đồ vật.
+- PHẢI lấy nơi chốn và đồ vật từ danh sách bối cảnh được cho, không được tự nghĩ ra một khung cảnh chung chung. Chọn đúng một nơi và một hoặc hai đồ vật khớp nhất với chuyện vừa xảy ra.
+- Nếu chuyện vừa xảy ra có một vật cụ thể được nhắc tới, vật đó phải là chủ thể của ảnh.
+- Một câu tiếng Anh, dưới 35 từ, chỉ danh từ và tính từ thị giác.
 - Không giải thích, không dấu ngoặc kép, chỉ trả về câu đó.`;
 
 export default async function handler(req: Request): Promise<Response> {
@@ -73,8 +76,21 @@ export default async function handler(req: Request): Promise<Response> {
         max_tokens: 90,
         temperature: 0.7,
         messages: [
-          { role: 'system', content: `${BRIEF}\nBối cảnh của nhân vật: ${resident.setting}` },
-          { role: 'user', content: text },
+          {
+            role: 'system',
+            content: [
+              BRIEF,
+              '',
+              `Thế giới: ${resident.setting}`,
+              `Những nơi có thật trong truyện: ${resident.imagery.places}`,
+              `Những đồ vật có thật trong truyện: ${resident.imagery.props}`,
+              `Ánh sáng và chất liệu: ${resident.imagery.air}`,
+            ].join('\n'),
+          },
+          {
+            role: 'user',
+            content: body.scene ? `Cảnh: ${body.scene}\nVừa xảy ra: ${text}` : text,
+          },
         ],
       }),
       signal: AbortSignal.timeout(12000),

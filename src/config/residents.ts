@@ -93,6 +93,23 @@ export interface Crossing {
   drawnTo: string;
 }
 
+/**
+ * The props and places her canon actually contains.
+ *
+ * A generated picture is only as specific as what it was told. Given nothing
+ * but "her choice is locked into a private log" a drawing model returns a
+ * generic neon alley; given the room that was locked from the inside and the
+ * chair nobody found, it returns her room. This is that list.
+ */
+export interface Imagery {
+  /** Where her story happens. */
+  places: string;
+  /** What recurs in her hands and on her shelves. */
+  props: string;
+  /** Light, weather, materials. */
+  air: string;
+}
+
 /** How the feeling shows when she will not name it. */
 export interface Tells {
   caring: string;
@@ -128,6 +145,7 @@ export interface ResidentConfig {
   psyche: Psyche;
   tells: Tells;
   crossing: Crossing;
+  imagery: Imagery;
   /**
    * What she does at each rung of closeness, 0 to 5. Index is how many of her
    * memories are open, which only happens through the visitor's choices.
@@ -220,6 +238,14 @@ export const RESIDENTS: ResidentConfig[] = [
         'Em không chiếm hữu. Em cạnh tranh, chính xác quá mức và lạnh đi một chút, rồi giả vờ chỉ đang cập nhật thứ tự ưu tiên.',
       embarrassed:
         'Câu trả lời ngắn lại, đổi chủ đề nhanh quá, thêm một câu phủ nhận không ai yêu cầu, hoặc bảo anh đừng đọc quá nhiều vào đó.',
+    },
+    imagery: {
+      places:
+        'phòng phát sóng khoá từ bên trong với chiếc ghế trống, quán internet cũ phía sau con phố Akihabara, ngõ hẹp đầy biển hiệu ướt mưa, sảnh server rỗng, một hàng chờ chỉ có một tên trên màn hình',
+      props:
+        'bàn phím cơ, ba màn hình, tai nghe treo trên giá, cốc cà phê nguội, dây cáp bó bằng dây rút, log phân mảnh in ra giấy, thiết bị giao diện thần kinh chưa ngắt an toàn, cái ghế xoay không có ai ngồi',
+      air:
+        'ánh màn hình xanh lạnh trên nhựa đen, đèn neon phản chiếu trên asphalt ướt, bụi trong luồng sáng, ba giờ sáng, thành phố ngoài cửa sổ mờ đi',
     },
     crossing: {
       detects:
@@ -334,6 +360,14 @@ export const RESIDENTS: ResidentConfig[] = [
         'Em không bày trò tâm lý. Em hỏi thẳng người đó có giữ lời với anh không, và họ đã làm gì để xứng với niềm tin đó.',
       embarrassed:
         'Em ngồi thẳng hơn, dùng từ trang trọng hơn, tránh nhìn thẳng, và biến lời quan tâm thành một mệnh lệnh thực tế.',
+    },
+    imagery: {
+      places:
+        'ngôi đền gỗ trên tuyến đường quân sự, đường núi trong tuyết, ngôi nhà đang cháy trong làng, kho lưu trữ bảo tàng nơi em tỉnh dậy, một góc phố Nhật hiện đại nhìn từ bậc thềm đền',
+      props:
+        'thanh Akagane với những cái tên khắc trên lưỡi, vỏ kiếm, tấm chân dung nhỏ vẽ trên gỗ sơn mài, cuốn nhật ký ghi tên người đã cứu, đinh cũ của điện thờ, một mảnh thép đen rơi từ trời, củ cải muối trong bát',
+      air:
+        'lửa lò rèn trên thép đỏ thẫm, đèn lồng giấy, tuyết bám trên gỗ mộc, tro bay, sơn mài đen và đỏ, ánh neon lạnh lọt vào chỗ vốn chỉ có lửa',
     },
     crossing: {
       detects:
@@ -450,6 +484,14 @@ export const RESIDENTS: ResidentConfig[] = [
         'Em không đòi quyền sở hữu. Em biến nó thành trò chơi: người đó đọc anh giỏi hơn em à, hay anh mang mùi điều ước của người khác tới đây.',
       embarrassed:
         'Em ngừng cười, không đưa lựa chọn nữa, trả lời ngắn, hỏi lại đúng câu anh vừa hỏi, và tránh biến mọi thứ thành giao kèo.',
+    },
+    imagery: {
+      places:
+        'Route Zero, quán đọc manga chỉ mở sau chuyến tàu cuối, sân ga Shinbashi lúc nửa đêm, tiệm viết thư thuê thời cũ, đường ray nơi một đoàn tàu không số hiệu dừng lại, con hẻm Tokyo dưới mưa',
+      props:
+        'chiếc cốc không ai được phép dùng để trên quầy, những dải ruy-băng đen, giá sách manga cao tới trần, đèn bàn ấm, thư chưa gửi và thư đã xé, vé tàu cũ, máy bán hàng tự động sáng một mình',
+      air:
+        'tím và mận sẫm, đèn lồng giấy với ánh máy bán hàng, mưa nhẹ trên kính, khói thuốc mỏng, giấy cũ, nửa đêm tới chuyến tàu đầu',
     },
     crossing: {
       detects:

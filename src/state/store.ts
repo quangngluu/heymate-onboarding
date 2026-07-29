@@ -145,16 +145,10 @@ export interface AppState {
   onboardingCompleted: string[];
   /** Set when a spend was refused, so the dock can say which one and why. */
   broke: Spend | null;
-  /**
-   * Scenes written by her rather than by us, once the authored five are done.
-   * Keyed by resident and persisted, so a scene survives the session that
-   * produced it.
-   */
-  generated: Record<string, QuestDefinition[]>;
-  /** True while one is being written. */
-  writingQuest: boolean;
   storyFlags: Record<string, string[]>;
   questOutcomes: Record<string, string>;
+  /** Every authored consequence in order, not only the final ending. */
+  questHistory: Record<string, string[]>;
   /** Turn the last scene closed on, so the next one does not follow instantly. */
   questClosedAt: number;
   /**
@@ -202,10 +196,9 @@ const initialState: AppState = {
   transactions: [],
   onboardingCompleted: [],
   broke: null,
-  generated: {},
-  writingQuest: false,
   storyFlags: {},
   questOutcomes: {},
+  questHistory: {},
   questClosedAt: -99,
   sceneShots: {},
   turnShots: {},
@@ -236,24 +229,24 @@ export class Store {
           progress: Record<string, SavedProgress>;
           credits?: number;
           viewUnlocked?: Record<string, boolean>;
-          generated?: Record<string, QuestDefinition[]>;
           transactions?: CreditTransaction[];
           onboardingCompleted?: string[];
           storyFlags?: Record<string, string[]>;
           sceneShots?: Record<string, string>;
           questOutcomes?: Record<string, string>;
+          questHistory?: Record<string, string[]>;
         };
         this.state = {
           ...this.state,
           progress: saved.progress ?? {},
           credits: saved.credits ?? this.state.credits,
           viewUnlocked: saved.viewUnlocked ?? {},
-          generated: saved.generated ?? {},
           transactions: saved.transactions ?? [],
           onboardingCompleted: saved.onboardingCompleted ?? [],
           storyFlags: saved.storyFlags ?? {},
           sceneShots: saved.sceneShots ?? {},
           questOutcomes: saved.questOutcomes ?? {},
+          questHistory: saved.questHistory ?? {},
         };
       }
     } catch {
@@ -288,12 +281,12 @@ export class Store {
           progress: this.state.progress,
           credits: this.state.credits,
           viewUnlocked: this.state.viewUnlocked,
-          generated: this.state.generated,
           transactions: this.state.transactions,
           onboardingCompleted: this.state.onboardingCompleted,
           storyFlags: this.state.storyFlags,
           sceneShots: this.state.sceneShots,
           questOutcomes: this.state.questOutcomes,
+          questHistory: this.state.questHistory,
         })
       );
     } catch {
@@ -520,9 +513,9 @@ export class Store {
 
 
   /** Start the next quest in a resident's ordered story path. */
-  /** Everything she could ask, ours and hers, in the order she would ask it. */
+  /** Exactly one authored arc per resident. */
   questsFor(id = this.state.residentId): QuestDefinition[] {
-    return [...questsForResident(id), ...(this.state.generated[id] ?? [])];
+    return questsForResident(id);
   }
 
   questById2(id: string): QuestDefinition | undefined {
@@ -535,25 +528,23 @@ export class Store {
     return this.questsFor(id).find((q) => !done.includes(q.id));
   }
 
-  /** A scene she wrote herself, kept for later. */
-  addQuest(quest: QuestDefinition): void {
-    const list = this.state.generated[quest.residentId] ?? [];
-    this.set({
-      generated: { ...this.state.generated, [quest.residentId]: [...list, quest] },
-      writingQuest: false,
-    });
-    this.persist();
-  }
-
   startQuest(id: string): boolean {
     const quest = this.questById2(id);
     if (!quest || quest.residentId !== this.state.residentId) return false;
     if (this.nextQuest()?.id !== id) return false;
+    const prev = this.progressFor(quest.residentId);
+    const revealed = Math.max(prev.revealed, 1);
     this.set({
+      progress: {
+        ...this.state.progress,
+        [quest.residentId]: { ...prev, revealed },
+      },
+      revealed: Math.max(this.state.revealed, revealed),
       activeQuestId: id,
-      activeQuestNodeId: 'start',
+      activeQuestNodeId: quest.startNodeId,
       questHubOpen: false,
     });
+    this.persist();
     return true;
   }
 
@@ -589,7 +580,7 @@ export class Store {
     const id = this.state.activeQuestId;
     const quest = id ? this.questById2(id) : undefined;
     if (!quest || quest.residentId !== this.state.residentId) return null;
-    const node = questNode(quest, this.state.activeQuestNodeId ?? 'start');
+    const node = questNode(quest, this.state.activeQuestNodeId ?? quest.startNodeId);
     const choice = node.choices.find((item) => item.id === choiceId);
     if (!choice) return null;
     const residentFlags = this.state.storyFlags[quest.residentId] ?? [];
@@ -599,29 +590,40 @@ export class Store {
         ? residentFlags
         : [...residentFlags, choice.flag],
     };
-    if (choice.nextNodeId) {
-      const next = questNode(quest, choice.nextNodeId);
-      this.set({
-        activeQuestNodeId: choice.nextNodeId,
-        storyFlags,
-        questOutcomes: { ...this.state.questOutcomes, [quest.id]: choice.outcome },
-      });
-      this.persist();
-      return { quest, choice, completed: false, nextPrompt: next.prompt };
-    }
-
     const prev = this.progressFor();
-    if (prev.completedQuests.includes(quest.id)) return null;
-    // Her own scenes have no memory left to open, so they pay in credits only.
-    const opens = quest.rewardEpisode >= 0;
-    const revealed = opens ? Math.max(prev.revealed, quest.rewardEpisode + 1) : prev.revealed;
+    const revealed =
+      choice.unlockEpisode === undefined
+        ? prev.revealed
+        : Math.max(prev.revealed, choice.unlockEpisode + 1);
     const progress = {
       ...this.state.progress,
       [quest.residentId]: {
         ...prev,
         revealed,
-        completedQuests: [...prev.completedQuests, quest.id],
       },
+    };
+    const questHistory = {
+      ...this.state.questHistory,
+      [quest.id]: [...(this.state.questHistory[quest.id] ?? []), choice.outcome].slice(-12),
+    };
+    if (choice.nextNodeId) {
+      const next = questNode(quest, choice.nextNodeId);
+      this.set({
+        progress,
+        revealed: Math.max(this.state.revealed, revealed),
+        activeQuestNodeId: choice.nextNodeId,
+        storyFlags,
+        questOutcomes: { ...this.state.questOutcomes, [quest.id]: choice.outcome },
+        questHistory,
+      });
+      this.persist();
+      return { quest, choice, completed: false, nextPrompt: next.prompt };
+    }
+
+    if (prev.completedQuests.includes(quest.id)) return null;
+    progress[quest.residentId] = {
+      ...progress[quest.residentId],
+      completedQuests: [...prev.completedQuests, quest.id],
     };
     const transaction = this.transaction('earn', 'storyQuest', STORY_QUEST_REWARD);
     this.set({
@@ -631,6 +633,7 @@ export class Store {
       transactions: [...this.state.transactions, transaction].slice(-30),
       storyFlags,
       questOutcomes: { ...this.state.questOutcomes, [quest.id]: choice.outcome },
+      questHistory,
       activeQuestId: null,
       activeQuestNodeId: null,
       questClosedAt: this.state.turns,
@@ -666,11 +669,11 @@ export class Store {
       progress: this.state.progress,
       credits: this.state.credits,
       viewUnlocked: this.state.viewUnlocked,
-      generated: this.state.generated,
       transactions: this.state.transactions,
       onboardingCompleted: this.state.onboardingCompleted,
       storyFlags: this.state.storyFlags,
       questOutcomes: this.state.questOutcomes,
+      questHistory: this.state.questHistory,
     });
   }
 
