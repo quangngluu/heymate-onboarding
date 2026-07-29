@@ -509,7 +509,6 @@ class App implements UIActions {
     // Only the authored signature greeting has audio; a callback is text.
     this.speak(line, saved.memories.length ? undefined : voice.url);
     this.streamIn(0, line, Promise.resolve(null), false);
-    this.armIdleNudge();
   }
 
   /**
@@ -528,7 +527,11 @@ class App implements UIActions {
 
   private speakIntoSilence(): void {
     const s = store.get();
-    if (s.step !== 'stage' || s.thinking || this.idleSpoken >= 2) return;
+    if (s.step !== 'stage' || this.idleSpoken >= 2) return;
+    if (s.thinking || s.voicing || s.speaking || s.reveal) {
+      this.armIdleNudge();
+      return;
+    }
     const r = residentById(s.residentId);
     const spokenIndex = this.idleSpoken;
     this.idleSpoken++;
@@ -556,7 +559,6 @@ class App implements UIActions {
       const prepared = this.startReplySpeech(result.text, s.residentId);
       store.pushTurn({ from: 'resident', text: result.text });
       this.streamIn(store.get().chat.length - 1, result.text, prepared);
-      this.armIdleNudge();
     });
   }
 
@@ -645,6 +647,7 @@ class App implements UIActions {
     this.speakTimer = window.setTimeout(() => {
       store.set({ speaking: false });
       this.residentStage?.setSpeaking(false);
+      this.armIdleNudge();
     }, secs * 1000);
   }
 
@@ -664,6 +667,7 @@ class App implements UIActions {
       this.speakTimer = window.setTimeout(() => {
         store.set({ speaking: false });
         this.residentStage?.setSpeaking(false);
+        this.armIdleNudge();
       }, secs * 1000);
     };
 
@@ -775,7 +779,6 @@ class App implements UIActions {
         store.set({ revealed: result.revealedRung + 1 });
       }
       this.streamIn(store.get().chat.length - 1, result.text, prepared);
-      this.armIdleNudge();
       // The free encounter ends by offering to keep what was said, not by
       // blocking the conversation mid-sentence.
       if (store.get().turns >= FREE_TURNS) {
@@ -841,7 +844,6 @@ class App implements UIActions {
       store.set({ voicing: false });
       store.pushTurn({ from: 'resident', text: line });
       this.speakPrepared(line, buffer);
-      this.armIdleNudge();
     });
   }
 

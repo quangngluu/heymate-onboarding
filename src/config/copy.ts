@@ -16,6 +16,8 @@ export const COPY = {
     setSession: 'Thiết lập cuộc trò chuyện',
     setSessionShort: 'Thiết lập',
     cardToggle: 'Hồ sơ',
+    voiceChat: 'Gọi cho em',
+    voiceChatLocked: 'Sắp mở: nói trực tiếp với em bằng giọng của anh.',
     sessionNote: 'Thiết lập này chỉ áp dụng cho lần gặp này. Con người của em không đổi.',
     nickname: 'Em nên gọi anh là gì?',
     nicknamePlaceholder: 'Tên hoặc biệt danh',

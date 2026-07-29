@@ -360,7 +360,7 @@ html, body {
   right: 24px;
   top: 76px;
   bottom: 132px;
-  width: min(340px, calc(100vw - 32px));
+  width: min(460px, calc(100vw - 32px));
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -466,18 +466,18 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 38vh;
+  max-height: 52vh;
   overflow-y: auto;
   padding-right: 4px;
   pointer-events: auto;
 }
 .speech-log:empty { display: none; }
 .bubble {
-  font-size: 13.5px;
-  line-height: 1.5;
-  padding: 11px 14px;
+  font-size: 14px;
+  line-height: 1.55;
+  padding: 11px 15px;
   border-radius: 14px;
-  max-width: 94%;
+  max-width: 88%;
   backdrop-filter: blur(18px) saturate(150%);
   -webkit-backdrop-filter: blur(18px) saturate(150%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 12px 30px rgba(0, 0, 0, 0.26);
@@ -503,7 +503,7 @@ html, body {
   left: 50%;
   bottom: 22px;
   transform: translateX(-50%);
-  width: min(660px, calc(100vw - 32px));
+  width: min(720px, calc(100vw - 32px));
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -577,6 +577,38 @@ html, body {
 .dock-chip:hover { color: var(--ivory); border-color: rgba(239, 230, 212, 0.34); }
 .dock-chip.is-active { color: var(--ivory); border-color: var(--accent); }
 .dock-chip:focus-visible { outline: 2px solid var(--ivory); outline-offset: 2px; }
+.dock-chip.is-locked {
+  position: relative;
+  cursor: default;
+  opacity: 0.55;
+  border-style: dashed;
+}
+.dock-chip.is-locked:hover { color: var(--ivory-dim); border-color: var(--line); }
+.dock-mic { display: inline-flex; align-items: center; gap: 6px; }
+.mic-glyph { font-size: 8px; color: var(--accent); opacity: 0.7; }
+.dock-chip.is-locked::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 240px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(10, 13, 18, 0.96);
+  color: var(--ivory);
+  font-size: 11.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+/* Disabled buttons do not fire :hover reliably, so the wrapper carries it. */
+.dock-chips:hover .dock-chip.is-locked:hover::after { opacity: 1; }
 .dock-hint {
   font-size: 12px;
   line-height: 1.45;
@@ -1147,6 +1179,7 @@ html, body {
      still show her. The rail breaks apart: card under the roster, words above
      the dock, the figurine in the band between them. */
   .stage-rail { display: contents; }
+  .dock-chips { flex-wrap: wrap; }
   .stage-info {
     position: absolute;
     left: 10px;

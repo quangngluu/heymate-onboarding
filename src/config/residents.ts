@@ -147,8 +147,7 @@ export const RESIDENTS: ResidentConfig[] = [
     modelUrl: 'assets/waifu-nyx.glb',
     greeting: 'Cuối cùng anh cũng thôi đứng ngoài cửa rồi. Vào ngồi đi, nói em nghe vì sao anh quay lại.',
     voices: [
-      { slot: 'signature', label: 'Giọng đặc trưng', voiceId: '3k4hZAVZkrZrK1Hn5ECnwS', speed: 1.1 },
-      { slot: 'alternate', label: 'Phát sóng đêm khuya', voiceId: 'o9qAGofg8ZbULbHCkS1VJ3', speed: 1 },
+      { slot: 'signature', label: 'Giọng của Rin', voiceId: '3k4hZAVZkrZrK1Hn5ECnwS', speed: 1.1 },
     ],
     episodes: [
       {
@@ -220,8 +219,7 @@ export const RESIDENTS: ResidentConfig[] = [
     modelUrl: 'assets/waifu-aria.glb',
     greeting: 'Lại gần đây. Em tỉnh dậy ở một thế kỷ xa lạ, mà anh là người duy nhất em muốn nhìn cho thật kỹ.',
     voices: [
-      { slot: 'signature', label: 'Giọng đặc trưng', voiceId: 'o9qAGofg8ZbULbHCkS1VJ3', speed: 0.94 },
-      { slot: 'alternate', label: 'Rời chiến trường', voiceId: 'tH4Pvi6EXeBHk97YMkCZU7', speed: 0.96 },
+      { slot: 'signature', label: 'Giọng của Kagura', voiceId: 'o9qAGofg8ZbULbHCkS1VJ3', speed: 0.94 },
     ],
     episodes: [
       {
@@ -293,8 +291,7 @@ export const RESIDENTS: ResidentConfig[] = [
     modelUrl: 'assets/waifu-suri.glb',
     greeting: 'Route Zero mở tới chuyến tàu đầu tiên. Tối nay chỉ mình anh bước vào mà không mang theo điều ước nào. Vậy thì anh đến vì em à?',
     voices: [
-      { slot: 'signature', label: 'Giọng đặc trưng', voiceId: '37QgwuRqpHtwaPWJeZ4E19', speed: 1.05 },
-      { slot: 'alternate', label: 'Sau giờ đóng cửa', voiceId: 'tH4Pvi6EXeBHk97YMkCZU7', speed: 1 },
+      { slot: 'signature', label: 'Giọng của Momo', voiceId: '37QgwuRqpHtwaPWJeZ4E19', speed: 1.05 },
     ],
     episodes: [
       {

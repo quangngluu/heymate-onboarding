@@ -162,6 +162,17 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     { class: 'dock-chip', onClick: () => actions.openSessionPanel() },
     COPY.stage.setSessionShort
   ) as HTMLButtonElement;
+  const micChip = h(
+    'button',
+    {
+      class: 'dock-chip dock-mic is-locked',
+      disabled: true,
+      'aria-label': COPY.stage.voiceChat,
+      'data-tip': COPY.stage.voiceChatLocked,
+    },
+    h('span', { class: 'mic-glyph', 'aria-hidden': 'true' }, '\u25cf'),
+    COPY.stage.voiceChat
+  ) as HTMLButtonElement;
 
   // A tag inside the field, plus quote marks around it: the bar has to look
   // like a line she will say out loud, not a message you are sending her.
@@ -176,7 +187,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     'div',
     { class: 'stage-dock' },
     questStrip,
-    h('div', { class: 'dock-top' }, h('div', { class: 'dock-chips' }, questChip, speakChip, setChip), turnsLeft),
+    h('div', { class: 'dock-top' }, h('div', { class: 'dock-chips' }, questChip, speakChip, micChip, setChip), turnsLeft),
     dockHint,
     h('div', { class: 'dock-bar' }, modeTag, h('div', { class: 'field-wrap' }, input), sendBtn)
   );
@@ -236,8 +247,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   const mood = segment(COPY.stage.mood, MOODS, (id) => actions.updateSession({ mood: id }));
   const style = segment(COPY.stage.style, STYLES, (id) => actions.updateSession({ style: id }));
   const len = segment(COPY.stage.length, LENGTHS, (id) => actions.updateSession({ length: id }));
-  const voiceSeg = h('div', { role: 'radiogroup', 'aria-label': COPY.stage.voice, class: 'segment' });
-  const voiceBtns: HTMLButtonElement[] = [];
 
   const sessionCard = h(
     'aside',
@@ -264,7 +273,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       mood.el,
       style.el,
       len.el,
-      h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, COPY.stage.voice), voiceSeg),
       h(
         'div',
         { class: 'voice-upcoming' },
@@ -468,24 +476,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           ),
           questBlock
         );
-        // Voice options are hers, not a shared library.
-        voiceBtns.length = 0;
-        voiceSeg.replaceChildren(
-          ...r.voices.map((v) => {
-            const b = h(
-              'button',
-              {
-                role: 'radio',
-                'aria-checked': 'false',
-                class: 'segment-btn',
-                onClick: () => actions.updateSession({ voice: v.slot }),
-              },
-              h('span', { class: 'segment-label' }, v.label)
-            ) as HTMLButtonElement;
-            voiceBtns.push(b);
-            return b;
-          })
-        );
       }
       if (document.activeElement !== nickInput) nickInput.value = s.session.nickname;
       if (document.activeElement !== personaInput) personaInput.value = s.session.persona;
@@ -516,9 +506,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       mood.btns.forEach((b, i) => b.setAttribute('aria-checked', String(MOODS[i].id === s.session.mood)));
       style.btns.forEach((b, i) => b.setAttribute('aria-checked', String(STYLES[i].id === s.session.style)));
       len.btns.forEach((b, i) => b.setAttribute('aria-checked', String(LENGTHS[i].id === s.session.length)));
-      voiceBtns.forEach((b, i) =>
-        b.setAttribute('aria-checked', String(r.voices[i].slot === s.session.voice))
-      );
 
       (sessionSheet as HTMLElement).hidden = !s.sessionPanelOpen;
       questChip.textContent = s.activeQuestId ? COPY.stage.questActive : COPY.stage.quest;
