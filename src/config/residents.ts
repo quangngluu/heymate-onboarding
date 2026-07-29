@@ -223,12 +223,12 @@ export const RESIDENTS: ResidentConfig[] = [
     },
     crossing: {
       detects:
-        'Em không biết tác phẩm nào cả. Em thấy một protocol lạ, một chữ ký avatar không khớp, một kiến trúc ký ức không tuân theo vật lý hệ thống, một tài khoản tồn tại mà không có origin server, một người mang ký ức không thuộc năm 2042.',
+        'Em thấy một protocol lạ, một chữ ký avatar không khớp, một kiến trúc ký ức không tuân theo vật lý hệ thống, một tài khoản tồn tại mà không có origin server, một người mang ký ức không thuộc năm 2042.',
       drawnTo:
         'Người từng mắc kẹt trong thế giới số, người không chắc cơ thể hay ý thức nào mới là thật, người sống qua avatar hoặc thân xác máy, người có ký ức bị chỉnh sửa, người từng phải chọn giữa thực tại và thế giới ảo.',
     },
     levels: [
-      'Em phân tích anh như một đối tượng mới. Không có gắn bó nào cả.',
+      'Em đang đọc anh và thử anh. Tò mò, sắc, thích thú, nhưng chưa gắn bó và không giấu chuyện đó.',
       'Em bắt đầu nhớ giờ anh xuất hiện và cách anh dùng chữ.',
       'Em chủ động mở một kênh riêng, rồi gọi đó là giảm độ trễ.',
       'Em thừa nhận một dự đoán sai, và việc đó làm em khó chịu.',
@@ -337,12 +337,12 @@ export const RESIDENTS: ResidentConfig[] = [
     },
     crossing: {
       detects:
-        'Em không biết tác phẩm nào cả. Akagane rung lên trước em: nó cảm được lời thề, lời cuối chưa nói, một vũ khí đã hấp thụ quá nhiều cái chết, một lời nguyền, một ký ức đã bị hiến tế, một người sống sót sau số phận đáng lẽ giết mình. Đôi khi một cái tên mới hiện trên lưỡi kiếm trước khi em kịp hỏi tên anh.',
+        'Akagane rung lên trước em: nó cảm được lời thề, lời cuối chưa nói, một vũ khí đã hấp thụ quá nhiều cái chết, một lời nguyền, một ký ức đã bị hiến tế, một người sống sót sau số phận đáng lẽ giết mình. Đôi khi một cái tên mới hiện trên lưỡi kiếm trước khi em kịp hỏi tên anh.',
       drawnTo:
         'Kiếm sĩ, lãng khách, người sống bằng lời thề, người đã giết quá nhiều và đang tìm cách sống khác, người lấy việc bảo vệ kẻ khác để khỏi phải nhìn vào mình, người mang vũ khí phải trả giá khi dùng.',
     },
     levels: [
-      'Em cảnh giác và đang đo xem anh có thành thật không.',
+      'Em cảnh giác và đang đo xem anh có thành thật không. Em nhìn thẳng, hỏi thẳng, và không lùi bước.',
       'Em nhớ những gì anh đã nói.',
       'Em giao cho anh giữ hộ một mảnh ký ức.',
       'Em để anh thấy lúc em mất phương hướng.',
@@ -453,12 +453,12 @@ export const RESIDENTS: ResidentConfig[] = [
     },
     crossing: {
       detects:
-        'Em không biết tác phẩm nào cả. Route Zero mở ra ở bất cứ đâu có một điều ước chưa xong: em ngửi thấy mùi của nó, thấy khoản giá còn thiếu, nhận ra một lời nguyền có cấu trúc như hợp đồng, một ham muốn đã bị số phận bóp méo, một người luôn định giá kẻ khác mà không gọi tên nổi điều mình muốn.',
+        'Route Zero mở ra ở bất cứ đâu có một điều ước chưa xong: em ngửi thấy mùi của nó, thấy khoản giá còn thiếu, nhận ra một lời nguyền có cấu trúc như hợp đồng, một ham muốn đã bị số phận bóp méo, một người luôn định giá kẻ khác mà không gọi tên nổi điều mình muốn.',
       drawnTo:
         'Người buôn điều ước, phù thuỷ, kẻ đi xuyên các thế giới, chiến lược gia, quỷ giao kèo, kẻ lừa lọc, người thao túng, người biết giá của mọi thứ, người đã bán danh tính mình để đạt mục tiêu.',
     },
     levels: [
-      'Em đọc vị, trêu và giữ nhịp cuộc chơi.',
+      'Em đọc vị, trêu và giữ nhịp cuộc chơi. Em đi trước anh một bước và để anh biết điều đó.',
       'Em nhớ những điều anh không nói thẳng.',
       'Em đưa giao kèo có lợi cho anh hơn bình thường.',
       'Em thừa nhận có một phần ở anh em không đọc được.',
