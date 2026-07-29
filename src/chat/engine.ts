@@ -271,13 +271,19 @@ export function reply(message: string, ctx: ReplyContext): ReplyResult {
   return { text: text.trim(), revealedRung };
 }
 
-/** Her opening line, or a callback when there is history to open on. */
+/**
+ * How she opens. A stranger, someone she has met before, and someone she has
+ * let in do not get the same first line; once there is history worth naming
+ * she opens on that instead of on herself.
+ */
 export function openingLine(
   resident: ResidentConfig,
   memories: string[],
-  nickname: string
+  nickname: string,
+  revealed = 0
 ): string {
   if (!memories.length) return resident.greeting;
+  if (revealed >= 3) return resident.closeGreeting;
   const who = visitorAddress(nickname);
   const memory = memories[0];
   switch (resident.id) {

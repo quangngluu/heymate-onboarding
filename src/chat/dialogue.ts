@@ -77,7 +77,9 @@ const MIN_CHUNK = 34;
 const MAX_CHUNK = 150;
 
 function chunk(text: string): Segment[] {
-  const sentences = text.match(/[^.!?\u2026]+[.!?\u2026]*\s*/g) ?? [text];
+  // The terminator has to be followed by a space or the end of the line, or
+  // "chậm lại 0.3 giây" becomes two bubbles split through the number.
+  const sentences = text.match(/[\s\S]*?(?:[.!?\u2026]+(?=\s|$)|$)/g)?.filter((s) => s.trim()) ?? [text];
   const out: Segment[] = [];
   let buf = '';
   for (const raw of sentences) {

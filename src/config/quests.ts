@@ -144,6 +144,95 @@ export const QUESTS: QuestDefinition[] = [
       'Anh sẽ về nhà sớm hơn, một buổi tối nào đó.',
     ],
   },
+  {
+    id: 'rin-twelfth',
+    residentId: 'rin',
+    title: 'Người thứ mười hai',
+    prompt: 'Log đêm đó có một kết nối không khớp. Em không đoán được. Anh nghĩ đó là ai?',
+    objective: 'Chọn theo điều anh tin, không theo xác suất.',
+    rewardEpisode: 3,
+    minCharacters: 14,
+    options: [
+      'Là em. Phần em đã không thoát ra được cùng mọi người.',
+      'Là người em vẫn giữ hàng chờ cho, và em biết điều đó.',
+      'Không có ai cả. Em đang tìm một lý do để mình từng là người thật.',
+    ],
+  },
+  {
+    id: 'rin-manual-shutdown',
+    residentId: 'rin',
+    title: 'Tắt bằng tay',
+    prompt:
+      'Em tìm ra cách đóng hệ thống để biết mình có thật hay không. Em có thể trở về, có thể biến mất. Anh không chọn thay em. Nếu không bao giờ biết chắc mình là ai, em nên sống thế nào?',
+    objective: 'Trả lời câu em không tự trả lời được.',
+    rewardEpisode: 4,
+    minCharacters: 20,
+    options: [
+      'Sống như người có quyền chọn, kể cả khi không chứng minh được.',
+      'Đừng đóng. Thật hay không cũng không đổi được điều đã xảy ra giữa hai đứa.',
+      'Đóng đi, nếu sống mà nghi ngờ mỗi ngày thì nặng hơn.',
+    ],
+  },
+  {
+    id: 'kagura-dont-draw',
+    residentId: 'kagura',
+    title: 'Đừng rút kiếm',
+    prompt:
+      'Có việc này em giải quyết được bằng Akagane, và em sẽ mất thêm một ký ức. Lần đầu tiên em hỏi ý người khác trước. Anh thấy còn cách nào không?',
+    objective: 'Tìm cho em một cách không phải hy sinh.',
+    rewardEpisode: 3,
+    minCharacters: 16,
+    options: [
+      'Để anh làm phần đó. Em không phải là người duy nhất trả giá được.',
+      'Chờ đã. Chưa chắc việc này cần tới kiếm.',
+      'Nếu buộc phải rút, thì nói em nghe em sắp mất gì. Anh giữ hộ.',
+    ],
+  },
+  {
+    id: 'kagura-own-oath',
+    residentId: 'kagura',
+    title: 'Lời thề cho chính mình',
+    prompt:
+      'Cả đời em chỉ thề bảo vệ người khác. Nếu không cần hy sinh cho ai, em muốn giữ lại điều gì cho mình?',
+    objective: 'Hỏi em điều chưa ai hỏi.',
+    rewardEpisode: 4,
+    minCharacters: 16,
+    options: [
+      'Giữ lại quyền được hỏi ý mình trước khi rút kiếm.',
+      'Giữ lại việc đi tìm Haruto, vì em muốn, không vì lời thề.',
+      'Giữ lại một buổi tối không ai cần được cứu.',
+    ],
+  },
+  {
+    id: 'momo-no-price',
+    residentId: 'momo',
+    title: 'Không định giá được',
+    prompt:
+      'Em muốn cho anh một thứ. Anh chưa hỏi em sẽ nhận được gì. Hỏi đi, hoặc từ chối, xem em xoay sở thế nào.',
+    objective: 'Đừng nhận một chiều.',
+    rewardEpisode: 3,
+    minCharacters: 14,
+    options: [
+      'Em sẽ nhận được gì? Nói trước rồi anh mới quyết.',
+      'Anh không nhận. Em giữ lấy phần của em đi.',
+      'Đổi luật: em nói ra một điều em muốn, rồi anh nhận.',
+    ],
+  },
+  {
+    id: 'momo-last-bargain',
+    residentId: 'momo',
+    title: 'Giao kèo cuối cùng',
+    prompt:
+      'Em có thể thả hết điều ước đang giữ. Em có thể thành người, hoặc biến mất vì chưa từng có đời riêng. Anh không chọn thay em. Nếu không còn sống nhờ ham muốn người khác, ngày đầu tiên của em nên trông thế nào?',
+    objective: 'Giúp em hình dung một ngày là của em.',
+    rewardEpisode: 4,
+    minCharacters: 20,
+    options: [
+      'Một buổi sáng bình thường, không ai bước vào quán để đổi gì cả.',
+      'Ngày em đi khỏi Tokyo một lần, chỉ vì em muốn xem chỗ khác.',
+      'Ngày em nói ra một điều mình muốn mà không kèm cái giá nào.',
+    ],
+  },
 ];
 
 export function questsForResident(residentId: ResidentId): QuestDefinition[] {

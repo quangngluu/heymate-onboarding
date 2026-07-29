@@ -502,7 +502,7 @@ class App implements UIActions {
     const s = store.get();
     const r = residentById(s.residentId);
     const saved = store.progressFor(s.residentId);
-    const line = openingLine(r, saved.memories, saved.nickname);
+    const line = openingLine(r, saved.memories, saved.nickname, saved.revealed);
     this.idleSpoken = 0;
     store.set({ chat: [{ from: 'resident', text: line }] });
     const voice = r.voices.find((v) => v.slot === s.session.voice) ?? r.voices[0];
