@@ -5,6 +5,15 @@
 // LFO and lowpass — a faint city-hum. Registered under the logical key
 // `cyber-district-ambience` in mint-assets.json for later replacement.
 
+/** A clip being fed in as it arrives. */
+export interface PcmStream {
+  push(samples: Float32Array): void;
+  /** Seconds of audio still queued ahead of now. */
+  end(): number;
+  /** Context time the first piece was scheduled for, or null if none was. */
+  playedFrom(): number | null;
+}
+
 export class Ambience {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -58,6 +67,57 @@ export class Ambience {
     if (this.ctx.state === 'suspended') void this.ctx.resume();
     this.clipToken = (this.clipToken + 1) | 0;
     this.startBuffer(buffer);
+  }
+
+  /**
+   * Play audio that is still arriving.
+   *
+   * Waiting for a whole clip to render costs seconds the visitor spends
+   * watching nothing happen. The provider will stream raw PCM instead, so each
+   * piece is scheduled on the audio clock the moment it lands, butted against
+   * the end of the previous one. The lead-in absorbs network jitter: without
+   * it the first late chunk would arrive after its slot had already passed and
+   * leave a hole in the middle of a word.
+   */
+  openStream(sampleRate: number): PcmStream {
+    this.start();
+    const ctx = this.ctx;
+    this.clipToken = (this.clipToken + 1) | 0;
+    const token = this.clipToken;
+    this.clipSource?.stop();
+    this.clipSource = null;
+    if (!ctx) return { push: () => {}, end: () => 0, playedFrom: () => null };
+
+    if (ctx.state === 'suspended') void this.ctx?.resume();
+    if (!this.clipGain) {
+      this.clipGain = ctx.createGain();
+      this.clipGain.connect(ctx.destination);
+    }
+    this.clipGain.gain.value = this.muted ? 0 : 0.9;
+    const gain = this.clipGain;
+
+    const LEAD_IN = 0.12;
+    let next = 0;
+    let started: number | null = null;
+    const live = () => token === this.clipToken;
+
+    return {
+      push: (samples: Float32Array) => {
+        if (!live() || !samples.length) return;
+        const buf = ctx.createBuffer(1, samples.length, sampleRate);
+        buf.copyToChannel(samples, 0);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(gain);
+        const at = Math.max(next, ctx.currentTime + LEAD_IN);
+        src.start(at);
+        if (started === null) started = at;
+        next = at + buf.duration;
+        this.clipSource = src;
+      },
+      end: () => (started === null ? 0 : Math.max(0, next - ctx.currentTime)),
+      playedFrom: () => started,
+    };
   }
 
   private startBuffer(buffer: AudioBuffer): void {

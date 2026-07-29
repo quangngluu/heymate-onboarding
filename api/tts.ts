@@ -27,6 +27,8 @@ interface TtsRequest {
    */
   raw?: string;
   mood?: string;
+  /** Ask for raw PCM as it renders rather than a finished file. */
+  stream?: boolean;
   /** Per-voice loudness trim; clips from different clones do not match. */
   vol?: number;
 }
@@ -54,6 +56,7 @@ async function minimax(body: TtsRequest, text: string): Promise<Response> {
   if (!key) return Response.json({ error: 'not-configured' }, { status: 503 });
 
   const performed = body.raw ? delivery(body.raw, body.mood) : { text, emotion: undefined };
+  if (body.stream) return minimaxStream(key, body, performed, defaultVoice);
   const upstream = await fetch(MINIMAX_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
@@ -90,6 +93,101 @@ async function minimax(body: TtsRequest, text: string): Promise<Response> {
   for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   return new Response(bytes, {
     headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'public, max-age=86400' },
+  });
+}
+
+const PCM_RATE = 32000;
+
+/**
+ * Relay the render as it happens.
+ *
+ * MiniMax answers a streaming request with server-sent events carrying hex
+ * audio. We unwrap them into a plain byte stream of signed 16-bit PCM, which
+ * the browser can schedule piece by piece without a decoder. PCM rather than
+ * mp3 because a decoder needs whole frames and a fragment of an mp3 is not
+ * one; raw samples simply butt together.
+ *
+ * The provider's final event repeats the entire clip, so it is dropped.
+ */
+function minimaxStream(
+  key: string,
+  body: TtsRequest,
+  performed: { text: string; emotion?: string },
+  defaultVoice?: string
+): Response {
+  const out = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = out.writable.getWriter();
+
+  void (async () => {
+    try {
+      const upstream = await fetch(MINIMAX_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model: process.env.MINIMAX_MODEL || 'speech-2.8-turbo',
+          text: performed.text,
+          stream: true,
+          voice_setting: {
+            voice_id: body.voiceId || defaultVoice,
+            speed: body.speed ?? 1,
+            vol: body.vol ?? 1,
+            ...(performed.emotion ? { emotion: performed.emotion } : {}),
+          },
+          audio_setting: { format: 'pcm', sample_rate: PCM_RATE },
+          language_boost: 'Vietnamese',
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+      const reader = upstream.body?.getReader();
+      if (!reader) throw new Error('no-body');
+
+      const decoder = new TextDecoder();
+      let buf = '';
+      const drain = async () => {
+        for (;;) {
+          const cut = buf.indexOf('\n\n');
+          if (cut < 0) break;
+          const event = buf.slice(0, cut);
+          buf = buf.slice(cut + 2);
+          const line = event.split(/\r?\n/).find((l) => l.startsWith('data:'));
+          if (!line) continue;
+          let parsed: { data?: { audio?: string; status?: number } };
+          try {
+            parsed = JSON.parse(line.slice(5));
+          } catch {
+            continue;
+          }
+          // status 2 is the summary, and it carries a copy of the whole clip.
+          if (parsed.data?.status !== 1) continue;
+          const hex = parsed.data.audio;
+          if (!hex) continue;
+          const bytes = new Uint8Array(hex.length / 2);
+          for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+          await writer.write(bytes);
+        }
+      };
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        await drain();
+      }
+      buf += decoder.decode();
+      await drain();
+    } catch {
+      // A broken stream ends the response; the caller falls back to text.
+    } finally {
+      await writer.close().catch(() => undefined);
+    }
+  })();
+
+  return new Response(out.readable, {
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-Sample-Rate': String(PCM_RATE),
+      'Cache-Control': 'no-store',
+    },
   });
 }
 

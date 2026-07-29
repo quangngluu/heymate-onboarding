@@ -21,7 +21,7 @@ import { FactionBackdrop } from './three/backdrop';
 import { WaifuStage } from './three/waifu-stage';
 import { idleLine, openingLine, speakingDuration } from './chat/engine';
 import { getReply } from './chat/client';
-import { cancelSpeech, renderSpeech } from './chat/voice';
+import { cancelSpeech, renderSpeech, streamSpeech } from './chat/voice';
 import { spoken } from './chat/dialogue';
 import { residentById, type ResidentId } from './config/residents';
 import { questById } from './config/quests';
@@ -556,7 +556,7 @@ class App implements UIActions {
         return;
       }
       store.set({ thinking: false, voicing: true });
-      const prepared = this.startReplySpeech(result.text, s.residentId);
+      const prepared = this.speakReply(result.text, s.residentId);
       store.pushTurn({ from: 'resident', text: result.text });
       this.streamIn(store.get().chat.length - 1, result.text, prepared);
     });
@@ -567,10 +567,79 @@ class App implements UIActions {
    * text-only if it is slow rather than letting a late clip talk over an
    * already-read message.
    */
-  private startReplySpeech(text: string, residentId: ResidentId): Promise<AudioBuffer | null> {
+  /**
+   * Speak a reply while it is still rendering.
+   *
+   * Playback begins on the first samples rather than the finished file, so
+   * she starts talking about half a second in instead of two to four seconds
+   * in. Resolves with the length of what was actually spoken, or null when
+   * the stream gave us nothing and the caller should fall back to the
+   * whole-file path.
+   */
+  private async speakStreamed(text: string, residentId: ResidentId): Promise<number | null> {
     const r = residentById(residentId);
     const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
-    this.speechToken++;
+    const line = spoken(text);
+    if (!line) return null;
+
+    const token = ++this.speechToken;
+    let stream: ReturnType<Ambience['openStream']> | null = null;
+    const seconds = await streamSpeech(
+      {
+        text: line,
+        raw: text,
+        mood: store.get().session.mood,
+        voiceId: slot.voiceId,
+        speed: slot.speed,
+        vol: slot.vol,
+      },
+      (samples, rate) => {
+        if (token !== this.speechToken) return;
+        if (!stream) {
+          // The first samples are also the moment she starts moving.
+          stream = this.ambience.openStream(rate);
+          window.clearTimeout(this.speakTimer);
+          store.set({ speaking: true, voicing: false });
+          this.residentStage?.setSpeaking(true);
+        }
+        stream.push(samples);
+      }
+    );
+
+    if (token !== this.speechToken) return seconds;
+    if (seconds === null) return null;
+    // Hold the speaking pose until the last scheduled piece has played out.
+    const tail = stream ? (stream as { end(): number }).end() : seconds;
+    this.speakTimer = window.setTimeout(() => {
+      store.set({ speaking: false });
+      this.residentStage?.setSpeaking(false);
+      this.armIdleNudge();
+    }, Math.max(0.2, tail) * 1000);
+    return seconds;
+  }
+
+  /**
+   * Say a reply, streaming when the provider can and falling back to the
+   * finished file when it cannot. Resolves with how long she spoke.
+   */
+  private speakReply(text: string, residentId: ResidentId): Promise<number | null> {
+    return this.speakStreamed(text, residentId).then(async (seconds) => {
+      if (seconds !== null) return seconds;
+      const buffer = await this.startReplySpeech(text, residentId, false);
+      if (!buffer || store.get().residentId !== residentId) return null;
+      this.speakPrepared(text, buffer);
+      return buffer.duration;
+    });
+  }
+
+  private startReplySpeech(
+    text: string,
+    residentId: ResidentId,
+    bump = true
+  ): Promise<AudioBuffer | null> {
+    const r = residentById(residentId);
+    const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
+    if (bump) this.speechToken++;
     const line = spoken(text);
     if (!line) return Promise.resolve(null);
     return renderSpeech(line, slot.voiceId, slot.speed, text, store.get().session.mood, slot.vol).then((url) =>
@@ -587,7 +656,8 @@ class App implements UIActions {
   private streamIn(
     index: number,
     text: string,
-    prepared: Promise<AudioBuffer | null>,
+    /** Resolves with the length of the spoken clip, or null if there is none. */
+    prepared: Promise<number | null>,
     /** False when some other path already owns the clip and the voicing flag. */
     ownsVoice = true
   ): void {
@@ -623,14 +693,13 @@ class App implements UIActions {
     store.set({ reveal: { turn: index, words: 0 } });
     run(Math.min(MAX_WORD_MS, Math.max(MIN_WORD_MS, guess)));
 
-    void prepared.then((buffer) => {
+    void prepared.then((seconds) => {
       if (!stillMine()) return;
       if (ownsVoice) store.set({ voicing: false });
-      if (!buffer) return;
-      this.speakPrepared(text, buffer);
+      if (!seconds) return;
       // Re-pace what is left so the words and the voice finish together.
       const left = Math.max(1, total - shown);
-      run(Math.max(MIN_WORD_MS, (buffer.duration * 1000 * 0.94) / left));
+      run(Math.max(MIN_WORD_MS, (seconds * 1000 * 0.94) / left));
     });
   }
 
@@ -773,7 +842,7 @@ class App implements UIActions {
       // The line starts arriving the moment the model answers. Its clip is
       // rendered alongside and joins in when it is ready.
       store.set({ thinking: false, voicing: true });
-      const prepared = this.startReplySpeech(result.text, s.residentId);
+      const prepared = this.speakReply(result.text, s.residentId);
       store.pushTurn({ from: 'resident', text: result.text });
       if (result.revealedRung !== undefined) {
         store.set({ revealed: result.revealedRung + 1 });
