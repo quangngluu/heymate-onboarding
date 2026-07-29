@@ -10,12 +10,17 @@ export interface UIActions {
   selectResident(id: string): void;
   sendMessage(text: string): void;
   openSessionPanel(): void;
-  /** Bring her card forward on the scene she is offering. */
+  openWallet(): void;
+  closeWallet(): void;
+  redeemCredits(code: string): 'ok' | 'bad-code';
   openQuests(): void;
+  closeQuests(): void;
   closeSessionPanel(): void;
   updateSession(patch: Partial<SessionSetup>): void;
   resetSession(): void;
   startQuest(id: string): void;
+  chooseQuest(choiceId: string): void;
+  dismissCreditError(): void;
   speakCustomText(text: string): void;
   saveChapter(memories: string[]): void;
   continueWithoutSaving(): void;

@@ -38,7 +38,10 @@ function devChatApi(key: string): Plugin {
             body.memories ?? [],
             body.revealed ?? 0,
             body.idle ? undefined : body.revealNow,
-            body.idle
+            body.idle,
+            body.level ?? 0,
+            body.quest,
+            body.story
           );
           const model = 'deepseek-chat';
           const messages = [

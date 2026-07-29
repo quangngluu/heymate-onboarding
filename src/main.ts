@@ -25,6 +25,7 @@ import { cancelSpeech, renderSpeech, streamSpeech } from './chat/voice';
 import { spoken } from './chat/dialogue';
 import { residentById, type ResidentId } from './config/residents';
 import { writeQuest } from './chat/questgen';
+import { questNode } from './config/quests';
 import { Ambience } from './audio/ambience';
 import { COST, store, type SessionSetup, type Step } from './state/store';
 import { mountUI } from './ui/overlay';
@@ -53,6 +54,17 @@ const FREE_ARC = Math.PI / 3;
 // rate she would say them, which is also long enough to cover the render.
 const MIN_WORD_MS = 26;
 const MAX_WORD_MS = 220;
+
+function storyContext(residentId: ResidentId): { flags: string[]; outcomes: string[] } {
+  const state = store.get();
+  const questTitles = new Map(store.questsFor(residentId).map((quest) => [quest.id, quest.title]));
+  return {
+    flags: state.storyFlags[residentId] ?? [],
+    outcomes: Object.entries(state.questOutcomes)
+      .filter(([questId]) => questTitles.has(questId))
+      .map(([questId, outcome]) => `${questTitles.get(questId)}: ${outcome}`),
+  };
+}
 
 class App implements UIActions {
   private engine: Engine;
@@ -544,7 +556,11 @@ class App implements UIActions {
       turn: s.turns,
     };
     const chatLength = s.chat.length;
-    void getReply(idleLine(r, spokenIndex), ctx, s.chat, { idle: true, level: store.level }).then(async (result) => {
+    void getReply(idleLine(r, spokenIndex), ctx, s.chat, {
+      idle: true,
+      level: store.level,
+      story: storyContext(s.residentId),
+    }).then(async (result) => {
       // Do not insert a late nudge after the visitor has started talking, or
       // after the encounter has changed while the request was in flight.
       const current = store.get();
@@ -820,12 +836,7 @@ class App implements UIActions {
     const r = residentById(s.residentId);
     this.cancelIdleNudge();
     store.pushTurn({ from: 'user', text });
-    const completedQuest = store.completeActiveQuest(text);
-    if (completedQuest) {
-      this.ambience.chime(980);
-      // A finished scene pays, and the next one gets written while she replies.
-      if (!store.nextQuest()) void this.writeScene();
-    }
+    store.completeOnboarding('first-message');
     store.set({ thinking: true });
 
     const after = store.get();
@@ -845,6 +856,7 @@ class App implements UIActions {
     void getReply(text, ctx, history, {
       level: store.level,
       quest: openQuest && { prompt: openQuest.prompt, objective: openQuest.objective },
+      story: storyContext(s.residentId),
     }).then(async (result) => {
       if (store.get().residentId !== s.residentId) return; // switched residents
       // The line starts arriving the moment the model answers. Its clip is
@@ -870,7 +882,27 @@ class App implements UIActions {
   }
 
   openQuests(): void {
-    store.set({ questFocus: store.get().questFocus + 1 });
+    store.set({ questHubOpen: true, walletOpen: false });
+  }
+
+  closeQuests(): void {
+    store.set({ questHubOpen: false });
+  }
+
+  openWallet(): void {
+    store.set({ walletOpen: true, questHubOpen: false });
+  }
+
+  closeWallet(): void {
+    store.set({ walletOpen: false });
+  }
+
+  redeemCredits(code: string): 'ok' | 'bad-code' {
+    return store.redeem(code);
+  }
+
+  dismissCreditError(): void {
+    store.set({ broke: null });
   }
 
   openSessionPanel(): void {
@@ -930,6 +962,7 @@ class App implements UIActions {
         // Nothing left to open; the reward is credits.
         rewardEpisode: -1,
         minCharacters: 14,
+        kind: 'side',
         options: written.options as [string, string, string],
       });
     } catch {
@@ -949,6 +982,30 @@ class App implements UIActions {
     this.streamIn(store.get().chat.length - 1, quest.prompt, Promise.resolve(null), false);
   }
 
+  chooseQuest(choiceId: string): void {
+    const s = store.get();
+    const quest = s.activeQuestId ? store.questById2(s.activeQuestId) : undefined;
+    if (!quest || s.thinking || s.voicing) return;
+    const node = questNode(quest, s.activeQuestNodeId ?? 'start');
+    const choice = node.choices.find((item) => item.id === choiceId);
+    if (!choice || !store.spend('turn')) return;
+    this.cancelIdleNudge();
+    store.pushTurn({ from: 'user', text: choice.label });
+    store.completeOnboarding('first-message');
+    const result = store.chooseActiveQuest(choiceId);
+    if (!result) return;
+    const reply = result.nextPrompt ?? result.choice.outcome;
+    store.pushTurn({ from: 'resident', text: reply });
+    this.speak(reply);
+    this.streamIn(store.get().chat.length - 1, reply, Promise.resolve(null), false);
+    if (result.completed) {
+      this.ambience.chime(980);
+      if (!store.nextQuest()) void this.writeScene();
+    } else {
+      this.ambience.chime(680);
+    }
+  }
+
   /** Render a user-authored short line in the active resident's own voice. */
   speakCustomText(text: string): void {
     const line = text.trim();
@@ -960,7 +1017,6 @@ class App implements UIActions {
     if (s.speaking || s.thinking || s.voicing) return;
     if (!store.canAfford('speakForMe')) {
       store.set({ broke: 'speakForMe' });
-      this.flashError(COPY.stage.voiceMessageNoCredits);
       return;
     }
 
@@ -981,10 +1037,10 @@ class App implements UIActions {
       }
       if (!store.spend('speakForMe')) {
         store.set({ voicing: false });
-        this.flashError(COPY.stage.voiceMessageNoCredits);
         return;
       }
       store.set({ voicing: false });
+      store.completeOnboarding('try-speak-for-me');
       store.pushTurn({ from: 'resident', text: line });
       this.speakPrepared(line, buffer);
     });
@@ -992,6 +1048,7 @@ class App implements UIActions {
 
   updateSession(patch: Partial<SessionSetup>): void {
     store.updateSession(patch);
+    store.completeOnboarding('set-chat-config');
     if (patch.voice) {
       const r = residentById(store.get().residentId);
       const v = r.voices.find((x) => x.slot === patch.voice);
@@ -1004,10 +1061,8 @@ class App implements UIActions {
   }
 
   saveChapter(memories: string[]): void {
-    if (!store.saveChapter(memories)) {
-      this.flashError(COPY.stage.noCredits);
-      return;
-    }
+    if (!store.saveChapter(memories)) return;
+    store.completeOnboarding('save-chapter');
     this.ambience.chime(880);
   }
 
@@ -1046,7 +1101,7 @@ class App implements UIActions {
   unlockView(code?: string): void {
     const result = store.unlockView(code);
     if (result === 'bad-code') return this.flashError(COPY.stage.badCode);
-    if (result === 'no-credits') return this.flashError(COPY.stage.noCredits);
+    if (result === 'no-credits') return;
     this.ambience.chime(940);
   }
 

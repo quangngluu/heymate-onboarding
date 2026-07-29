@@ -1,7 +1,29 @@
 import { CHARACTERS } from '../config/characters';
 import { RESIDENTS, type ResidentId, type VoiceSlot } from '../config/residents';
-import { questById, questsForResident, type QuestDefinition } from '../config/quests';
+import {
+  questById,
+  questNode,
+  questsForResident,
+  type QuestChoice,
+  type QuestDefinition,
+} from '../config/quests';
 import type { LengthId, MoodId, ScenarioId, StyleId } from '../config/residents';
+import {
+  COST,
+  START_CREDITS,
+  STORY_QUEST_REWARD,
+  TOPUP_AMOUNT,
+  TOPUP_CODE,
+  type CreditFeature,
+  type Spend,
+} from '../config/economy';
+import {
+  onboardingQuestFor,
+  type OnboardingTrigger,
+} from '../config/onboarding-quests';
+
+export { COST } from '../config/economy';
+export type { Spend } from '../config/economy';
 
 export type Step =
   | 'gallery' // universe picker (outer)
@@ -53,32 +75,23 @@ export interface SavedProgress {
   completedQuests: string[];
 }
 
-/**
- * One wallet for everything that costs something.
- *
- * Separate allowances for turns, for her voice, for saving and for the
- * turntable meant four different ways to be told no, each with its own
- * number. A visitor cannot plan against that. One balance, published prices,
- * and the choice of what to spend it on is theirs.
- */
-export const START_CREDITS = 100;
-export const TOPUP_CODE = 'MATEWAIFU';
-export const TOPUP_AMOUNT = 50;
-
-export const COST = {
-  turn: 2,
-  speakForMe: 6,
-  saveChapter: 12,
-  turntable: 30,
-} as const;
-
-export type Spend = keyof typeof COST;
-
-/** Finishing a scene pays for the next few turns of one. */
-export const QUEST_REWARD = 25;
-
 /** Mock unlock code, as if printed on the figurine's box. */
 export const UNLOCK_CODE = 'HEYMATE360';
+
+export interface CreditTransaction {
+  id: string;
+  kind: 'earn' | 'spend';
+  feature: CreditFeature;
+  amount: number;
+  createdAt: number;
+}
+
+export interface QuestChoiceResult {
+  quest: QuestDefinition;
+  choice: QuestChoice;
+  completed: boolean;
+  nextPrompt?: string;
+}
 
 function defaultSession(): SessionSetup {
   return {
@@ -119,12 +132,17 @@ export interface AppState {
   /** Session-scoped reveal count, seeded from saved progress. */
   revealed: number;
   sessionPanelOpen: boolean;
+  walletOpen: boolean;
+  questHubOpen: boolean;
   activeQuestId: string | null;
+  activeQuestNodeId: string | null;
   saveGateOpen: boolean;
   /** Full 360 inspection, bought or unlocked by code. Per resident. */
   viewUnlocked: Record<string, boolean>;
   unlockGateOpen: boolean;
   credits: number;
+  transactions: CreditTransaction[];
+  onboardingCompleted: string[];
   /** Set when a spend was refused, so the dock can say which one and why. */
   broke: Spend | null;
   /**
@@ -135,8 +153,8 @@ export interface AppState {
   generated: Record<string, QuestDefinition[]>;
   /** True while one is being written. */
   writingQuest: boolean;
-  /** Bumped when the chrome asks the card to show her scenes. */
-  questFocus: number;
+  storyFlags: Record<string, string[]>;
+  questOutcomes: Record<string, string>;
   /** Turn the last scene closed on, so the next one does not follow instantly. */
   questClosedAt: number;
 
@@ -166,15 +184,21 @@ const initialState: AppState = {
   reveal: null,
   revealed: 0,
   sessionPanelOpen: false,
+  walletOpen: false,
+  questHubOpen: false,
   activeQuestId: null,
+  activeQuestNodeId: null,
   saveGateOpen: false,
   viewUnlocked: {},
   unlockGateOpen: false,
   credits: START_CREDITS,
+  transactions: [],
+  onboardingCompleted: [],
   broke: null,
   generated: {},
   writingQuest: false,
-  questFocus: 0,
+  storyFlags: {},
+  questOutcomes: {},
   questClosedAt: -99,
 
   characterId: CHARACTERS[0].id,
@@ -204,7 +228,10 @@ export class Store {
           credits?: number;
           viewUnlocked?: Record<string, boolean>;
           generated?: Record<string, QuestDefinition[]>;
-
+          transactions?: CreditTransaction[];
+          onboardingCompleted?: string[];
+          storyFlags?: Record<string, string[]>;
+          questOutcomes?: Record<string, string>;
         };
         this.state = {
           ...this.state,
@@ -212,7 +239,10 @@ export class Store {
           credits: saved.credits ?? this.state.credits,
           viewUnlocked: saved.viewUnlocked ?? {},
           generated: saved.generated ?? {},
-
+          transactions: saved.transactions ?? [],
+          onboardingCompleted: saved.onboardingCompleted ?? [],
+          storyFlags: saved.storyFlags ?? {},
+          questOutcomes: saved.questOutcomes ?? {},
         };
       }
     } catch {
@@ -248,7 +278,10 @@ export class Store {
           credits: this.state.credits,
           viewUnlocked: this.state.viewUnlocked,
           generated: this.state.generated,
-
+          transactions: this.state.transactions,
+          onboardingCompleted: this.state.onboardingCompleted,
+          storyFlags: this.state.storyFlags,
+          questOutcomes: this.state.questOutcomes,
         })
       );
     } catch {
@@ -289,11 +322,14 @@ export class Store {
       speaking: false,
       thinking: false,
       voicing: false,
-  reveal: null,
+      reveal: null,
       revealed: saved.revealed,
       sessionPanelOpen: false,
-          activeQuestId: null,
-          saveGateOpen: false,
+      walletOpen: false,
+      questHubOpen: false,
+      activeQuestId: null,
+      activeQuestNodeId: null,
+      saveGateOpen: false,
       unlockGateOpen: false,
       session: {
         ...defaultSession(),
@@ -334,6 +370,17 @@ export class Store {
     return this.state.credits >= COST[what];
   }
 
+  private transaction(kind: CreditTransaction['kind'], feature: CreditFeature, amount: number): CreditTransaction {
+    const createdAt = Date.now();
+    return {
+      id: `${createdAt}-${this.state.transactions.length}`,
+      kind,
+      feature,
+      amount,
+      createdAt,
+    };
+  }
+
   /**
    * Take the price of an action. Refusal is recorded rather than thrown, so
    * the dock can name which action ran out instead of failing silently.
@@ -343,7 +390,12 @@ export class Store {
       this.set({ broke: what });
       return false;
     }
-    this.set({ credits: this.state.credits - COST[what], broke: null });
+    const transaction = this.transaction('spend', what, COST[what]);
+    this.set({
+      credits: this.state.credits - COST[what],
+      transactions: [...this.state.transactions, transaction].slice(-30),
+      broke: null,
+    });
     this.persist();
     return true;
   }
@@ -351,9 +403,28 @@ export class Store {
   /** Redeem the box code for more credits. */
   redeem(code: string): 'ok' | 'bad-code' {
     if (code.trim().toUpperCase() !== TOPUP_CODE) return 'bad-code';
-    this.set({ credits: this.state.credits + TOPUP_AMOUNT, broke: null });
+    const transaction = this.transaction('earn', 'redeem', TOPUP_AMOUNT);
+    this.set({
+      credits: this.state.credits + TOPUP_AMOUNT,
+      transactions: [...this.state.transactions, transaction].slice(-30),
+      broke: null,
+    });
     this.persist();
     return 'ok';
+  }
+
+  /** One-time, action-based rewards teach the product without polluting canon. */
+  completeOnboarding(trigger: OnboardingTrigger): number {
+    const quest = onboardingQuestFor(trigger);
+    if (!quest || this.state.onboardingCompleted.includes(quest.id)) return 0;
+    const transaction = this.transaction('earn', 'onboardingQuest', quest.rewardCredits);
+    this.set({
+      credits: this.state.credits + quest.rewardCredits,
+      onboardingCompleted: [...this.state.onboardingCompleted, quest.id],
+      transactions: [...this.state.transactions, transaction].slice(-30),
+    });
+    this.persist();
+    return quest.rewardCredits;
   }
 
   /**
@@ -381,9 +452,11 @@ export class Store {
         completedQuests: prev.completedQuests,
       },
     };
+    const transaction = this.transaction('spend', 'saveChapter', COST.saveChapter);
     this.set({
       progress,
       credits: this.state.credits - COST.saveChapter,
+      transactions: [...this.state.transactions, transaction].slice(-30),
       saveGateOpen: false,
       broke: null,
     });
@@ -400,14 +473,27 @@ export class Store {
       // who has just paid for credits should not be told no twice.
       const given = withCode.trim().toUpperCase();
       if (given !== UNLOCK_CODE && given !== TOPUP_CODE) return 'bad-code';
-      if (given === TOPUP_CODE) this.set({ credits: this.state.credits + TOPUP_AMOUNT });
+      if (given === TOPUP_CODE) {
+        const transaction = this.transaction('earn', 'redeem', TOPUP_AMOUNT);
+        this.set({
+          credits: this.state.credits + TOPUP_AMOUNT,
+          transactions: [...this.state.transactions, transaction].slice(-30),
+        });
+      }
     } else if (!this.canAfford('turntable')) {
       this.set({ broke: 'turntable' });
       return 'no-credits';
     }
+    const spendsCredits = withCode === undefined;
+    const transaction = spendsCredits
+      ? this.transaction('spend', 'turntable', COST.turntable)
+      : null;
     this.set({
       viewUnlocked: { ...this.state.viewUnlocked, [this.state.residentId]: true },
-      credits: withCode === undefined ? this.state.credits - COST.turntable : this.state.credits,
+      credits: spendsCredits ? this.state.credits - COST.turntable : this.state.credits,
+      transactions: transaction
+        ? [...this.state.transactions, transaction].slice(-30)
+        : this.state.transactions,
       unlockGateOpen: false,
       broke: null,
     });
@@ -451,17 +537,43 @@ export class Store {
     const quest = this.questById2(id);
     if (!quest || quest.residentId !== this.state.residentId) return false;
     if (this.nextQuest()?.id !== id) return false;
-    this.set({ activeQuestId: id });
+    this.set({
+      activeQuestId: id,
+      activeQuestNodeId: 'start',
+      questHubOpen: false,
+    });
     return true;
   }
 
-  /** A thoughtful answer completes the active quest and permanently unlocks its story beat. */
-  completeActiveQuest(message: string): QuestDefinition | null {
+  /**
+   * Advance an explicit branch. Free chat can enrich the scene, but only an
+   * authored choice changes canon or pays a quest reward.
+   */
+  chooseActiveQuest(choiceId: string): QuestChoiceResult | null {
     const id = this.state.activeQuestId;
     const quest = id ? this.questById2(id) : undefined;
-    if (!quest || quest.residentId !== this.state.residentId || message.trim().length < quest.minCharacters) {
-      return null;
+    if (!quest || quest.residentId !== this.state.residentId) return null;
+    const node = questNode(quest, this.state.activeQuestNodeId ?? 'start');
+    const choice = node.choices.find((item) => item.id === choiceId);
+    if (!choice) return null;
+    const residentFlags = this.state.storyFlags[quest.residentId] ?? [];
+    const storyFlags = {
+      ...this.state.storyFlags,
+      [quest.residentId]: residentFlags.includes(choice.flag)
+        ? residentFlags
+        : [...residentFlags, choice.flag],
+    };
+    if (choice.nextNodeId) {
+      const next = questNode(quest, choice.nextNodeId);
+      this.set({
+        activeQuestNodeId: choice.nextNodeId,
+        storyFlags,
+        questOutcomes: { ...this.state.questOutcomes, [quest.id]: choice.outcome },
+      });
+      this.persist();
+      return { quest, choice, completed: false, nextPrompt: next.prompt };
     }
+
     const prev = this.progressFor();
     if (prev.completedQuests.includes(quest.id)) return null;
     // Her own scenes have no memory left to open, so they pay in credits only.
@@ -475,15 +587,20 @@ export class Store {
         completedQuests: [...prev.completedQuests, quest.id],
       },
     };
+    const transaction = this.transaction('earn', 'storyQuest', STORY_QUEST_REWARD);
     this.set({
       progress,
       revealed: Math.max(this.state.revealed, revealed),
-      credits: this.state.credits + QUEST_REWARD,
+      credits: this.state.credits + STORY_QUEST_REWARD,
+      transactions: [...this.state.transactions, transaction].slice(-30),
+      storyFlags,
+      questOutcomes: { ...this.state.questOutcomes, [quest.id]: choice.outcome },
       activeQuestId: null,
+      activeQuestNodeId: null,
       questClosedAt: this.state.turns,
     });
     this.persist();
-    return quest;
+    return { quest, choice, completed: true };
   }
 
   // ---- creator ----
@@ -513,6 +630,11 @@ export class Store {
       progress: this.state.progress,
       credits: this.state.credits,
       viewUnlocked: this.state.viewUnlocked,
+      generated: this.state.generated,
+      transactions: this.state.transactions,
+      onboardingCompleted: this.state.onboardingCompleted,
+      storyFlags: this.state.storyFlags,
+      questOutcomes: this.state.questOutcomes,
     });
   }
 

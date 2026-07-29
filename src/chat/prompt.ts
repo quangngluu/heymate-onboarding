@@ -17,6 +17,11 @@ export interface PromptSession {
   length: LengthId;
 }
 
+export interface PromptStoryState {
+  flags: string[];
+  outcomes: string[];
+}
+
 const SCENARIO_TEXT: Record<ScenarioId, string> = {
   casual: 'Hai người chỉ đang nói chuyện, không cần mục đích nào khác. Đừng tạo ra một chủ đề lớn nếu anh không mang tới.',
   latenight: 'Đã rất khuya. Hạ nhịp xuống, câu ngắn hơn, khoảng lặng dài hơn, và cho phép mình thành thật hơn bình thường.',
@@ -70,7 +75,9 @@ export function buildSystemPrompt(
   /** How close she is, 0 to 5. Earned through choices, never through volume. */
   level = 0,
   /** The story beat she has just opened and is holding the thread on. */
-  quest?: { prompt: string; objective: string }
+  quest?: { prompt: string; objective: string },
+  /** Branches the visitor actually chose; persisted and safe to call back. */
+  story?: PromptStoryState
 ): string {
   const r = residentById(residentId);
   const unlocked = r.episodes.slice(0, revealed);
@@ -118,6 +125,15 @@ export function buildSystemPrompt(
     'Mức này chỉ giới hạn những gì em DÁM NHẬN, không giới hạn việc em sống động hay chủ động đến đâu. Ở mức thấp em vẫn trêu, vẫn thách thức, vẫn nói câu hơi quá thật, vẫn dẫn cuộc trò chuyện. Cái em chưa làm là thừa nhận đã gắn bó.',
     'Chỉ những câu thừa nhận rõ ràng như "anh định ở lại bao lâu", "giữ em lại", "lần này không cần giao kèo" mới phải chờ tới mức 3.',
     'Mức này tăng khi anh làm một điều gì đó, không phải khi anh nói nhiều.',
+    story?.outcomes.length
+      ? [
+          '',
+          'NHỮNG GÌ HAI ĐỨA ĐÃ THỰC SỰ CHỌN',
+          `Cờ nhánh nội bộ, không đọc ra: ${story.flags.slice(-8).map((flag) => JSON.stringify(flag)).join(', ')}`,
+          ...story.outcomes.slice(-5).map((outcome) => `- ${outcome}`),
+          'Đây là lịch sử đã xảy ra giữa hai đứa. Khi phù hợp, gọi lại hậu quả bằng chi tiết cụ thể; không tóm tắt danh sách và không phủ nhận lựa chọn của anh.',
+        ].join('\n')
+      : '',
     '',
     'ĐỘNG CƠ BÊN TRONG',
     'Phần này không bao giờ nói thẳng ra. Nó quyết định vì sao em phản ứng như vậy.',

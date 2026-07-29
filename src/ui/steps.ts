@@ -18,7 +18,8 @@ import {
   STYLES,
   residentById,
 } from '../config/residents';
-import { questById, questsForResident } from '../config/quests';
+import { questNode } from '../config/quests';
+import { ONBOARDING_QUESTS } from '../config/onboarding-quests';
 import { segments, segmentsUpTo } from '../chat/dialogue';
 import { COST, store } from '../state/store';
 import { extractMemories } from '../chat/memory';
@@ -148,46 +149,34 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   const send = () => {
     const v = input.value.trim();
     if (!v) return;
-    input.value = '';
     if (speakMode) {
+      if (!store.canAfford('speakForMe')) {
+        actions.speakCustomText(v);
+        return;
+      }
+      input.value = '';
       actions.speakCustomText(v);
       speakMode = false;
       applyDockMode();
     } else {
+      if (!store.canAfford('turn')) {
+        actions.sendMessage(v);
+        return;
+      }
+      input.value = '';
       actions.sendMessage(v);
     }
   };
   input.addEventListener('keydown', (e) => {
     if ((e as KeyboardEvent).key === 'Enter') send();
   });
-  const sendBtn = h('button', { class: 'btn btn-primary', onClick: send }, COPY.stage.send) as HTMLButtonElement;
+  const sendBtn = h(
+    'button',
+    { class: 'btn btn-primary', onClick: send },
+    `${COPY.stage.send} · ${COST.turn}`
+  ) as HTMLButtonElement;
   const turnsLeft = h('span', { class: 'turns-left' });
   const dockHint = h('p', { class: 'dock-hint', hidden: true });
-  const voiceBudget = h('p', { class: 'hint voice-budget' });
-  // One balance, its prices, and the way to add to it, in one place.
-  const walletLine = h('p', { class: 'hint voice-budget' });
-  const redeemNote = h('p', { class: 'hint faint' });
-  const redeemInput = h('input', {
-    type: 'text',
-    class: 'name-input',
-    placeholder: COPY.stage.walletRedeem,
-    'aria-label': COPY.stage.walletRedeem,
-    maxlength: '16',
-  }) as HTMLInputElement;
-  const redeemBtn = h(
-    'button',
-    {
-      class: 'btn btn-secondary xs',
-      onClick: () => {
-        const ok = store.redeem(redeemInput.value) === 'ok';
-        redeemNote.textContent = ok ? COPY.stage.walletRedeemOk : COPY.stage.walletRedeemBad;
-        redeemNote.classList.toggle('is-good', ok);
-        if (ok) redeemInput.value = '';
-      },
-    },
-    COPY.stage.walletRedeemCta
-  ) as HTMLButtonElement;
-
   const speakChip = h('button', { class: 'dock-chip' }, COPY.stage.speakAs) as HTMLButtonElement;
   const setChip = h(
     'button',
@@ -218,7 +207,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       'aria-label': COPY.stage.quest,
       onClick: () => {
         setMobileToolsOpen(false);
-        showQuests();
+        actions.openQuests();
       },
     },
     h('span', { class: 'mobile-tool-symbol', 'aria-hidden': 'true' }, '✦'),
@@ -415,20 +404,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       scen.el,
       mood.el,
       style.el,
-      len.el,
-      h(
-        'div',
-        { class: 'voice-upcoming' },
-        h('h3', { class: 'group-label' }, COPY.stage.walletTitle),
-        walletLine,
-        h('p', { class: 'hint faint' }, COPY.stage.walletPrices),
-        h('p', { class: 'hint faint' }, COPY.stage.walletNote),
-        h('div', { class: 'chat-row' }, redeemInput, redeemBtn),
-        redeemNote,
-        h('h3', { class: 'group-label' }, COPY.stage.personalVoiceTitle),
-        h('p', { class: 'hint faint' }, COPY.stage.personalVoiceLead),
-        h('p', { class: 'hint faint' }, COPY.stage.personalVoiceNote)
-      )
+      len.el
     ),
     h(
       'div',
@@ -481,26 +457,51 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     )
   );
 
-  // --- quests, folded into her card ---
-  //
-  // A quest is a reason to keep talking to *her*, so it belongs with her
-  // story rather than in a panel of its own.
-  const questList = h('div', { class: 'quest-list' });
-  const questBlock = h(
-    'details',
-    { class: 'episode-block profile-more quest-block' },
-    h('summary', {}, COPY.stage.questTitle),
-    h('p', { class: 'hint faint' }, COPY.stage.questLead),
-    questList
-  ) as HTMLDetailsElement;
-  let lastFocus = 0;
-  /** Called from the chrome: show the card, opened on her scenes. */
-  function showQuests(): void {
-    info.classList.remove('is-hidden');
-    info.classList.add('is-open');
-    questBlock.open = true;
-    questBlock.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  // --- Quest Hub: story progression and onboarding rewards are different loops. ---
+  const storyQuestList = h('div', { class: 'quest-list' });
+  const onboardingQuestList = h('div', { class: 'quest-list onboarding-quest-list' });
+  let questTab: 'story' | 'onboarding' = 'story';
+  const storyTab = h('button', { class: 'quest-tab', role: 'tab' }, 'Cốt truyện') as HTMLButtonElement;
+  const onboardingTab = h('button', { class: 'quest-tab', role: 'tab' }, 'Tân thủ') as HTMLButtonElement;
+  function setQuestTab(tab: 'story' | 'onboarding'): void {
+    questTab = tab;
+    const story = tab === 'story';
+    storyTab.setAttribute('aria-selected', String(story));
+    onboardingTab.setAttribute('aria-selected', String(!story));
+    storyTab.classList.toggle('is-active', story);
+    onboardingTab.classList.toggle('is-active', !story);
+    storyQuestList.hidden = !story;
+    onboardingQuestList.hidden = story;
   }
+  storyTab.addEventListener('click', () => setQuestTab('story'));
+  onboardingTab.addEventListener('click', () => setQuestTab('onboarding'));
+  setQuestTab('story');
+  const questHub = h(
+    'div',
+    {
+      class: 'modal-scrim quest-hub-scrim',
+      hidden: true,
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-label': 'Quest Hub',
+      onClick: (event: Event) => {
+        if (event.target === event.currentTarget) actions.closeQuests();
+      },
+    },
+    h(
+      'aside',
+      { class: 'panel quest-hub' },
+      h(
+        'div',
+        { class: 'row sheet-head' },
+        h('div', {}, h('p', { class: 'kicker' }, 'Quest Hub'), h('h2', { class: 'panel-title' }, 'Đi tiếp cùng em')),
+        h('button', { class: 'chrome-btn', 'aria-label': 'Đóng Quest Hub', onClick: () => actions.closeQuests() }, '×')
+      ),
+      h('div', { class: 'quest-tabs', role: 'tablist', 'aria-label': 'Loại nhiệm vụ' }, storyTab, onboardingTab),
+      h('p', { class: 'hint faint quest-hub-lead' }, COPY.stage.questLead),
+      h('div', { class: 'quest-hub-body' }, storyQuestList, onboardingQuestList)
+    )
+  );
 
   // --- speak-for-me: a mode of the dock, wired here ---
   speakChip.addEventListener('click', () => {
@@ -516,7 +517,9 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     mobileSpeakBtn.setAttribute('aria-pressed', String(speakMode));
     dock.classList.toggle('is-speak', speakMode);
     input.placeholder = speakMode ? COPY.stage.voiceMessagePlaceholder : COPY.stage.inputPlaceholder;
-    sendBtn.textContent = speakMode ? COPY.stage.voiceMessageSend : COPY.stage.send;
+    sendBtn.textContent = speakMode
+      ? `${COPY.stage.voiceMessageSend} · ${COST.speakForMe}`
+      : `${COPY.stage.send} · ${COST.turn}`;
     modeTag.hidden = !speakMode;
     (dockHint as HTMLElement).hidden = !speakMode;
     dockHint.textContent = `${COPY.stage.voiceMessageLead} ${voiceLeftText}`;
@@ -573,6 +576,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     ),
     info,
     sessionSheet,
+    questHub,
     roster,
     rail,
     dock,
@@ -622,8 +626,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           h('details', { class: 'episode-block profile-more' },
             h('summary', {}, 'Câu chuyện của em'),
             h('div', { class: 'episode-list' })
-          ),
-          questBlock
+          )
         );
       }
       if (document.activeElement !== nickInput) nickInput.value = s.session.nickname;
@@ -658,24 +661,27 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       len.btns.forEach((b, i) => b.setAttribute('aria-checked', String(LENGTHS[i].id === s.session.length)));
 
       (sessionSheet as HTMLElement).hidden = !s.sessionPanelOpen;
+      (questHub as HTMLElement).hidden = !s.questHubOpen;
       mobileQuestLabel.textContent = s.activeQuestId ? COPY.stage.questActive : COPY.stage.quest;
       mobileQuestBtn.classList.toggle('is-active', s.activeQuestId !== null);
       mobileSettingsBtn.setAttribute('aria-expanded', String(s.sessionPanelOpen));
 
-      if (s.questFocus !== lastFocus) {
-        lastFocus = s.questFocus;
-        showQuests();
-      }
-
       const openQuest = s.activeQuestId ? store.questById2(s.activeQuestId) : undefined;
+      const openNode = openQuest ? questNode(openQuest, s.activeQuestNodeId ?? 'start') : undefined;
       (questStrip as HTMLElement).hidden = !openQuest;
       dock.classList.toggle('is-quest', !!openQuest);
-      if (openQuest && openQuest.id !== lastQuestId) {
-        lastQuestId = openQuest.id;
-        questLine.textContent = openQuest.objective;
+      const questKey = openQuest && openNode ? `${openQuest.id}:${openNode.id}` : '';
+      if (openQuest && openNode && questKey !== lastQuestId) {
+        lastQuestId = questKey;
+        questLine.textContent = openNode.prompt;
         questOptions.replaceChildren(
-          ...openQuest.options.map((option) =>
-            h('button', { class: 'quest-option', onClick: () => actions.sendMessage(option) }, option)
+          ...openNode.choices.map((choice) =>
+            h(
+              'button',
+              { class: 'quest-option', onClick: () => actions.chooseQuest(choice.id) },
+              h('span', {}, choice.label),
+              h('small', {}, `${COST.turn} credit`)
+            )
           )
         );
       }
@@ -684,9 +690,11 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       // One balance, and the price of whatever the bar is about to do.
       const price = speakMode ? COST.speakForMe : COST.turn;
       turnsLeft.textContent =
-        s.credits >= price ? `Lượt này ${price} credit` : COPY.stage.outOfTurns;
+        s.credits >= price ? `${s.credits} credit còn lại` : COPY.stage.outOfTurns;
       turnsLeft.classList.toggle('is-broke', s.credits < price);
-      const blocked = s.thinking || s.voicing || s.credits < price;
+      // Let a broke visitor attempt the action: Store will refuse it and the
+      // shared credit sheet can explain the exact shortfall and open Wallet.
+      const blocked = s.thinking || s.voicing;
       input.disabled = blocked;
       sendBtn.disabled = blocked;
 
@@ -763,9 +771,9 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       levelNext.textContent = level >= 5 ? COPY.stage.levelMax : COPY.stage.levelNext;
 
       const completed = saved?.completedQuests ?? [];
-      const quests = questsForResident(r.id);
+      const quests = store.questsFor(r.id);
       const nextQuest = quests.find((quest) => !completed.includes(quest.id));
-      questList.replaceChildren(
+      storyQuestList.replaceChildren(
         ...quests.map((quest) => {
           const done = completed.includes(quest.id);
           const available = nextQuest?.id === quest.id;
@@ -777,13 +785,14 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
               : available
                 ? COPY.stage.questStart
                 : COPY.stage.questLocked;
-          const reward = r.episodes[quest.rewardEpisode]?.title ?? COPY.stage.questReward;
+          const reward = r.episodes[quest.rewardEpisode]?.title ?? 'Nhánh phụ';
           return h(
             'article',
             { class: `quest-card${done ? ' is-done' : ''}${active ? ' is-active' : ''}` },
+            h('span', { class: 'quest-kind' }, quest.rewardEpisode >= 0 ? 'Cốt truyện chính' : 'Nhánh phụ'),
             h('h3', { class: 'quest-title' }, quest.title),
             h('p', { class: 'hint' }, quest.prompt),
-            h('p', { class: 'hint faint' }, `${COPY.stage.questReward}: ${reward}`),
+            h('p', { class: 'hint faint' }, `${COPY.stage.questReward}: ${reward} · +25 credit`),
             h(
               'button',
               { class: 'btn btn-secondary xs', disabled: done || !available || active, onClick: () => actions.startQuest(quest.id) },
@@ -792,12 +801,24 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           );
         })
       );
+      onboardingQuestList.replaceChildren(
+        ...ONBOARDING_QUESTS.map((quest) => {
+          const done = s.onboardingCompleted.includes(quest.id);
+          return h(
+            'article',
+            { class: `quest-card onboarding-quest${done ? ' is-done' : ''}` },
+            h('div', { class: 'onboarding-quest-copy' },
+              h('h3', { class: 'quest-title' }, quest.title),
+              h('p', { class: 'hint faint' }, quest.description)
+            ),
+            h('strong', { class: done ? 'quest-earned' : 'quest-reward' }, done ? 'Đã nhận' : `+${quest.rewardCredits}`)
+          );
+        })
+      );
 
       const voiceLeft = COPY.stage.voiceMessageFree
         .replace('{cost}', String(COST.speakForMe))
         .replace('{count}', String(s.credits));
-      voiceBudget.textContent = voiceLeft;
-      walletLine.textContent = `${s.credits} credit`;
       // The dock states what the bar will do and what it costs, live.
       voiceLeftText = `${voiceLeft}.`;
       applyDockMode();

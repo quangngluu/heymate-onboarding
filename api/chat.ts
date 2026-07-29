@@ -2,7 +2,11 @@
 // and never reaches the browser. The client falls back to the scripted engine
 // whenever this endpoint is unavailable or errors, so the demo never breaks.
 
-import { buildSystemPrompt, type PromptSession } from '../src/chat/prompt';
+import {
+  buildSystemPrompt,
+  type PromptSession,
+  type PromptStoryState,
+} from '../src/chat/prompt';
 
 interface ChatRequest {
   residentId: string;
@@ -13,6 +17,7 @@ interface ChatRequest {
   idle?: boolean;
   level?: number;
   quest?: { prompt: string; objective: string };
+  story?: PromptStoryState;
   history: { role: 'user' | 'assistant'; content: string }[];
   message: string;
 }
@@ -72,7 +77,8 @@ export default async function handler(req: Request): Promise<Response> {
       body.revealNow,
       body.idle,
       body.level ?? 0,
-      body.quest
+      body.quest,
+      body.story
     );
   } catch {
     return Response.json({ error: 'unknown-resident' }, { status: 400 });

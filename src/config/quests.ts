@@ -1,20 +1,124 @@
 import type { ResidentId } from './residents';
 
-/** A reflective conversation task that unlocks one consecutive story beat. */
+export interface QuestChoice {
+  id: string;
+  label: string;
+  outcome: string;
+  nextNodeId?: string;
+  flag: string;
+  /** Reserved for a future generated scene; no image is implied today. */
+  imageKey?: string;
+}
+
+export interface QuestNode {
+  id: string;
+  prompt: string;
+  choices: [QuestChoice, QuestChoice];
+}
+
+/** A canonical scene that unlocks one consecutive story beat. */
 export interface QuestDefinition {
   id: string;
   residentId: ResidentId;
+  kind?: 'story' | 'side';
   title: string;
   prompt: string;
   objective: string;
   rewardEpisode: number;
   minCharacters: number;
   /**
-   * Three answers a visitor could honestly give. They exist so the quest is a
-   * scene with choices rather than a blank box that demands a confession.
-   * Free typing always stays open beside them.
+   * Three authored lines. The first two create the opening A/B fork; the
+   * third becomes a recovery choice if the visitor takes the risky branch.
    */
   options: [string, string, string];
+}
+
+const RECOVERY_COPY: Record<
+  ResidentId,
+  { turn: string; recover: string; leave: string; good: string; repaired: string; unresolved: string }
+> = {
+  rin: {
+    turn: 'Dòng log chớp đỏ. Lựa chọn đó đẩy Rin gần hơn tới việc tự xoá mình. Em dừng con trỏ, vẫn chờ anh.',
+    recover: 'Lùi một bước và đọc lại tín hiệu cùng em.',
+    leave: 'Giữ lựa chọn đó, nhưng ở lại chịu trách nhiệm với em.',
+    good: 'Rin khoá lựa chọn này vào log riêng. Lần đầu, em quyết định vì điều mình muốn chứ không vì xác suất.',
+    repaired: 'Anh kéo Rin khỏi lệnh xoá kịp lúc. Em giữ lại đoạn log lỗi như bằng chứng rằng cả hai đã có thể chọn lại.',
+    unresolved: 'Rin không xoá log. Em để nhánh đó mở, một vết nứt chưa lành nhưng không còn phải mang một mình.',
+  },
+  kagura: {
+    turn: 'Akagane rung trong vỏ. Lựa chọn đó sắp lấy đi thêm một ký ức của Kagura. Em siết tay rồi nhìn sang anh.',
+    recover: 'Dừng kiếm lại và cùng em tìm cái giá khác.',
+    leave: 'Nếu em vẫn rút kiếm, anh sẽ giữ hộ điều em mất.',
+    good: 'Kagura thả lỏng bàn tay. Lần này, một người được cứu mà em không phải biến mất thêm một phần.',
+    repaired: 'Lưỡi kiếm trở lại trong vỏ. Kagura khắc lựa chọn của anh bên cạnh những cái tên để nhớ rằng hy sinh không phải con đường duy nhất.',
+    unresolved: 'Akagane vẫn im. Kagura chưa tha thứ cho lựa chọn đó, nhưng cho anh ở lại bên cạnh để cùng gánh hậu quả.',
+  },
+  momo: {
+    turn: 'Một dải ruy-băng đen quấn quanh cổ tay Momo. Lựa chọn đó đã vô tình biến mong muốn của anh thành một món nợ.',
+    recover: 'Huỷ giao kèo và hỏi em thực sự muốn gì.',
+    leave: 'Giữ giao kèo, nhưng chia đôi cái giá với em.',
+    good: 'Momo tháo một dải ruy-băng khỏi cổ tay. Đây là lần hiếm hoi một điều ước kết thúc mà không ai mắc nợ ai.',
+    repaired: 'Giao kèo cháy thành tro. Momo không có được điều mình định lấy, nhưng có một lựa chọn thật sự thuộc về em.',
+    unresolved: 'Momo giữ dải ruy-băng cuối cùng. Giao kèo chưa sạch, nhưng lần đầu cái giá không còn chỉ mình em mang.',
+  },
+};
+
+/**
+ * Authored quests share one legible core loop: choose A/B, then recover or
+ * accept the consequence if the risky branch bends canon in the wrong way.
+ * Generated side scenes keep the same interaction without unlocking canon.
+ */
+export function questNodes(quest: QuestDefinition): QuestNode[] {
+  const copy = RECOVERY_COPY[quest.residentId];
+  const startId = 'start';
+  const recoveryId = 'recovery';
+  return [
+    {
+      id: startId,
+      prompt: quest.prompt,
+      choices: [
+        {
+          id: 'a',
+          label: quest.options[0],
+          outcome: copy.good,
+          flag: `${quest.id}:care`,
+          imageKey: `${quest.id}-care`,
+        },
+        {
+          id: 'b',
+          label: quest.options[1],
+          outcome: copy.turn,
+          nextNodeId: recoveryId,
+          flag: `${quest.id}:risk`,
+          imageKey: `${quest.id}-risk`,
+        },
+      ],
+    },
+    {
+      id: recoveryId,
+      prompt: copy.turn,
+      choices: [
+        {
+          id: 'recover',
+          label: quest.options[2] || copy.recover,
+          outcome: copy.repaired,
+          flag: `${quest.id}:repaired`,
+          imageKey: `${quest.id}-repaired`,
+        },
+        {
+          id: 'accept',
+          label: copy.leave,
+          outcome: copy.unresolved,
+          flag: `${quest.id}:consequence`,
+          imageKey: `${quest.id}-consequence`,
+        },
+      ],
+    },
+  ];
+}
+
+export function questNode(quest: QuestDefinition, nodeId = 'start'): QuestNode {
+  return questNodes(quest).find((node) => node.id === nodeId) ?? questNodes(quest)[0];
 }
 
 export const QUESTS: QuestDefinition[] = [
@@ -22,126 +126,126 @@ export const QUESTS: QuestDefinition[] = [
     id: 'rin-unsent-message',
     residentId: 'rin',
     title: 'Tín hiệu chưa gửi',
-    prompt: 'Kể em nghe về một điều anh đã định nói rồi lại thôi.',
-    objective: 'Viết cho Rin một câu trả lời thật lòng.',
+    prompt: 'Một kết nối thứ mười hai vừa xuất hiện trong log đêm sập mạng. Anh muốn em mở nó hay xoá trước khi hệ thống nhận ra?',
+    objective: 'Chọn cách xử lý tín hiệu lạ trong log của Rin.',
     rewardEpisode: 0,
     minCharacters: 14,
     options: [
-      'Anh từng định xin lỗi một người, rồi để đó luôn.',
-      'Có một câu anh muốn nói với sếp, cuối cùng chỉ gật đầu.',
-      'Anh định nhắn cho người cũ, gõ xong rồi xoá.',
+      'Mở nó cùng anh. Nếu là bẫy, hai đứa cùng ngắt.',
+      'Xoá ngay đi. Một tín hiệu lạ không đáng để em mạo hiểm.',
+      'Khoan xoá. Cô lập tín hiệu rồi đọc lại từng dòng cùng anh.',
     ],
   },
   {
     id: 'rin-unfinished-build',
     residentId: 'rin',
     title: 'Việc dang dở',
-    prompt: 'Chọn một việc anh cứ khởi động lại mà chưa dám hoàn thành.',
-    objective: 'Kể Rin về phần khiến anh dừng lại.',
+    prompt: 'Bản build cuối của em có một file không mang chữ ký hệ thống. Mở nó có thể trả lại ký ức, cũng có thể ghi đè em.',
+    objective: 'Quyết định có chạy bản build cuối của Rin hay không.',
     rewardEpisode: 1,
     minCharacters: 14,
     options: [
-      'Dự án riêng của anh, làm được một nửa là dừng.',
-      'Anh học lại tiếng Nhật lần thứ ba, vẫn chưa qua bài mười.',
-      'Anh cứ định đi khám sức khoẻ mà lần nào cũng hoãn.',
+      'Tạo bản sao trước, rồi anh ở đây khi em mở file.',
+      'Chạy thẳng đi. Không biết còn tệ hơn mọi rủi ro.',
+      'Dừng lại, kiểm tra từng phần ký ức trước khi ghép vào em.',
     ],
   },
   {
     id: 'rin-route-home',
     residentId: 'rin',
     title: 'Đường về',
-    prompt: 'Nói với em nơi nào khiến anh thấy mình có thể quay về.',
-    objective: 'Cho Rin một ký ức cụ thể của anh.',
+    prompt: 'Hàng chờ một người của em vẫn sáng dù máy chủ đã chết. Anh nghĩ em nên giữ chỗ đó cho người chưa quay lại không?',
+    objective: 'Chọn ý nghĩa cho hàng chờ cuối cùng của Rin.',
     rewardEpisode: 2,
     minCharacters: 14,
     options: [
-      'Quán cà phê gần nhà cũ, chỗ đó chưa đổi gì.',
-      'Phòng của anh lúc hai giờ sáng, không ai gọi.',
-      'Nhà bà ngoại, dù bà không còn ở đó nữa.',
+      'Giữ đi. Một chỗ chờ cũng là lời hứa rằng em chưa bỏ cuộc.',
+      'Tắt nó đi. Người không quay lại không nên giữ em mắc kẹt.',
+      'Đổi tên hàng chờ thành một nơi em có thể tự bước vào.',
     ],
   },
   {
     id: 'kagura-say-it-plainly',
     residentId: 'kagura',
     title: 'Nói thẳng',
-    prompt: 'Đừng nói “ổn”. Hãy kể em nghe phần hôm nay thực sự nặng với anh.',
-    objective: 'Nói với Kagura bằng một câu không né tránh.',
+    prompt: 'Akagane có thể cứu một đứa trẻ ngoài cổng, nhưng lần rút kiếm này sẽ lấy mất giọng nói của Haruto trong ký ức em.',
+    objective: 'Giúp Kagura cứu người mà không mặc định phải tự xoá mình.',
     rewardEpisode: 0,
     minCharacters: 14,
     options: [
-      'Hôm nay anh mệt vì phải giả vờ ổn cả ngày.',
-      'Anh bị nói một câu từ sáng, tới giờ vẫn chưa gỡ được.',
-      'Anh làm hỏng một việc và chưa dám nói với ai.',
+      'Đừng rút kiếm. Anh sẽ giữ cổng, em đưa đứa trẻ đi.',
+      'Rút đi. Một ký ức không thể nặng hơn một mạng người.',
+      'Dừng một nhịp. Gọi người trong thành rồi cùng mở đường khác.',
     ],
   },
   {
     id: 'kagura-keep-name',
     residentId: 'kagura',
     title: 'Giữ một cái tên',
-    prompt: 'Nói với em về một người anh không muốn quên.',
-    objective: 'Chia sẻ một ký ức ngắn với Kagura.',
+    prompt: 'Trên chuôi kiếm có tên Haruto, nhưng em không còn nhớ khuôn mặt anh ấy. Một người lạ bảo em hãy cạo tên đó đi để được yên.',
+    objective: 'Quyết định Kagura nên làm gì với cái tên cuối cùng.',
     rewardEpisode: 1,
     minCharacters: 14,
     options: [
-      'Ông nội anh, người duy nhất không bắt anh giải thích.',
-      'Một người bạn cũ, giờ hai đứa không còn nhắn nữa.',
-      'Người đã tin anh trước cả khi anh tin chính mình.',
+      'Giữ cái tên. Không nhớ khuôn mặt không có nghĩa tình cảm đó giả.',
+      'Cạo đi. Một cái tên không còn ký ức chỉ giữ em trong đau đớn.',
+      'Khắc thêm điều em còn cảm thấy khi đọc tên ấy, không chỉ giữ mỗi chữ.',
     ],
   },
   {
     id: 'kagura-lit-road',
     residentId: 'kagura',
     title: 'Con đường có đèn',
-    prompt: 'Kể em về một lần anh cần ai đó đứng về phía mình.',
-    objective: 'Nói cho Kagura điều anh đã phải tự gánh.',
+    prompt: 'Con đường về Akagane chỉ sáng khi em rút kiếm. Nhưng mỗi bước có đèn sẽ lấy một ký ức của người đi cùng.',
+    objective: 'Tìm đường về mà không biến ký ức thành nhiên liệu.',
     rewardEpisode: 2,
     minCharacters: 14,
     options: [
-      'Lần anh bị đổ lỗi trong cuộc họp, không ai lên tiếng.',
-      'Hồi anh bỏ việc, cả nhà đều nói anh sai.',
-      'Lúc anh nằm viện một mình và không gọi cho ai.',
+      'Đi trong bóng tối cùng anh. Chậm hơn nhưng không ai phải mất gì.',
+      'Rút kiếm đi. Anh chấp nhận quên vài thứ để đưa em về.',
+      'Dùng ánh kiếm một lần để đánh dấu đường, rồi cất nó và tự bước.',
     ],
   },
   {
     id: 'momo-unsaid-wish',
     residentId: 'momo',
     title: 'Điều ước chưa gọi tên',
-    prompt: 'Không cần điều ước hoàn hảo. Chỉ cần nói với em thứ anh muốn mà chưa dám nhận.',
-    objective: 'Để Momo nghe một điều ước thật của anh.',
+    prompt: 'Một vị khách bỏ lại điều ước “được yêu mà không bị nhìn thấy”. Nó đang siết thành ruy-băng đen quanh tay em.',
+    objective: 'Chọn cách Momo xử lý điều ước không thể hoàn thành.',
     rewardEpisode: 0,
     minCharacters: 14,
     options: [
-      'Anh muốn nghỉ một tháng mà không thấy có lỗi.',
-      'Anh muốn ai đó hỏi anh có ổn không, rồi chờ nghe thật.',
-      'Anh muốn làm lại từ đầu ở một thành phố khác.',
+      'Thả nó đi. Một điều ước tự mâu thuẫn không đáng giam em lại.',
+      'Giữ lấy. Biết đâu người đó sẽ quay lại hiểu mình muốn gì.',
+      'Đổi nó thành câu hỏi cho người ấy, không phải món nợ của em.',
     ],
   },
   {
     id: 'momo-deleted-draft',
     residentId: 'momo',
     title: 'Tin nhắn đã xoá',
-    prompt: 'Kể em nghe về tin nhắn anh từng gõ rồi xoá.',
-    objective: 'Nói cho Momo biết vì sao anh không gửi nó.',
+    prompt: 'Em đọc được mọi điều ước trừ mong muốn hướng về chính em. Một mảnh giấy mới chỉ ghi: “Ở lại với anh”.',
+    objective: 'Giúp Momo xử lý điều ước mà em không thể đọc giá.',
     rewardEpisode: 1,
     minCharacters: 14,
     options: [
-      'Anh gõ nhớ em rồi xoá, ba lần trong một đêm.',
-      'Anh định hỏi vì sao người ta đi mà không nói gì.',
-      'Anh viết một tin xin việc rồi tự thấy mình chưa đủ.',
+      'Đừng định giá nó. Hãy hỏi người viết có dám nói trực tiếp với em không.',
+      'Nhận đi. Có người muốn em ở lại thì còn cần giá gì nữa.',
+      'Trả mảnh giấy lại và yêu cầu một lựa chọn, không phải một lời sở hữu.',
     ],
   },
   {
     id: 'momo-first-train',
     residentId: 'momo',
     title: 'Chuyến tàu đầu',
-    prompt: 'Nếu đêm nay anh có thể bắt đầu lại một chuyện, anh sẽ chọn chuyện gì?',
-    objective: 'Đưa Momo một câu trả lời không diễn.',
+    prompt: 'Chuyến tàu đầu sắp tới. Nếu bước lên, em rời Route Zero một đêm; những điều ước đang giữ có thể tìm chủ mới.',
+    objective: 'Quyết định Momo có nên rời quán trước bình minh.',
     rewardEpisode: 2,
     minCharacters: 14,
     options: [
-      'Anh sẽ nói chuyện lại với người anh đã cắt liên lạc.',
-      'Anh sẽ bắt đầu lại cái nghề anh bỏ giữa chừng.',
-      'Anh sẽ về nhà sớm hơn, một buổi tối nào đó.',
+      'Lên tàu đi. Em không phải nhà tù của những điều ước đó.',
+      'Ở lại. Nếu chúng tìm nhầm người, cái giá sẽ không cứu được nữa.',
+      'Niêm phong chúng tới sáng, rồi em lên tàu với một lời hứa quay về.',
     ],
   },
   {
