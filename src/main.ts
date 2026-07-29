@@ -24,7 +24,6 @@ import { getReply } from './chat/client';
 import { cancelSpeech, renderSpeech, streamSpeech } from './chat/voice';
 import { spoken } from './chat/dialogue';
 import { residentById, type ResidentId } from './config/residents';
-import { questById } from './config/quests';
 import { writeQuest } from './chat/questgen';
 import { Ambience } from './audio/ambience';
 import { COST, store, type SessionSetup, type Step } from './state/store';
@@ -839,7 +838,9 @@ class App implements UIActions {
     };
     // History excludes the turn we just pushed; the message is sent separately.
     const history = after.chat.slice(0, -1);
-    const openQuest = s.activeQuestId ? questById(s.activeQuestId) : undefined;
+    // Generated scenes live in the store too; the reply needs the same thread
+    // whether the current scene was authored up front or written for him.
+    const openQuest = s.activeQuestId ? store.questById2(s.activeQuestId) : undefined;
 
     void getReply(text, ctx, history, {
       level: store.level,

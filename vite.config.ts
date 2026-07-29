@@ -148,6 +148,45 @@ function devTtsApi(key: string, defaultVoice: string): Plugin {
   };
 }
 
+/**
+ * Mirrors the edge scene-writer in Vite too. Without it, generated quests
+ * silently never arrive during local QA while production takes a different
+ * route.
+ */
+function devQuestApi(key: string): Plugin {
+  return {
+    name: 'dev-quest-api',
+    configureServer(server) {
+      server.middlewares.use('/api/quest', async (req, res) => {
+        try {
+          // The edge handler reads Vercel-style environment variables; Vite's
+          // loaded .env.local values must be supplied explicitly in dev.
+          process.env.DEEPSEEK_API_KEY ??= key;
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) chunks.push(chunk as Buffer);
+          const method = req.method ?? 'GET';
+          const { default: handler } = await server.ssrLoadModule('/api/quest.ts');
+          const response = await handler(
+            new Request(`http://localhost${req.url ?? '/api/quest'}`, {
+              method,
+              headers: { 'Content-Type': req.headers['content-type'] ?? 'application/json' },
+              body: method === 'GET' || method === 'HEAD' ? undefined : Buffer.concat(chunks),
+            })
+          );
+
+          res.statusCode = response.status;
+          response.headers.forEach((value, header) => res.setHeader(header, value));
+          res.end(Buffer.from(await response.arrayBuffer()));
+        } catch {
+          res.statusCode = 502;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'unreachable' }));
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
@@ -157,6 +196,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       devChatApi(env.DEEPSEEK_API_KEY ?? ''),
       devTtsApi(env.SPOON_API_KEY ?? '', env.SPOON_VOICE_ID ?? ''),
+      devQuestApi(env.DEEPSEEK_API_KEY ?? ''),
     ],
   };
 });

@@ -7,6 +7,7 @@
 // none left; the reward is credits.
 
 import { buildSystemPrompt, type PromptSession } from '../src/chat/prompt';
+import { RESIDENTS } from '../src/config/residents';
 
 interface QuestRequest {
   residentId: string;
@@ -43,6 +44,10 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ error: 'bad-request' }, { status: 400 });
   }
 
+  if (!RESIDENTS.some((resident) => resident.id === body.residentId)) {
+    return Response.json({ error: 'unknown-resident' }, { status: 400 });
+  }
+
   // Her canon and her voice, so the scene sounds like her and not like a form.
   const system = buildSystemPrompt(
     body.residentId,
@@ -54,7 +59,10 @@ export default async function handler(req: Request): Promise<Response> {
     body.level ?? 0
   );
 
-  const used = (body.used ?? []).slice(-12).join('; ');
+  const used = (Array.isArray(body.used) ? body.used : [])
+    .filter((title): title is string => typeof title === 'string')
+    .slice(-12)
+    .join('; ');
   const ask = [
     'Em hãy nghĩ ra một cảnh mới để mời anh vào, giống những nhiệm vụ em từng mở nhưng không lặp lại chúng.',
     used ? `Những cảnh đã dùng rồi, đừng lặp: ${used}.` : '',
@@ -92,8 +100,17 @@ export default async function handler(req: Request): Promise<Response> {
       options?: string[];
     };
 
-    const options = (parsed.options ?? []).filter((o) => typeof o === 'string' && o.trim()).slice(0, 3);
-    if (!parsed.title || !parsed.prompt || !parsed.objective || options.length < 3) {
+    const options = (Array.isArray(parsed.options) ? parsed.options : [])
+      .filter((option): option is string => typeof option === 'string' && option.trim().length >= 20)
+      .map((option) => option.trim().slice(0, 160))
+      .slice(0, 3);
+    if (
+      !parsed.title ||
+      !parsed.prompt ||
+      !parsed.objective ||
+      options.length !== 3 ||
+      new Set(options.map((option) => option.toLocaleLowerCase('vi-VN'))).size !== 3
+    ) {
       return Response.json({ error: 'bad-shape' }, { status: 502 });
     }
 
@@ -101,7 +118,7 @@ export default async function handler(req: Request): Promise<Response> {
       title: parsed.title.trim().slice(0, 40),
       prompt: parsed.prompt.trim().slice(0, 240),
       objective: parsed.objective.trim().slice(0, 120),
-      options: options.map((o) => o.trim().slice(0, 160)),
+      options,
     });
   } catch {
     return Response.json({ error: 'upstream' }, { status: 502 });
