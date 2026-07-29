@@ -26,6 +26,27 @@ export function segments(text: string): Segment[] {
   return out.length ? out : [{ kind: 'speech', text: text.trim() }];
 }
 
+/**
+ * The same split, cut off after `words` words counted across the whole line.
+ * Used to uncover a reply gradually without re-deciding what is a beat.
+ */
+export function segmentsUpTo(text: string, words: number): Segment[] {
+  let budget = words;
+  const out: Segment[] = [];
+  for (const seg of segments(text)) {
+    if (budget <= 0) break;
+    const parts = seg.text.split(/\s+/);
+    if (parts.length <= budget) {
+      out.push(seg);
+      budget -= parts.length;
+    } else {
+      out.push({ kind: seg.kind, text: parts.slice(0, budget).join(' ') });
+      budget = 0;
+    }
+  }
+  return out;
+}
+
 /** Only what she says out loud. Empty when the line is pure action. */
 export function spoken(text: string): string {
   return segments(text)

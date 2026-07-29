@@ -45,9 +45,14 @@ const STAGE_AZIMUTH = Math.atan2(CAMERA_PRESETS.stage.pos[0], CAMERA_PRESETS.sta
 const FREE_ARC = Math.PI / 3;
 
 /** Keep the reply hidden briefly for a synchronized voice start, never indefinitely. */
-// How long the text waits for the voice before it goes out on its own. The
-// clip is never discarded when this expires; it simply arrives late.
-const VOICE_REVEAL_WAIT_MS = 5000;
+// Her line is uncovered a word at a time. It is not decoration: rendering the
+// whole paragraph at once and then sitting silent for four seconds reads as a
+// stall, while a line that is still arriving reads as someone speaking. When
+// the clip lands, the remaining words are re-paced to finish with it.
+// Paced off the estimated speaking time so the words come out at roughly the
+// rate she would say them, which is also long enough to cover the render.
+const MIN_WORD_MS = 26;
+const MAX_WORD_MS = 220;
 
 class App implements UIActions {
   private engine: Engine;
@@ -73,6 +78,7 @@ class App implements UIActions {
   private residentStage: WaifuStage | null = null;
   private speakTimer = 0;
   private idleTimer = 0;
+  private revealTimer = 0;
   /** Bumped whenever a newer line takes over, so a late clip stays quiet. */
   private speechToken = 0;
   /** She breaks a silence at most twice per encounter. */
@@ -502,6 +508,7 @@ class App implements UIActions {
     const voice = r.voices.find((v) => v.slot === s.session.voice) ?? r.voices[0];
     // Only the authored signature greeting has audio; a callback is text.
     this.speak(line, saved.memories.length ? undefined : voice.url);
+    this.streamIn(0, line, Promise.resolve(null), false);
     this.armIdleNudge();
   }
 
@@ -545,21 +552,10 @@ class App implements UIActions {
       ) {
         return;
       }
-      // Keep the reply under the familiar typing state while its clip is
-      // prepared. This avoids the old text-first, voice-later experience.
-      store.set({ thinking: true, voicing: true });
-      const buffer = await this.prepareReplySpeech(result.text, s.residentId);
-      const afterSpeech = store.get();
-      if (
-        afterSpeech.residentId !== s.residentId ||
-        afterSpeech.step !== 'stage' ||
-        afterSpeech.chat.length !== chatLength
-      ) {
-        return;
-      }
-      store.set({ thinking: false, voicing: false });
+      store.set({ thinking: false, voicing: true });
+      const prepared = this.startReplySpeech(result.text, s.residentId);
       store.pushTurn({ from: 'resident', text: result.text });
-      this.speakPrepared(result.text, buffer);
+      this.streamIn(store.get().chat.length - 1, result.text, prepared);
       this.armIdleNudge();
     });
   }
@@ -569,32 +565,71 @@ class App implements UIActions {
    * text-only if it is slow rather than letting a late clip talk over an
    * already-read message.
    */
-  private async prepareReplySpeech(text: string, residentId: ResidentId): Promise<AudioBuffer | null> {
+  private startReplySpeech(text: string, residentId: ResidentId): Promise<AudioBuffer | null> {
     const r = residentById(residentId);
     const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
-    const token = ++this.speechToken;
+    this.speechToken++;
     const line = spoken(text);
-    if (!line) return null;
-    const prepared = renderSpeech(line, slot.voiceId, slot.speed).then(async (url) => {
-      return url ? this.ambience.prepareClip(url) : null;
-    });
-    const LATE = Symbol('late');
-    const first = await Promise.race([
-      prepared,
-      new Promise<typeof LATE>((resolve) => window.setTimeout(() => resolve(LATE), VOICE_REVEAL_WAIT_MS)),
-    ]);
-    if (first !== LATE) return first as AudioBuffer | null;
-    // The provider is slower than the reveal deadline more often than not.
-    // Letting the line go out on its own is right; throwing the clip away was
-    // not, and it is why replies read silently. It plays when it lands, unless
-    // something newer has taken over by then.
-    void prepared.then((buffer) => {
+    if (!line) return Promise.resolve(null);
+    return renderSpeech(line, slot.voiceId, slot.speed).then((url) =>
+      url ? this.ambience.prepareClip(url) : null
+    );
+  }
+
+  /**
+   * Uncover a line that is already in the chat, word by word, and hand it over
+   * to the voice the moment the clip is ready. The pace starts at reading
+   * speed and, once the duration is known, stretches or tightens so the last
+   * word lands with the last syllable.
+   */
+  private streamIn(
+    index: number,
+    text: string,
+    prepared: Promise<AudioBuffer | null>,
+    /** False when some other path already owns the clip and the voicing flag. */
+    ownsVoice = true
+  ): void {
+    window.clearInterval(this.revealTimer);
+    const token = this.speechToken;
+    const residentId = store.get().residentId;
+    const total = text.trim().split(/\s+/).length;
+    let shown = 0;
+
+    const stillMine = () => {
       const s = store.get();
-      if (!buffer || token !== this.speechToken) return;
-      if (s.residentId !== residentId || s.step !== 'stage') return;
+      return s.step === 'stage' && s.residentId === residentId && token === this.speechToken;
+    };
+    const run = (stepMs: number) => {
+      window.clearInterval(this.revealTimer);
+      this.revealTimer = window.setInterval(() => {
+        if (!stillMine()) {
+          window.clearInterval(this.revealTimer);
+          store.set({ reveal: null });
+          return;
+        }
+        shown += 1;
+        if (shown >= total) {
+          window.clearInterval(this.revealTimer);
+          store.set({ reveal: null });
+          return;
+        }
+        store.set({ reveal: { turn: index, words: shown } });
+      }, stepMs);
+    };
+
+    const guess = (speakingDuration(spoken(text) || text) * 1000) / Math.max(1, total);
+    store.set({ reveal: { turn: index, words: 0 } });
+    run(Math.min(MAX_WORD_MS, Math.max(MIN_WORD_MS, guess)));
+
+    void prepared.then((buffer) => {
+      if (!stillMine()) return;
+      if (ownsVoice) store.set({ voicing: false });
+      if (!buffer) return;
       this.speakPrepared(text, buffer);
+      // Re-pace what is left so the words and the voice finish together.
+      const left = Math.max(1, total - shown);
+      run(Math.max(MIN_WORD_MS, (buffer.duration * 1000 * 0.94) / left));
     });
-    return null;
   }
 
   /** Start a reply that has already been prepared, with text and voice together. */
@@ -662,6 +697,7 @@ class App implements UIActions {
   leaveUniverse(): void {
     this.rig.cancel();
     window.clearTimeout(this.speakTimer);
+    window.clearInterval(this.revealTimer);
     this.cancelIdleNudge();
     window.clearTimeout(this.genTimer);
     this.controls.enabled = false;
@@ -730,17 +766,15 @@ class App implements UIActions {
       quest: openQuest && { prompt: openQuest.prompt, objective: openQuest.objective },
     }).then(async (result) => {
       if (store.get().residentId !== s.residentId) return; // switched residents
-      // Retain the typing state for a bounded voice pre-roll. The chat turn is
-      // only committed after the audio has decoded, so there is no visible gap.
-      store.set({ voicing: true });
-      const buffer = await this.prepareReplySpeech(result.text, s.residentId);
-      if (store.get().residentId !== s.residentId || store.get().step !== 'stage') return;
-      store.set({ thinking: false, voicing: false });
+      // The line starts arriving the moment the model answers. Its clip is
+      // rendered alongside and joins in when it is ready.
+      store.set({ thinking: false, voicing: true });
+      const prepared = this.startReplySpeech(result.text, s.residentId);
       store.pushTurn({ from: 'resident', text: result.text });
       if (result.revealedRung !== undefined) {
         store.set({ revealed: result.revealedRung + 1 });
       }
-      this.speakPrepared(result.text, buffer);
+      this.streamIn(store.get().chat.length - 1, result.text, prepared);
       this.armIdleNudge();
       // The free encounter ends by offering to keep what was said, not by
       // blocking the conversation mid-sentence.
@@ -767,6 +801,7 @@ class App implements UIActions {
     if (!quest) return;
     store.pushTurn({ from: 'resident', text: quest.prompt });
     this.speak(quest.prompt);
+    this.streamIn(store.get().chat.length - 1, quest.prompt, Promise.resolve(null), false);
   }
 
   /** Render a user-authored short line in the active resident's own voice. */

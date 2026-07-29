@@ -84,6 +84,12 @@ export interface AppState {
   thinking: boolean;
   /** True while her voice is being rendered (seconds, not instant). */
   voicing: boolean;
+  /**
+   * A committed line being revealed word by word. Purely presentational: the
+   * chat array is already complete, this only says how much of one turn has
+   * been uncovered so far.
+   */
+  reveal: { turn: number; words: number } | null;
   /** Session-scoped reveal count, seeded from saved progress. */
   revealed: number;
   sessionPanelOpen: boolean;
@@ -120,6 +126,7 @@ const initialState: AppState = {
   speaking: false,
   thinking: false,
   voicing: false,
+  reveal: null,
   revealed: 0,
   sessionPanelOpen: false,
   activeQuestId: null,
@@ -239,6 +246,7 @@ export class Store {
       speaking: false,
       thinking: false,
       voicing: false,
+  reveal: null,
       revealed: saved.revealed,
       sessionPanelOpen: false,
           activeQuestId: null,

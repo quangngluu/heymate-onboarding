@@ -627,6 +627,45 @@ html, body {
 }
 .field-tag[hidden] { display: none; }
 
+/* The turn she has not started yet. Three dots in her own bubble read as
+   someone about to speak; a status line under the buttons read as a spinner. */
+.bubble.is-waiting {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 14px 16px;
+  width: fit-content;
+}
+.bubble.is-waiting span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ivory);
+  opacity: 0.35;
+  animation: waiting-dot 1.15s ease-in-out infinite;
+}
+.bubble.is-waiting .dot-2 { animation-delay: 0.16s; }
+.bubble.is-waiting .dot-3 { animation-delay: 0.32s; }
+@keyframes waiting-dot {
+  0%, 70%, 100% { opacity: 0.28; transform: translateY(0); }
+  35% { opacity: 0.95; transform: translateY(-3px); }
+}
+
+/* A line still arriving keeps a cursor, so a pause reads as her thinking of
+   the next word rather than as the app having stopped. */
+.bubble.is-typing .said:last-child::after,
+.bubble.is-typing .beat:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 0.95em;
+  margin-left: 3px;
+  vertical-align: -0.13em;
+  background: var(--accent);
+  animation: caret 1s steps(1) infinite;
+}
+@keyframes caret { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+
 /* A beat is what she is doing; it is set apart, dimmer and italic, and it is
    the half the voice engine never receives. */
 .bubble .beat {
@@ -1163,6 +1202,8 @@ html, body {
 }
 @media (prefers-reduced-motion: reduce) {
   .step, .panel, .arrival-copy, .customize-panel { transition: none; }
+  .bubble.is-waiting span { animation: none; opacity: 0.6; }
+  .bubble.is-typing .said:last-child::after { animation: none; }
 }
 
 @media (prefers-reduced-transparency: reduce) {

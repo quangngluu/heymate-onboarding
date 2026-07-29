@@ -19,7 +19,7 @@ import {
   residentById,
 } from '../config/residents';
 import { questById, questsForResident } from '../config/quests';
-import { segments } from '../chat/dialogue';
+import { segments, segmentsUpTo } from '../chat/dialogue';
 import { FREE_TURNS, FREE_VOICE_MESSAGES } from '../state/store';
 import { extractMemories } from '../chat/memory';
 
@@ -427,6 +427,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   let lastResident = '';
   let lastQuestId = '';
   let lastChatLen = -1;
+  let lastWaiting = false;
+  let lastRevealKey = '';
   let lastGateOpen = false;
 
   return {
@@ -537,39 +539,50 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       if (!openQuest) lastQuestId = '';
 
       const left = Math.max(0, FREE_TURNS - s.turns);
-      turnsLeft.textContent = s.thinking
-        ? `${r.name.split(' ')[0]} đang nghĩ`
-        : s.voicing
-          ? `${r.name.split(' ')[0]} đang chuẩn bị giọng nói`
-          : left > 0
-          ? `Còn ${left} lượt miễn phí`
-          : COPY.stage.outOfTurns;
-      turnsLeft.classList.toggle('is-thinking', s.thinking);
-      turnsLeft.classList.toggle('is-voicing', s.voicing);
+      turnsLeft.textContent = left > 0 ? `Còn ${left} lượt miễn phí` : COPY.stage.outOfTurns;
       // Free turns gate the conversation; the voice budget gates speak-for-me.
       const voiceSpent = s.voiceFreeUses >= FREE_VOICE_MESSAGES && s.voiceCredits <= 0;
       const blocked = s.thinking || s.voicing || (speakMode ? voiceSpent : left === 0);
       input.disabled = blocked;
       sendBtn.disabled = blocked;
 
-      if (s.chat.length !== lastChatLen) {
+      // Waiting belongs in the conversation, as a turn she has not started,
+      // rather than as a status line under the buttons.
+      const lastTurn = s.chat[s.chat.length - 1];
+      const waiting = s.thinking || (s.voicing && lastTurn?.from === 'user');
+      const revealKey = s.reveal ? `${s.reveal.turn}:${s.reveal.words}` : '';
+      if (s.chat.length !== lastChatLen || waiting !== lastWaiting || revealKey !== lastRevealKey) {
         lastChatLen = s.chat.length;
+        lastWaiting = waiting;
+        lastRevealKey = revealKey;
         // Her actions and her words look different, because they are: one is
         // the room, the other is her voice. Only the second is ever spoken.
         log.replaceChildren(
-          ...s.chat.map((t) =>
-            h(
+          ...s.chat.map((t, i) => {
+            if (t.from !== 'resident') return h('p', { class: 'bubble bubble-user' }, t.text);
+            const partial = s.reveal?.turn === i;
+            const parts = partial ? segmentsUpTo(t.text, s.reveal!.words) : segments(t.text);
+            return h(
               'p',
-              { class: `bubble bubble-${t.from}` },
-              ...(t.from === 'resident'
-                ? segments(t.text).map((seg) =>
-                    seg.kind === 'beat'
-                      ? h('span', { class: 'beat' }, seg.text)
-                      : h('span', { class: 'said' }, seg.text)
-                  )
-                : [t.text])
-            )
-          )
+              { class: `bubble bubble-resident${partial ? ' is-typing' : ''}` },
+              ...parts.map((seg) =>
+                seg.kind === 'beat'
+                  ? h('span', { class: 'beat' }, seg.text)
+                  : h('span', { class: 'said' }, seg.text)
+              )
+            );
+          }),
+          ...(waiting
+            ? [
+                h(
+                  'p',
+                  { class: 'bubble bubble-resident is-waiting', 'aria-label': `${r.name.split(' ')[0]} đang trả lời` },
+                  h('span', { class: 'dot-1' }),
+                  h('span', { class: 'dot-2' }),
+                  h('span', { class: 'dot-3' })
+                ),
+              ]
+            : [])
         );
         log.scrollTop = log.scrollHeight;
       }
