@@ -8,22 +8,62 @@
 
 export type Segment = { kind: 'beat' | 'speech'; text: string };
 
-const BEAT = /\*+([^*]+)\*+/g;
+/** Longest an unterminated beat is allowed to run before we call it speech. */
+const RUNAWAY_BEAT = 90;
+
+/**
+ * Where an unclosed beat ends.
+ *
+ * The model sometimes opens a beat and forgets the closing marker. Matching
+ * pairs only would leave that text as speech, so the marker shows up on screen
+ * and the voice reads the stage direction aloud. A beat is short and lower
+ * case; the dialogue after it restarts with a capital. So the beat ends at
+ * whichever comes first: a sentence terminator, a word that starts a new
+ * sentence, or a length no real beat reaches.
+ */
+function unclosedBeatEnd(rest: string): number {
+  const stop = rest.search(/[.!?…]/);
+  const capital = rest.slice(1).search(/\s\p{Lu}/u);
+  const ends = [
+    stop === -1 ? Infinity : stop + 1,
+    capital === -1 ? Infinity : capital + 1,
+    RUNAWAY_BEAT,
+    rest.length,
+  ];
+  return Math.min(...ends);
+}
 
 /** Split a line into her actions and her words, in order, dropping blanks. */
 export function segments(text: string): Segment[] {
   const out: Segment[] = [];
+  const push = (kind: Segment['kind'], raw: string) => {
+    // Any marker that survived parsing is noise: never render it, never say it.
+    const t = raw.replace(/\*/g, '').trim();
+    if (t) out.push({ kind, text: t });
+  };
+
+  let i = 0;
   let last = 0;
-  for (const m of text.matchAll(BEAT)) {
-    const before = text.slice(last, m.index).trim();
-    if (before) out.push({ kind: 'speech', text: before });
-    const beat = m[1].trim();
-    if (beat) out.push({ kind: 'beat', text: beat });
-    last = m.index + m[0].length;
+  while (i < text.length) {
+    if (text[i] !== '*') {
+      i++;
+      continue;
+    }
+    let open = i;
+    while (text[open] === '*') open++;
+    const close = text.indexOf('*', open);
+    const end = close === -1 ? open + unclosedBeatEnd(text.slice(open)) : close;
+
+    push('speech', text.slice(last, i));
+    push('beat', text.slice(open, end));
+
+    i = end;
+    while (text[i] === '*') i++;
+    last = i;
   }
-  const tail = text.slice(last).trim();
-  if (tail) out.push({ kind: 'speech', text: tail });
-  const all = out.length ? out : [{ kind: 'speech' as const, text: text.trim() }];
+  push('speech', text.slice(last));
+
+  const all = out.length ? out : [{ kind: 'speech' as const, text: text.replace(/\*/g, '').trim() }];
   return all.flatMap((seg) => (seg.kind === 'speech' ? chunk(seg.text) : [seg]));
 }
 
