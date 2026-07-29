@@ -90,6 +90,16 @@ export function galleryStep(actions: UIActions): StepView {
 export function stageStep(actions: UIActions, state: AppState): StepView {
   const srOnlyName = h('h1', { class: 'visually-hidden' });
   const info = h('aside', { class: 'panel stage-info' });
+  const levelPips = h('div', { class: 'level-pips', 'aria-hidden': 'true' });
+  const levelWhere = h('p', { class: 'level-where' });
+  const levelNext = h('p', { class: 'level-next' });
+  const levelBlock = h(
+    'div',
+    { class: 'level-block' },
+    h('div', { class: 'level-head' }, h('span', { class: 'level-label' }, COPY.stage.levelLabel), levelPips),
+    levelWhere,
+    levelNext
+  );
   // On a phone her card cannot stay open and leave room for her. Collapsed it
   // is a header; tapping anywhere outside a disclosure opens the rest.
   info.addEventListener('click', (e) => {
@@ -512,6 +522,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
             h('p', { class: 'card-bio' }, r.profile),
             h('p', { class: 'card-setting' }, r.setting)
           ),
+          levelBlock,
           h('details', { class: 'episode-block profile-more' },
             h('summary', {}, 'Câu chuyện của em'),
             h('div', { class: 'episode-list' })
@@ -639,6 +650,15 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         saveBtn.disabled = !canPay;
       }
       lastGateOpen = s.saveGateOpen;
+
+      const level = Math.min(5, s.revealed);
+      levelPips.replaceChildren(
+        ...Array.from({ length: 5 }, (_, i) =>
+          h('span', { class: `pip${i < level ? ' is-on' : ''}` })
+        )
+      );
+      levelWhere.textContent = r.levels[level];
+      levelNext.textContent = level >= 5 ? COPY.stage.levelMax : COPY.stage.levelNext;
 
       const completed = saved?.completedQuests ?? [];
       const quests = questsForResident(r.id);
