@@ -138,8 +138,13 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     const v = input.value.trim();
     if (!v) return;
     input.value = '';
-    if (speakMode) actions.speakCustomText(v);
-    else actions.sendMessage(v);
+    if (speakMode) {
+      actions.speakCustomText(v);
+      speakMode = false;
+      applyDockMode();
+    } else {
+      actions.sendMessage(v);
+    }
   };
   input.addEventListener('keydown', (e) => {
     if ((e as KeyboardEvent).key === 'Enter') send();
@@ -157,16 +162,27 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     COPY.stage.setSessionShort
   ) as HTMLButtonElement;
 
+  // A tag inside the field, plus quote marks around it: the bar has to look
+  // like a line she will say out loud, not a message you are sending her.
+  const modeTag = h('span', { class: 'field-tag', hidden: true }, COPY.stage.speakAs) as HTMLElement;
   const dock = h(
     'div',
     { class: 'stage-dock' },
     h('div', { class: 'dock-top' }, h('div', { class: 'dock-chips' }, questChip, speakChip, setChip), turnsLeft),
     dockHint,
-    h('div', { class: 'dock-bar' }, input, sendBtn)
+    h('div', { class: 'dock-bar' }, modeTag, h('div', { class: 'field-wrap' }, input), sendBtn)
   );
-  // Her card and her words share one rail beside the figurine. There is no
-  // door to open: she has already spoken by the time the stage settles.
-  const rail = h('div', { class: 'stage-rail' }, info, log);
+  // Left is her dossier, right is her voice, bottom is what you do. The card
+  // can step off the frame entirely when the visitor wants the stage clear.
+  const cardToggle = h(
+    'button',
+    { class: 'btn btn-ghost sm', 'aria-pressed': 'true', onClick: () => {
+      const hidden = info.classList.toggle('is-hidden');
+      cardToggle.setAttribute('aria-pressed', String(!hidden));
+    } },
+    COPY.stage.cardToggle
+  ) as HTMLButtonElement;
+  const rail = h('div', { class: 'stage-rail' }, log);
 
   // --- session sheet (only after the encounter) ---
   const nickInput = h('input', {
@@ -224,36 +240,40 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       h('h2', { class: 'panel-title' }, COPY.stage.setSession),
       h('button', { class: 'chrome-btn', 'aria-label': 'Đóng thiết lập', onClick: () => actions.closeSessionPanel() }, '×')
     ),
-    h('p', { class: 'hint faint' }, COPY.stage.sessionNote),
-    h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, COPY.stage.nickname), nickInput),
     h(
       'div',
-      { class: 'custom-group' },
-      h('h3', { class: 'group-label' }, COPY.stage.persona),
-      personaInput,
-      h('p', { class: 'hint faint' }, COPY.stage.personaNote)
+      { class: 'sheet-body' },
+      h('p', { class: 'hint faint' }, COPY.stage.sessionNote),
+      h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, COPY.stage.nickname), nickInput),
+      h(
+        'div',
+        { class: 'custom-group' },
+        h('h3', { class: 'group-label' }, COPY.stage.persona),
+        personaInput,
+        h('p', { class: 'hint faint' }, COPY.stage.personaNote)
+      ),
+      scen.el,
+      mood.el,
+      style.el,
+      len.el,
+      h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, COPY.stage.voice), voiceSeg),
+      h(
+        'div',
+        { class: 'voice-upcoming' },
+        h('h3', { class: 'group-label' }, COPY.stage.voiceMessagePricing),
+        voiceBudget,
+        h('p', { class: 'hint faint' }, COPY.stage.voiceMessagePricingNote),
+        h('button', { class: 'btn btn-secondary xs', disabled: true }, COPY.stage.voiceMessageTopUp),
+        h('h3', { class: 'group-label' }, COPY.stage.personalVoiceTitle),
+        h('p', { class: 'hint faint' }, COPY.stage.personalVoiceLead),
+        h('p', { class: 'hint faint' }, COPY.stage.personalVoiceNote)
+      )
     ),
-    scen.el,
-    mood.el,
-    style.el,
-    len.el,
-    h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, COPY.stage.voice), voiceSeg),
     h(
       'div',
-      { class: 'row' },
+      { class: 'sheet-foot' },
       h('button', { class: 'btn btn-ghost xs', onClick: () => actions.resetSession() }, COPY.stage.resetSession),
-      h('button', { class: 'btn btn-secondary xs', onClick: () => actions.closeSessionPanel() }, COPY.stage.applySession)
-    ),
-    h(
-      'div',
-      { class: 'voice-upcoming' },
-      h('h3', { class: 'group-label' }, COPY.stage.voiceMessagePricing),
-      voiceBudget,
-      h('p', { class: 'hint faint' }, COPY.stage.voiceMessagePricingNote),
-      h('button', { class: 'btn btn-secondary xs', disabled: true }, COPY.stage.voiceMessageTopUp),
-      h('h3', { class: 'group-label' }, COPY.stage.personalVoiceTitle),
-      h('p', { class: 'hint faint' }, COPY.stage.personalVoiceLead),
-      h('p', { class: 'hint faint' }, COPY.stage.personalVoiceNote)
+      h('button', { class: 'btn btn-primary', onClick: () => actions.closeSessionPanel() }, COPY.stage.applySession)
     )
   );
   const sessionSheet = h(
@@ -333,6 +353,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     dock.classList.toggle('is-speak', speakMode);
     input.placeholder = speakMode ? COPY.stage.voiceMessagePlaceholder : COPY.stage.inputPlaceholder;
     sendBtn.textContent = speakMode ? COPY.stage.voiceMessageSend : COPY.stage.send;
+    modeTag.hidden = !speakMode;
     (dockHint as HTMLElement).hidden = !speakMode;
     dockHint.textContent = `${COPY.stage.voiceMessageLead} ${voiceLeftText}`;
   }
@@ -383,8 +404,10 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h(
       'header',
       { class: 'stage-top' },
-      h('button', { class: 'btn btn-ghost sm', onClick: () => actions.leaveUniverse() }, `‹ ${COPY.stage.leave}`)
+      h('button', { class: 'btn btn-ghost sm', onClick: () => actions.leaveUniverse() }, `‹ ${COPY.stage.leave}`),
+      cardToggle
     ),
+    info,
     sessionSheet,
     roster,
     rail,

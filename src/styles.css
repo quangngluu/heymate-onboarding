@@ -338,6 +338,7 @@ html, body {
   max-width: 6ch;
 }
 .stage-top { position: absolute; top: 60px; left: 22px; }
+.stage-top .btn[aria-pressed='false'] { opacity: 0.6; }
 .btn.sm { padding: 8px 14px; font-size: 12px; }
 
 .personalize-panel {
@@ -358,24 +359,37 @@ html, body {
   position: absolute;
   right: 24px;
   top: 76px;
-  bottom: 24px;
+  bottom: 132px;
   width: min(340px, calc(100vw - 32px));
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  justify-content: flex-end;
   gap: 12px;
   pointer-events: none;
 }
 .stage-rail > * { pointer-events: auto; }
 
+/* Her dossier owns the left column for its whole height, so the story reads
+   as one page instead of a keyhole you scroll through. */
 .stage-info {
-  flex: 0 1 auto;
-  max-height: 42vh;
+  position: absolute;
+  left: 24px;
+  top: 108px;
+  max-height: calc(100% - 132px);
+  width: min(320px, calc(100vw - 32px));
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
+  transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.24s ease;
 }
+.stage-info.is-hidden {
+  transform: translateX(calc(-100% - 32px));
+  opacity: 0;
+  pointer-events: none;
+}
+.stage-top { display: flex; gap: 8px; align-items: center; }
 /* Character card: hook, who she is, what you get. Canon stays behind it. */
 .card-series {
   font-size: 10px;
@@ -547,9 +561,35 @@ html, body {
 }
 .stage-dock.is-speak { border-color: color-mix(in srgb, var(--accent) 50%, rgba(239, 230, 212, 0.2)); }
 .stage-dock.is-speak .dock-bar { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
-.dock-bar .chat-input { background: transparent; border: none; padding: 8px 12px; }
+.dock-bar .chat-input { background: transparent; border: none; padding: 8px 2px; width: 100%; }
 .dock-bar .chat-input:focus-visible { outline: none; }
 .dock-bar .btn { flex-shrink: 0; }
+.field-wrap { flex: 1; min-width: 0; display: flex; align-items: center; padding-left: 10px; }
+/* In speak-for-me the field is a quotation, so what you type reads as a line
+   she will say rather than a message you are sending. */
+.stage-dock.is-speak .field-wrap::before,
+.stage-dock.is-speak .field-wrap::after {
+  color: var(--accent);
+  font-size: 17px;
+  line-height: 1;
+  opacity: 0.85;
+}
+.stage-dock.is-speak .field-wrap::before { content: '\201c'; margin-right: 2px; }
+.stage-dock.is-speak .field-wrap::after { content: '\201d'; margin-left: 2px; }
+.stage-dock.is-speak .chat-input { font-style: italic; }
+.field-tag {
+  flex-shrink: 0;
+  margin-left: 4px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.field-tag[hidden] { display: none; }
 
 .chat-row { display: flex; gap: 8px; }
 .chat-input {
@@ -588,12 +628,36 @@ html, body {
 }
 .modal-scrim[hidden] { display: none; }
 .session-sheet {
-  width: min(440px, 100%);
-  max-height: 82vh;
+  width: min(620px, 100%);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+/* Everything between the title and the footer scrolls; the footer never does,
+   so "how do I keep this" is always answered on screen. */
+.session-sheet > .sheet-head, .session-sheet > .sheet-foot { flex-shrink: 0; }
+.sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding-right: 4px;
+}
+.sheet-foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 -20px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--line);
+  background: linear-gradient(to top, var(--panel), color-mix(in srgb, var(--panel) 80%, transparent));
 }
 .session-sheet .sheet-head { justify-content: space-between; align-items: center; }
 .persona-input {
@@ -887,6 +951,7 @@ html, body {
   font-weight: 500;
 }
 .segment { display: flex; gap: 6px; flex-wrap: wrap; }
+.session-sheet .custom-group { display: flex; flex-direction: column; gap: 7px; }
 .segment-btn {
   pointer-events: auto;
   display: inline-flex;

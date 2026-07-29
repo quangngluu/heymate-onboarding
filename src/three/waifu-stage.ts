@@ -23,7 +23,7 @@ const GHOST_HEIGHT = 1.05;
  */
 export const GHOST_SLOTS: [number, number, number][] = [
   [-1.55, 0, 0.1], // nearer the camera: lower, larger, and clear of the base
-  [-4.9, 0, -3.4], // further back and further left: higher, smaller, no overlap
+  [1.65, 0, -3.6], // the far slot crosses to the right so the dossier column is clear
   [-1.2, 0, -5.8],
 ];
 
