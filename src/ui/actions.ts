@@ -10,6 +10,8 @@ export interface UIActions {
   selectResident(id: string): void;
   sendMessage(text: string): void;
   openSessionPanel(): void;
+  /** Bring her card forward on the scene she is offering. */
+  openQuests(): void;
   closeSessionPanel(): void;
   updateSession(patch: Partial<SessionSetup>): void;
   resetSession(): void;

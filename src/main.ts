@@ -25,6 +25,7 @@ import { cancelSpeech, renderSpeech, streamSpeech } from './chat/voice';
 import { spoken } from './chat/dialogue';
 import { residentById, type ResidentId } from './config/residents';
 import { questById } from './config/quests';
+import { writeQuest } from './chat/questgen';
 import { Ambience } from './audio/ambience';
 import { COST, store, type SessionSetup, type Step } from './state/store';
 import { mountUI } from './ui/overlay';
@@ -821,7 +822,11 @@ class App implements UIActions {
     this.cancelIdleNudge();
     store.pushTurn({ from: 'user', text });
     const completedQuest = store.completeActiveQuest(text);
-    if (completedQuest) this.ambience.chime(980);
+    if (completedQuest) {
+      this.ambience.chime(980);
+      // A finished scene pays, and the next one gets written while she replies.
+      if (!store.nextQuest()) void this.writeScene();
+    }
     store.set({ thinking: true });
 
     const after = store.get();
@@ -850,6 +855,9 @@ class App implements UIActions {
         store.set({ revealed: result.revealedRung + 1 });
       }
       this.streamIn(store.get().chat.length - 1, result.text, prepared);
+      // Most visitors never open the quest list, so she opens the scene
+      // herself once the conversation has warmed up.
+      this.offerScene();
       // The free encounter ends by offering to keep what was said, not by
       // blocking the conversation mid-sentence.
       // Offer to keep the chapter once there is one worth keeping, rather
@@ -860,6 +868,10 @@ class App implements UIActions {
     });
   }
 
+  openQuests(): void {
+    store.set({ questFocus: store.get().questFocus + 1 });
+  }
+
   openSessionPanel(): void {
     store.set({ sessionPanelOpen: true });
   }
@@ -868,12 +880,68 @@ class App implements UIActions {
     store.set({ sessionPanelOpen: false });
   }
 
+  /**
+   * Bring the next scene into the conversation, or write one when ours have
+   * run out. Waits two turns so it never lands on top of a greeting.
+   */
+  private offerScene(): void {
+    const s = store.get();
+    // Two turns to warm up, and a few more between scenes so the conversation
+    // does not become a queue of tasks.
+    if (s.step !== 'stage' || s.activeQuestId || s.turns < 2) return;
+    if (s.turns - s.questClosedAt < 4) return;
+    const next = store.nextQuest();
+    if (next) {
+      window.setTimeout(() => {
+        const now = store.get();
+        if (now.step === 'stage' && !now.activeQuestId && !now.thinking) this.startQuest(next.id);
+      }, 2600);
+      return;
+    }
+    void this.writeScene();
+  }
+
+  /** Ask her for a scene of her own once the authored ones are finished. */
+  private async writeScene(): Promise<void> {
+    const s = store.get();
+    if (s.writingQuest) return;
+    const residentId = s.residentId;
+    store.set({ writingQuest: true });
+    try {
+      const written = await writeQuest({
+        residentId,
+        session: s.session,
+        memories: store.progressFor(residentId).memories,
+        revealed: s.revealed,
+        level: store.level,
+        used: store.questsFor(residentId).map((q) => q.title),
+      });
+      if (!written || store.get().residentId !== residentId) {
+        store.set({ writingQuest: false });
+        return;
+      }
+      store.addQuest({
+        id: `${residentId}-own-${store.questsFor(residentId).length}`,
+        residentId: residentId as ResidentId,
+        title: written.title,
+        prompt: written.prompt,
+        objective: written.objective,
+        // Nothing left to open; the reward is credits.
+        rewardEpisode: -1,
+        minCharacters: 14,
+        options: written.options as [string, string, string],
+      });
+    } catch {
+      store.set({ writingQuest: false });
+    }
+  }
+
   startQuest(id: string): void {
     if (!store.startQuest(id)) return;
     this.ambience.chime(760);
     // She sets the scene herself. A quest that only changes a badge is a task
     // list; a quest she says out loud is a turn in the conversation.
-    const quest = questById(id);
+    const quest = store.questById2(id);
     if (!quest) return;
     store.pushTurn({ from: 'resident', text: quest.prompt });
     this.speak(quest.prompt);

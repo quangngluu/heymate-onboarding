@@ -74,6 +74,9 @@ export const COST = {
 
 export type Spend = keyof typeof COST;
 
+/** Finishing a scene pays for the next few turns of one. */
+export const QUEST_REWARD = 25;
+
 /** Mock unlock code, as if printed on the figurine's box. */
 export const UNLOCK_CODE = 'HEYMATE360';
 
@@ -124,6 +127,18 @@ export interface AppState {
   credits: number;
   /** Set when a spend was refused, so the dock can say which one and why. */
   broke: Spend | null;
+  /**
+   * Scenes written by her rather than by us, once the authored five are done.
+   * Keyed by resident and persisted, so a scene survives the session that
+   * produced it.
+   */
+  generated: Record<string, QuestDefinition[]>;
+  /** True while one is being written. */
+  writingQuest: boolean;
+  /** Bumped when the chrome asks the card to show her scenes. */
+  questFocus: number;
+  /** Turn the last scene closed on, so the next one does not follow instantly. */
+  questClosedAt: number;
 
   // --- creator universe ---
   characterId: string;
@@ -157,6 +172,10 @@ const initialState: AppState = {
   unlockGateOpen: false,
   credits: START_CREDITS,
   broke: null,
+  generated: {},
+  writingQuest: false,
+  questFocus: 0,
+  questClosedAt: -99,
 
   characterId: CHARACTERS[0].id,
   gen: { mode: 'text', text: '', photoUrl: null, photoName: null },
@@ -184,6 +203,7 @@ export class Store {
           progress: Record<string, SavedProgress>;
           credits?: number;
           viewUnlocked?: Record<string, boolean>;
+          generated?: Record<string, QuestDefinition[]>;
 
         };
         this.state = {
@@ -191,6 +211,7 @@ export class Store {
           progress: saved.progress ?? {},
           credits: saved.credits ?? this.state.credits,
           viewUnlocked: saved.viewUnlocked ?? {},
+          generated: saved.generated ?? {},
 
         };
       }
@@ -226,6 +247,7 @@ export class Store {
           progress: this.state.progress,
           credits: this.state.credits,
           viewUnlocked: this.state.viewUnlocked,
+          generated: this.state.generated,
 
         })
       );
@@ -400,12 +422,35 @@ export class Store {
 
 
   /** Start the next quest in a resident's ordered story path. */
+  /** Everything she could ask, ours and hers, in the order she would ask it. */
+  questsFor(id = this.state.residentId): QuestDefinition[] {
+    return [...questsForResident(id), ...(this.state.generated[id] ?? [])];
+  }
+
+  questById2(id: string): QuestDefinition | undefined {
+    return this.questsFor().find((q) => q.id === id) ?? questById(id);
+  }
+
+  /** The next scene she has not run yet, if there is one. */
+  nextQuest(id = this.state.residentId): QuestDefinition | undefined {
+    const done = this.progressFor(id).completedQuests;
+    return this.questsFor(id).find((q) => !done.includes(q.id));
+  }
+
+  /** A scene she wrote herself, kept for later. */
+  addQuest(quest: QuestDefinition): void {
+    const list = this.state.generated[quest.residentId] ?? [];
+    this.set({
+      generated: { ...this.state.generated, [quest.residentId]: [...list, quest] },
+      writingQuest: false,
+    });
+    this.persist();
+  }
+
   startQuest(id: string): boolean {
-    const quest = questById(id);
+    const quest = this.questById2(id);
     if (!quest || quest.residentId !== this.state.residentId) return false;
-    const saved = this.progressFor();
-    const next = questsForResident(quest.residentId).find((item) => !saved.completedQuests.includes(item.id));
-    if (next?.id !== id) return false;
+    if (this.nextQuest()?.id !== id) return false;
     this.set({ activeQuestId: id });
     return true;
   }
@@ -413,25 +458,30 @@ export class Store {
   /** A thoughtful answer completes the active quest and permanently unlocks its story beat. */
   completeActiveQuest(message: string): QuestDefinition | null {
     const id = this.state.activeQuestId;
-    const quest = id ? questById(id) : undefined;
+    const quest = id ? this.questById2(id) : undefined;
     if (!quest || quest.residentId !== this.state.residentId || message.trim().length < quest.minCharacters) {
       return null;
     }
     const prev = this.progressFor();
     if (prev.completedQuests.includes(quest.id)) return null;
+    // Her own scenes have no memory left to open, so they pay in credits only.
+    const opens = quest.rewardEpisode >= 0;
+    const revealed = opens ? Math.max(prev.revealed, quest.rewardEpisode + 1) : prev.revealed;
     const progress = {
       ...this.state.progress,
       [quest.residentId]: {
         ...prev,
-        revealed: Math.max(prev.revealed, quest.rewardEpisode + 1),
+        revealed,
         completedQuests: [...prev.completedQuests, quest.id],
       },
     };
     this.set({
       progress,
-      revealed: Math.max(this.state.revealed, quest.rewardEpisode + 1),
+      revealed: Math.max(this.state.revealed, revealed),
+      credits: this.state.credits + QUEST_REWARD,
       activeQuestId: null,
-        });
+      questClosedAt: this.state.turns,
+    });
     this.persist();
     return quest;
   }

@@ -36,13 +36,20 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
   // The balance is chrome, not conversation. It belongs with the wordmark and
   // the sound toggle, out of the way and always readable.
   const wallet = h('span', { class: 'chrome-credits', 'aria-label': 'Credit còn lại' });
+  // A scene waiting is worth a dot; a scene running is worth saying so.
+  const questBtn = h(
+    'button',
+    { class: 'chrome-btn quest-btn', 'aria-label': COPY.stage.questTitle, onClick: () => actions.openQuests() },
+    '\u2726',
+    h('span', { class: 'quest-dot', hidden: true, 'aria-hidden': 'true' })
+  ) as HTMLButtonElement;
 
   root.append(
     h(
       'header',
       { class: 'chrome' },
       h('span', { class: 'wordmark' }, 'HEYMATE'),
-      h('div', { class: 'chrome-right' }, wallet, muteBtn)
+      h('div', { class: 'chrome-right' }, wallet, questBtn, muteBtn)
     ),
     stepHost,
     skipBtn,
@@ -66,6 +73,10 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
     wallet.textContent = `${state.credits} credit`;
     wallet.classList.toggle('is-low', state.credits < 20);
     wallet.hidden = state.step !== 'stage';
+    questBtn.hidden = state.step !== 'stage';
+    const waiting = !state.activeQuestId && !!store.nextQuest();
+    questBtn.classList.toggle('is-active', !!state.activeQuestId);
+    (questBtn.querySelector('.quest-dot') as HTMLElement).hidden = !waiting;
   }
 
   function mount(state: AppState): void {

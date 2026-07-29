@@ -339,6 +339,8 @@ html, body {
 }
 .stage-top { position: absolute; top: 60px; left: 22px; }
 .stage-top .btn[aria-pressed='false'] { opacity: 0.6; }
+.stage-control-icon { display: none; }
+.stage-back-icon { display: inline; margin-right: 2px; font-size: 18px; line-height: 1; vertical-align: -1px; }
 .btn.sm { padding: 8px 14px; font-size: 12px; }
 
 .personalize-panel {
@@ -652,6 +654,7 @@ html, body {
 .dock-bar .chat-input:focus-visible { outline: none; }
 .dock-bar .btn { flex-shrink: 0; }
 .field-wrap { flex: 1; min-width: 0; display: flex; align-items: center; padding-left: 10px; }
+.mobile-icon-btn, .mobile-tools-menu { display: none; }
 /* In speak-for-me the field is a quotation, so what you type reads as a line
    she will say rather than a message you are sending. */
 .stage-dock.is-speak .field-wrap::before,
@@ -764,6 +767,20 @@ html, body {
 }
 .chrome-credits.is-low { color: #e8a08f; border-color: rgba(232, 160, 143, 0.4); }
 .chrome-credits[hidden] { display: none; }
+.quest-btn { position: relative; }
+.quest-btn[hidden] { display: none; }
+.quest-btn.is-active { color: var(--ivory); border-color: var(--accent); }
+.quest-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e05a4a;
+  box-shadow: 0 0 0 2px rgba(11, 13, 16, 0.9);
+}
+.quest-dot[hidden] { display: none; }
 .hint.is-good { color: #9fd6a8; }
 .turns-left { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ivory-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btn.xs { padding: 6px 12px; font-size: 11px; }
@@ -1215,7 +1232,21 @@ html, body {
      still show her. The rail breaks apart: card under the roster, words above
      the dock, the figurine in the band between them. */
   .stage-rail { display: contents; }
-  .dock-chips { flex-wrap: wrap; }
+  .stage-top { left: 10px; gap: 6px; }
+  .stage-top .btn {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+  }
+  .stage-control-label { display: none; }
+  .stage-control-icon {
+    display: block;
+    font-size: 22px;
+    line-height: 1;
+  }
+  .stage-back-icon { font-size: 28px; transform: translateX(-1px); }
   .stage-info {
     position: absolute;
     left: 10px;
@@ -1242,16 +1273,102 @@ html, body {
   .stage-info .card-promise { display: none; }
   .speech-log {
     position: absolute;
-    left: 10px;
-    right: 10px;
+    left: 16px;
+    right: 16px;
     bottom: 168px;
     max-height: 21vh;
+    padding: 5px 2px 4px 0;
   }
-  .stage-dock { bottom: 10px; width: calc(100vw - 20px); }
-  .dock-chip { font-size: 11px; padding: 7px 11px; letter-spacing: 0.06em; }
-  /* The turn count drops below the chips so neither line has to wrap. */
-  .dock-top { flex-direction: column; align-items: flex-start; gap: 8px; }
-  .dock-chips { flex-wrap: nowrap; }
+  .stage-dock { bottom: 10px; width: calc(100vw - 20px); padding: 8px; gap: 8px; }
+  /* Mobile has one primary action: type. Secondary actions stay in the nearby menu. */
+  .dock-top { display: none; }
+  .dock-bar { position: relative; gap: 4px; padding: 4px; }
+  .dock-bar .btn { min-height: 44px; padding: 0 14px; }
+  .field-wrap { padding-left: 4px; }
+  .field-tag { display: none; }
+  .mobile-icon-btn {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    color: var(--ivory-dim);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 50%;
+    cursor: pointer;
+    font-family: var(--font);
+    transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease, transform 0.15s ease;
+  }
+  .mobile-icon-btn:not(:disabled):hover,
+  .mobile-icon-btn:not(:disabled):active,
+  .mobile-icon-btn[aria-expanded='true'] {
+    color: var(--ivory);
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  .mobile-icon-btn:not(:disabled):active { transform: scale(0.96); }
+  .mobile-icon-btn:focus-visible,
+  .mobile-tool-item:focus-visible { outline: 2px solid var(--ivory); outline-offset: 2px; }
+  .mobile-icon-symbol { font-size: 21px; line-height: 1; }
+  .mobile-gear { font-size: 20px; }
+  .mobile-mic.is-locked { cursor: default; opacity: 0.48; border-style: dashed; }
+  .mic-icon { position: relative; display: block; width: 18px; height: 19px; color: currentColor; }
+  .mic-icon::before {
+    content: '';
+    position: absolute;
+    left: 6px;
+    top: 1px;
+    width: 6px;
+    height: 10px;
+    border: 1.5px solid currentColor;
+    border-radius: 5px;
+  }
+  .mic-icon::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 6px;
+    width: 12px;
+    height: 8px;
+    border: 1.5px solid currentColor;
+    border-top: 0;
+    border-radius: 0 0 9px 9px;
+  }
+  .mic-stem { position: absolute; left: 8px; top: 14px; width: 2px; height: 3px; background: currentColor; }
+  .mic-base { position: absolute; left: 5px; top: 17px; width: 8px; height: 1.5px; background: currentColor; border-radius: 2px; }
+  .mobile-tools-menu {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 8px);
+    z-index: 2;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(12, 16, 22, 0.94);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  .mobile-tools-menu:not([hidden]) { display: flex; }
+  .mobile-tool-item {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--ivory-dim);
+    background: rgba(239, 230, 212, 0.05);
+    font-family: var(--font);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+  }
+  .mobile-tool-item.is-active { color: var(--ivory); border-color: var(--accent); }
+  .mobile-tool-symbol { color: var(--accent); font-size: 15px; line-height: 1; }
   /* The roster moves out of the conversation's way and scrolls sideways. */
   .roster {
     left: 10px;

@@ -188,7 +188,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     COPY.stage.walletRedeemCta
   ) as HTMLButtonElement;
 
-  const questChip = h('button', { class: 'dock-chip' }, COPY.stage.quest) as HTMLButtonElement;
   const speakChip = h('button', { class: 'dock-chip' }, COPY.stage.speakAs) as HTMLButtonElement;
   const setChip = h(
     'button',
@@ -207,6 +206,83 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     COPY.stage.voiceChat
   ) as HTMLButtonElement;
 
+  // Desktop keeps the labelled chips. On a phone the same secondary actions
+  // sit behind one small control beside the composer, so the message stays
+  // the dominant action.
+  let mobileToolsOpen = false;
+  const mobileQuestLabel = h('span', { class: 'mobile-tool-label' }, COPY.stage.quest);
+  const mobileQuestBtn = h(
+    'button',
+    {
+      class: 'mobile-tool-item',
+      'aria-label': COPY.stage.quest,
+      onClick: () => {
+        setMobileToolsOpen(false);
+        showQuests();
+      },
+    },
+    h('span', { class: 'mobile-tool-symbol', 'aria-hidden': 'true' }, '✦'),
+    mobileQuestLabel
+  ) as HTMLButtonElement;
+  const mobileSpeakBtn = h(
+    'button',
+    {
+      class: 'mobile-tool-item',
+      'aria-label': COPY.stage.speakAs,
+      onClick: () => {
+        setMobileToolsOpen(false);
+        speakChip.click();
+      },
+    },
+    h('span', { class: 'mobile-tool-symbol', 'aria-hidden': 'true' }, '〰'),
+    COPY.stage.speakAs
+  ) as HTMLButtonElement;
+  const mobileToolsMenu = h('div', { class: 'mobile-tools-menu', hidden: true }, mobileQuestBtn, mobileSpeakBtn);
+  const mobileToolsToggle = h(
+    'button',
+    {
+      class: 'mobile-icon-btn mobile-tools-toggle',
+      'aria-label': 'Mở nhiệm vụ và để em nói hộ',
+      'aria-expanded': 'false',
+      onClick: () => setMobileToolsOpen(!mobileToolsOpen),
+    },
+    h('span', { class: 'mobile-icon-symbol', 'aria-hidden': 'true' }, '＋')
+  ) as HTMLButtonElement;
+  const mobileMicBtn = h(
+    'button',
+    {
+      class: 'mobile-icon-btn mobile-mic is-locked',
+      disabled: true,
+      'aria-label': `${COPY.stage.voiceChat}. ${COPY.stage.voiceChatLocked}`,
+      title: COPY.stage.voiceChatLocked,
+    },
+    h(
+      'span',
+      { class: 'mic-icon', 'aria-hidden': 'true' },
+      h('span', { class: 'mic-stem' }),
+      h('span', { class: 'mic-base' })
+    )
+  ) as HTMLButtonElement;
+  const mobileSettingsBtn = h(
+    'button',
+    {
+      class: 'mobile-icon-btn',
+      'aria-label': COPY.stage.setSession,
+      'aria-expanded': 'false',
+      onClick: () => {
+        setMobileToolsOpen(false);
+        actions.openSessionPanel();
+      },
+    },
+    h('span', { class: 'mobile-icon-symbol mobile-gear', 'aria-hidden': 'true' }, '⚙')
+  ) as HTMLButtonElement;
+
+  function setMobileToolsOpen(open: boolean): void {
+    mobileToolsOpen = open;
+    mobileToolsMenu.hidden = !open;
+    mobileToolsToggle.setAttribute('aria-expanded', String(open));
+  }
+
   // A tag inside the field, plus quote marks around it: the bar has to look
   // like a line she will say out loud, not a message you are sending her.
   const modeTag = h('span', { class: 'field-tag', hidden: true }, COPY.stage.speakAs) as HTMLElement;
@@ -220,19 +296,36 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     'div',
     { class: 'stage-dock' },
     questStrip,
-    h('div', { class: 'dock-top' }, h('div', { class: 'dock-chips' }, questChip, speakChip, micChip, setChip), turnsLeft),
+    h('div', { class: 'dock-top' }, h('div', { class: 'dock-chips' }, speakChip, micChip, setChip), turnsLeft),
     dockHint,
-    h('div', { class: 'dock-bar' }, modeTag, h('div', { class: 'field-wrap' }, input), sendBtn)
+    h(
+      'div',
+      { class: 'dock-bar' },
+      modeTag,
+      mobileToolsToggle,
+      mobileToolsMenu,
+      h('div', { class: 'field-wrap' }, input),
+      mobileMicBtn,
+      mobileSettingsBtn,
+      sendBtn
+    )
   );
   // Left is her dossier, right is her voice, bottom is what you do. The card
   // can step off the frame entirely when the visitor wants the stage clear.
   const cardToggle = h(
     'button',
-    { class: 'btn btn-ghost sm', 'aria-pressed': 'true', onClick: () => {
+    { class: 'btn btn-ghost sm', 'aria-label': COPY.stage.cardToggle, 'aria-pressed': 'true', onClick: () => {
       const hidden = info.classList.toggle('is-hidden');
       cardToggle.setAttribute('aria-pressed', String(!hidden));
     } },
-    COPY.stage.cardToggle
+    h('span', { class: 'stage-control-icon', 'aria-hidden': 'true' }, '☰'),
+    h('span', { class: 'stage-control-label' }, COPY.stage.cardToggle)
+  ) as HTMLButtonElement;
+  const leaveUniverseBtn = h(
+    'button',
+    { class: 'btn btn-ghost sm', 'aria-label': COPY.stage.leave, onClick: () => actions.leaveUniverse() },
+    h('span', { class: 'stage-control-icon stage-back-icon', 'aria-hidden': 'true' }, '‹'),
+    h('span', { class: 'stage-control-label' }, COPY.stage.leave)
   ) as HTMLButtonElement;
   const rail = h('div', { class: 'stage-rail' }, log);
 
@@ -400,13 +493,14 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h('p', { class: 'hint faint' }, COPY.stage.questLead),
     questList
   ) as HTMLDetailsElement;
-  questChip.addEventListener('click', () => {
-    // On a phone her card is collapsed by default, so the chip has to open it
-    // before there is anything to scroll to.
+  let lastFocus = 0;
+  /** Called from the chrome: show the card, opened on her scenes. */
+  function showQuests(): void {
+    info.classList.remove('is-hidden');
     info.classList.add('is-open');
-    questBlock.open = !questBlock.open;
-    if (questBlock.open) questBlock.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  });
+    questBlock.open = true;
+    questBlock.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
 
   // --- speak-for-me: a mode of the dock, wired here ---
   speakChip.addEventListener('click', () => {
@@ -418,6 +512,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   function applyDockMode(): void {
     speakChip.classList.toggle('is-active', speakMode);
     speakChip.setAttribute('aria-pressed', String(speakMode));
+    mobileSpeakBtn.classList.toggle('is-active', speakMode);
+    mobileSpeakBtn.setAttribute('aria-pressed', String(speakMode));
     dock.classList.toggle('is-speak', speakMode);
     input.placeholder = speakMode ? COPY.stage.voiceMessagePlaceholder : COPY.stage.inputPlaceholder;
     sendBtn.textContent = speakMode ? COPY.stage.voiceMessageSend : COPY.stage.send;
@@ -472,7 +568,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h(
       'header',
       { class: 'stage-top' },
-      h('button', { class: 'btn btn-ghost sm', onClick: () => actions.leaveUniverse() }, `‹ ${COPY.stage.leave}`),
+      leaveUniverseBtn,
       cardToggle
     ),
     info,
@@ -562,10 +658,16 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       len.btns.forEach((b, i) => b.setAttribute('aria-checked', String(LENGTHS[i].id === s.session.length)));
 
       (sessionSheet as HTMLElement).hidden = !s.sessionPanelOpen;
-      questChip.textContent = s.activeQuestId ? COPY.stage.questActive : COPY.stage.quest;
-      questChip.classList.toggle('is-active', s.activeQuestId !== null);
+      mobileQuestLabel.textContent = s.activeQuestId ? COPY.stage.questActive : COPY.stage.quest;
+      mobileQuestBtn.classList.toggle('is-active', s.activeQuestId !== null);
+      mobileSettingsBtn.setAttribute('aria-expanded', String(s.sessionPanelOpen));
 
-      const openQuest = s.activeQuestId ? questById(s.activeQuestId) : undefined;
+      if (s.questFocus !== lastFocus) {
+        lastFocus = s.questFocus;
+        showQuests();
+      }
+
+      const openQuest = s.activeQuestId ? store.questById2(s.activeQuestId) : undefined;
       (questStrip as HTMLElement).hidden = !openQuest;
       dock.classList.toggle('is-quest', !!openQuest);
       if (openQuest && openQuest.id !== lastQuestId) {
