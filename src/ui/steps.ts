@@ -86,23 +86,15 @@ export function galleryStep(actions: UIActions): StepView {
 // to her before any settings exist. "Set this session" only appears once she
 // is no longer a stranger, and it never exposes a raw prompt.
 
-/**
- * A taste of her voice for the invitation card: enough of the greeting to
- * hear who she is, never the whole thing.
- */
-function teaser(greeting: string): string {
-  const parts = greeting.match(/[^.!?]+[.!?]/g) ?? [greeting];
-  let out = '';
-  for (const part of parts) {
-    out += part;
-    if (out.length >= 40 || out === greeting) break;
-  }
-  return out.trim();
-}
-
 export function stageStep(actions: UIActions, state: AppState): StepView {
   const srOnlyName = h('h1', { class: 'visually-hidden' });
   const info = h('aside', { class: 'panel stage-info' });
+  // On a phone her card cannot stay open and leave room for her. Collapsed it
+  // is a header; tapping anywhere outside a disclosure opens the rest.
+  info.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('details')) return;
+    info.classList.toggle('is-open');
+  });
 
   // --- roster ---
   const roster = h('div', { role: 'radiogroup', 'aria-label': 'Các nhân vật', class: 'roster' });
@@ -167,31 +159,14 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
 
   const dock = h(
     'div',
-    { class: 'stage-dock', hidden: true },
+    { class: 'stage-dock' },
     h('div', { class: 'dock-top' }, h('div', { class: 'dock-chips' }, questChip, speakChip, setChip), turnsLeft),
     dockHint,
     h('div', { class: 'dock-bar' }, input, sendBtn)
   );
-  // The invitation is a glass card in her rail, level with her, not a slab at
-  // the screen edge: you hear her before you decide, and the line you hear is
-  // the button.
-  const inviteLine = h('p', { class: 'invite-line' });
-  const inviteCard = h(
-    'button',
-    { class: 'invite-card', onClick: () => actions.startChat() },
-    inviteLine,
-    h(
-      'span',
-      { class: 'invite-cta' },
-      COPY.stage.talk,
-      h('span', { class: 'invite-chevron', 'aria-hidden': 'true' }, '\u203a')
-    )
-  ) as HTMLButtonElement;
-
-  // One rail on the right does one job at a time: who she is, then her
-  // invitation, then the conversation. On phones the identity card steps
-  // aside once the conversation starts.
-  const rail = h('div', { class: 'stage-rail' }, info, inviteCard, log);
+  // Her card and her words share one rail beside the figurine. There is no
+  // door to open: she has already spoken by the time the stage settles.
+  const rail = h('div', { class: 'stage-rail' }, info, log);
 
   // --- session sheet (only after the encounter) ---
   const nickInput = h('input', {
@@ -338,6 +313,9 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     questList
   ) as HTMLDetailsElement;
   questChip.addEventListener('click', () => {
+    // On a phone her card is collapsed by default, so the chip has to open it
+    // before there is anything to scroll to.
+    info.classList.add('is-open');
     questBlock.open = !questBlock.open;
     if (questBlock.open) questBlock.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
@@ -429,7 +407,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       if (s.residentId !== lastResident) {
         lastResident = s.residentId;
         srOnlyName.textContent = r.name;
-        inviteLine.textContent = teaser(r.greeting);
         nickInput.value = s.session.nickname;
         personaInput.value = s.session.persona;
         // The card carries three layers: the hook, who she is, and what the
@@ -509,9 +486,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         b.setAttribute('aria-checked', String(r.voices[i].slot === s.session.voice))
       );
 
-      inviteCard.hidden = s.chatOpen;
-      rail.classList.toggle('is-chatting', s.chatOpen);
-      (dock as HTMLElement).hidden = !s.chatOpen;
       (sessionSheet as HTMLElement).hidden = !s.sessionPanelOpen;
       questChip.textContent = s.activeQuestId ? COPY.stage.questActive : COPY.stage.quest;
       questChip.classList.toggle('is-active', s.activeQuestId !== null);

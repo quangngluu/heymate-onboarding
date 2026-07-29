@@ -13,7 +13,6 @@ const BASE_PRESETS: Record<string, CamPreset> = {
   // Companion stage: hero sits right of frame center so the giant name and
   // the waiting residents own the left side.
   stage: { pos: [0.6, 1.5, 4.7], target: [-0.62, 0.88, 0], fov: 36 },
-  stageChat: { pos: [0.5, 1.42, 4.2], target: [-0.5, 0.92, 0], fov: 35 },
   arrival: { pos: [0, 1.7, 9.6], target: [0, 1.35, 0], fov: 40 },
   hall: { pos: [0, 2.5, 7.4], target: [0, 1.0, -2.8], fov: 46 },
   reveal: { pos: [1.0, 1.5, 3.2], target: [-0.1, 1.05, 0], fov: 38 },

@@ -77,7 +77,6 @@ export interface AppState {
   /** Saved-and-paid progress, keyed by resident. */
   progress: Record<string, SavedProgress>;
   chat: ChatTurn[];
-  chatOpen: boolean;
   /** User turns spent this session; gates the free encounter. */
   turns: number;
   speaking: boolean;
@@ -117,7 +116,6 @@ const initialState: AppState = {
   session: defaultSession(),
   progress: {},
   chat: [],
-  chatOpen: false,
   turns: 0,
   speaking: false,
   thinking: false,
@@ -237,8 +235,7 @@ export class Store {
     this.set({
       residentId: id,
       chat: [],
-      chatOpen: false,
-      turns: 0,
+          turns: 0,
       speaking: false,
       thinking: false,
       voicing: false,

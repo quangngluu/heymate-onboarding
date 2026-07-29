@@ -492,6 +492,7 @@ class App implements UIActions {
     const voice = r.voices.find((v) => v.slot === s.session.voice) ?? r.voices[0];
     // Only the authored signature greeting has audio; a callback is text.
     this.speak(line, saved.memories.length ? undefined : voice.url);
+    this.armIdleNudge();
   }
 
   /**
@@ -510,7 +511,7 @@ class App implements UIActions {
 
   private speakIntoSilence(): void {
     const s = store.get();
-    if (s.step !== 'stage' || !s.chatOpen || s.thinking || this.idleSpoken >= 2) return;
+    if (s.step !== 'stage' || s.thinking || this.idleSpoken >= 2) return;
     const r = residentById(s.residentId);
     const spokenIndex = this.idleSpoken;
     this.idleSpoken++;
@@ -530,7 +531,6 @@ class App implements UIActions {
       if (
         current.residentId !== s.residentId ||
         current.step !== 'stage' ||
-        !current.chatOpen ||
         current.chat.length !== chatLength
       ) {
         return;
@@ -543,7 +543,6 @@ class App implements UIActions {
       if (
         afterSpeech.residentId !== s.residentId ||
         afterSpeech.step !== 'stage' ||
-        !afterSpeech.chatOpen ||
         afterSpeech.chat.length !== chatLength
       ) {
         return;
@@ -671,15 +670,6 @@ class App implements UIActions {
     // Picking someone new must not leave the camera frozen.
     this.returnToFront();
     this.picker.setPickSet(this.residentStage?.pickTargets() ?? []);
-  }
-
-  startChat(): void {
-    store.set({ chatOpen: true });
-    this.armIdleNudge();
-    this.controls.enabled = false;
-    void this.rig.flyTo(CAMERA_PRESETS.stageChat, this.engine.reducedMotion ? 0 : 1.0).then((done) => {
-      if (done && store.get().step === 'stage') this.enableStageOrbit();
-    });
   }
 
   sendMessage(text: string): void {

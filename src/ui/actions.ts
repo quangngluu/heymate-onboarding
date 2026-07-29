@@ -8,7 +8,6 @@ export interface UIActions {
 
   // --- companion universe ---
   selectResident(id: string): void;
-  startChat(): void;
   sendMessage(text: string): void;
   openSessionPanel(): void;
   closeSessionPanel(): void;

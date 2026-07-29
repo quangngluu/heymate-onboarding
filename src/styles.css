@@ -446,81 +446,6 @@ html, body {
 .roster-chip.is-active .dot { opacity: 1; box-shadow: 0 0 10px var(--accent); }
 .roster-chip:focus-visible { outline: 2px solid var(--ivory); outline-offset: 2px; }
 
-/* Liquid-glass web approximation: backdrop-filter plus layered highlights.
-   This is not Apple's Liquid Glass material; a solid fill takes over under
-   prefers-reduced-transparency. */
-.invite-card {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  text-align: left;
-  padding: 16px 18px 15px;
-  border-radius: 14px;
-  border: 1px solid rgba(239, 230, 212, 0.24);
-  background:
-    linear-gradient(135deg, rgba(239, 230, 212, 0.13), rgba(239, 230, 212, 0.03)),
-    rgba(12, 16, 22, 0.44);
-  backdrop-filter: blur(22px) saturate(150%);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    0 18px 44px rgba(0, 0, 0, 0.32);
-  color: var(--ivory);
-  font-family: var(--font);
-  cursor: pointer;
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.28s;
-}
-/* Edge refraction and the accent hairline that keeps her identity on the card
-   without putting accent colour under text. */
-.invite-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  background: radial-gradient(circle at 16% 0%, rgba(255, 255, 255, 0.3), transparent 48%);
-  pointer-events: none;
-}
-.invite-card::after {
-  content: '';
-  position: absolute;
-  left: 18px;
-  right: 18px;
-  top: 0;
-  height: 2px;
-  border-radius: 0 0 2px 2px;
-  background: var(--accent);
-  opacity: 0.8;
-  pointer-events: none;
-}
-.invite-card:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--accent) 55%, rgba(239, 230, 212, 0.24));
-}
-.invite-card:active { transform: translateY(0) scale(0.995); }
-.invite-card:focus-visible { outline: 2px solid var(--ivory); outline-offset: 2px; }
-.invite-card[hidden] { display: none; }
-.invite-line { font-size: 14px; line-height: 1.5; color: var(--ivory); }
-.invite-cta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ivory);
-}
-.invite-chevron {
-  font-size: 16px;
-  color: var(--accent);
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.invite-card:hover .invite-chevron { transform: translateX(4px); }
-
 /* What she says sits next to her rather than inside a box: the stage stays
    the subject, the words are cards on it. */
 .speech-log {
@@ -1061,11 +986,41 @@ html, body {
   .customize-panel.is-open { transform: translateX(-50%) translateY(0); }
   .customize-panel.is-open ~ .sheet-toggle { display: none; }
   .sheet-close { display: block; flex-shrink: 0; }
-  .stage-rail { right: 10px; bottom: 10px; top: auto; width: calc(100vw - 20px); }
-  .stage-info { max-height: 30vh; }
-  .stage-rail.is-chatting { bottom: 172px; }
-  .stage-rail.is-chatting .stage-info { display: none; }
-  .speech-log { max-height: 30vh; }
+  /* A phone cannot stack her card, her words and the dock in one rail and
+     still show her. The rail breaks apart: card under the roster, words above
+     the dock, the figurine in the band between them. */
+  .stage-rail { display: contents; }
+  .stage-info {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    top: 148px;
+    width: auto;
+    position: absolute;
+    /* Collapsed to a header so the figurine keeps the middle of the screen. */
+    max-height: 106px;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .stage-info.is-open { max-height: 58vh; overflow-y: auto; }
+  .stage-info::after {
+    content: '\25be';
+    position: absolute;
+    right: 16px;
+    top: 16px;
+    color: var(--ivory-dim);
+    font-size: 13px;
+    transition: transform 0.2s ease;
+  }
+  .stage-info.is-open::after { transform: rotate(180deg); }
+  .stage-info .card-promise { display: none; }
+  .speech-log {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 168px;
+    max-height: 21vh;
+  }
   .stage-dock { bottom: 10px; width: calc(100vw - 20px); }
   .dock-chip { font-size: 11px; padding: 7px 11px; letter-spacing: 0.06em; }
   /* The turn count drops below the chips so neither line has to wrap. */
@@ -1090,16 +1045,12 @@ html, body {
 }
 @media (prefers-reduced-motion: reduce) {
   .step, .panel, .arrival-copy, .customize-panel { transition: none; }
-  .invite-card, .invite-chevron { transition: none; }
-  .invite-card:hover { transform: none; }
-  .invite-card:hover .invite-chevron { transform: none; }
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .invite-card {
+  .stage-dock, .bubble {
     background: rgba(12, 16, 22, 0.95);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
-  .invite-card::before { display: none; }
 }
