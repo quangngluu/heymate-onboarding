@@ -19,6 +19,7 @@ import {
   residentById,
 } from '../config/residents';
 import { questById, questsForResident } from '../config/quests';
+import { segments } from '../chat/dialogue';
 import { FREE_TURNS, FREE_VOICE_MESSAGES } from '../state/store';
 import { extractMemories } from '../chat/memory';
 
@@ -553,8 +554,22 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
 
       if (s.chat.length !== lastChatLen) {
         lastChatLen = s.chat.length;
+        // Her actions and her words look different, because they are: one is
+        // the room, the other is her voice. Only the second is ever spoken.
         log.replaceChildren(
-          ...s.chat.map((t) => h('p', { class: `bubble bubble-${t.from}` }, t.text))
+          ...s.chat.map((t) =>
+            h(
+              'p',
+              { class: `bubble bubble-${t.from}` },
+              ...(t.from === 'resident'
+                ? segments(t.text).map((seg) =>
+                    seg.kind === 'beat'
+                      ? h('span', { class: 'beat' }, seg.text)
+                      : h('span', { class: 'said' }, seg.text)
+                  )
+                : [t.text])
+            )
+          )
         );
         log.scrollTop = log.scrollHeight;
       }

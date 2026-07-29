@@ -627,6 +627,23 @@ html, body {
 }
 .field-tag[hidden] { display: none; }
 
+/* A beat is what she is doing; it is set apart, dimmer and italic, and it is
+   the half the voice engine never receives. */
+.bubble .beat {
+  display: block;
+  font-style: italic;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ivory-dim);
+  opacity: 0.78;
+  padding-left: 9px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  margin: 2px 0 5px;
+}
+.bubble .beat:last-child { margin-bottom: 0; }
+.bubble .said { display: block; }
+.bubble .said + .said { margin-top: 4px; }
+
 .chat-row { display: flex; gap: 8px; }
 .chat-input {
   flex: 1;

@@ -22,6 +22,7 @@ import { WaifuStage } from './three/waifu-stage';
 import { idleLine, openingLine, speakingDuration } from './chat/engine';
 import { getReply } from './chat/client';
 import { cancelSpeech, renderSpeech } from './chat/voice';
+import { spoken } from './chat/dialogue';
 import { residentById, type ResidentId } from './config/residents';
 import { questById } from './config/quests';
 import { Ambience } from './audio/ambience';
@@ -572,7 +573,9 @@ class App implements UIActions {
     const r = residentById(residentId);
     const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
     const token = ++this.speechToken;
-    const prepared = renderSpeech(text, slot.voiceId, slot.speed).then(async (url) => {
+    const line = spoken(text);
+    if (!line) return null;
+    const prepared = renderSpeech(line, slot.voiceId, slot.speed).then(async (url) => {
       return url ? this.ambience.prepareClip(url) : null;
     });
     const LATE = Symbol('late');
@@ -603,7 +606,7 @@ class App implements UIActions {
     store.set({ speaking: true });
     this.residentStage?.setSpeaking(true);
     if (buffer) this.ambience.playBuffer(buffer);
-    const secs = buffer?.duration ?? speakingDuration(text);
+    const secs = buffer?.duration ?? speakingDuration(spoken(text) || text);
     this.speakTimer = window.setTimeout(() => {
       store.set({ speaking: false });
       this.residentStage?.setSpeaking(false);
@@ -631,23 +634,28 @@ class App implements UIActions {
 
     if (voiceUrl) {
       this.ambience.playClip(voiceUrl);
-      stopAfter(speakingDuration(text));
+      stopAfter(speakingDuration(spoken(text) || text));
       return;
     }
 
-    stopAfter(speakingDuration(text));
+    stopAfter(speakingDuration(spoken(text) || text));
     store.set({ voicing: true });
     const speakerId = store.get().residentId;
     const r = residentById(speakerId);
     const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
-    void renderSpeech(text, slot.voiceId, slot.speed).then((url) => {
+    const line = spoken(text);
+    if (!line) {
+      store.set({ voicing: false });
+      return;
+    }
+    void renderSpeech(line, slot.voiceId, slot.speed).then((url) => {
       store.set({ voicing: false });
       // She may have been swapped out while the audio rendered.
       if (!url || store.get().residentId !== speakerId) return;
       this.ambience.playClip(url);
       store.set({ speaking: true });
       this.residentStage?.setSpeaking(true);
-      stopAfter(speakingDuration(text) + 1);
+      stopAfter(speakingDuration(spoken(text) || text) + 1);
     });
   }
 
