@@ -9,6 +9,7 @@
 export const config = { runtime: 'edge' };
 
 const ENDPOINT = 'https://spoonai-tts-api.lucylab.io/json-rpc';
+const MINIMAX_ENDPOINT = 'https://api.minimax.io/v1/t2a_v2';
 const POLL_INTERVAL_MS = 1500;
 const MAX_WAIT_MS = 25000;
 
@@ -31,12 +32,62 @@ async function rpc(key: string, method: string, input: unknown): Promise<Record<
   return data.result ?? {};
 }
 
+/**
+ * MiniMax renders in one synchronous call rather than a job you poll, and it
+ * can stream. This is the non-streaming form: enough to judge the voices
+ * before rebuilding the playback path around chunks.
+ */
+async function minimax(body: TtsRequest, text: string): Promise<Response> {
+  const key = process.env.MINIMAX_API_KEY;
+  const defaultVoice = process.env.MINIMAX_VOICE_ID;
+  if (!key) return Response.json({ error: 'not-configured' }, { status: 503 });
+
+  const upstream = await fetch(MINIMAX_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model: process.env.MINIMAX_MODEL || 'speech-2.8-turbo',
+      text,
+      voice_setting: {
+        voice_id: body.voiceId || defaultVoice,
+        speed: body.speed ?? 1,
+      },
+      audio_setting: { format: 'mp3', sample_rate: 32000 },
+      language_boost: 'Vietnamese',
+    }),
+    signal: AbortSignal.timeout(25000),
+  });
+
+  const data = (await upstream.json()) as {
+    data?: { audio?: string };
+    base_resp?: { status_code?: number; status_msg?: string };
+  };
+  // A MiniMax failure still arrives as HTTP 200 with a code in the envelope.
+  if (data.base_resp?.status_code) {
+    return Response.json(
+      { error: 'upstream', code: data.base_resp.status_code, detail: data.base_resp.status_msg },
+      { status: 502 }
+    );
+  }
+  const hex = data.data?.audio;
+  if (!hex) return Response.json({ error: 'no-audio' }, { status: 502 });
+
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return new Response(bytes, {
+    headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'public, max-age=86400' },
+  });
+}
+
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
 
   const key = process.env.SPOON_API_KEY;
   const defaultVoice = process.env.SPOON_VOICE_ID;
-  if (!key || !defaultVoice) return Response.json({ error: 'not-configured' }, { status: 503 });
+  const usingMiniMax = process.env.TTS_PROVIDER === 'minimax';
+  if (!usingMiniMax && (!key || !defaultVoice)) {
+    return Response.json({ error: 'not-configured' }, { status: 503 });
+  }
 
   let body: TtsRequest;
   try {
@@ -47,6 +98,15 @@ export default async function handler(req: Request): Promise<Response> {
 
   const text = String(body.text ?? '').trim().slice(0, 600);
   if (!text) return Response.json({ error: 'empty-text' }, { status: 400 });
+
+  // One switch decides the provider, so a bad swap is one env var to undo.
+  if (process.env.TTS_PROVIDER === 'minimax') {
+    try {
+      return await minimax(body, text);
+    } catch (e) {
+      return Response.json({ error: 'upstream', detail: String(e).slice(0, 120) }, { status: 502 });
+    }
+  }
 
   try {
     // The account allows one export at a time; a burst of lines can collide,
