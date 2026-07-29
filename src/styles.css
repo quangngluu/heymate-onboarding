@@ -723,6 +723,20 @@ html, body {
 /* A beat is what she is doing. It sits between her bubbles rather than inside
    one, so it never reads as speech, and it is the half the voice engine never
    receives. */
+.scene-shot {
+  align-self: flex-start;
+  width: 100%;
+  max-width: 94%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3);
+  animation: shot-in 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes shot-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .scene-shot { animation: none; } }
+
 .beat-line {
   align-self: flex-start;
   max-width: 94%;

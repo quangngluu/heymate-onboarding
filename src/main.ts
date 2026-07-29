@@ -25,6 +25,7 @@ import { cancelSpeech, renderSpeech, streamSpeech } from './chat/voice';
 import { spoken } from './chat/dialogue';
 import { residentById, type ResidentId } from './config/residents';
 import { writeQuest } from './chat/questgen';
+import { drawScene } from './chat/scene';
 import { questNode } from './config/quests';
 import { Ambience } from './audio/ambience';
 import { COST, store, type SessionSetup, type Step } from './state/store';
@@ -970,6 +971,34 @@ class App implements UIActions {
     }
   }
 
+  /**
+   * Draw what a branch left behind, once the line is already on screen.
+   *
+   * Only outcomes get a picture. Every line would be noise, and noise that
+   * costs money; an outcome is a room or an object by construction, which is
+   * also the only subject a text-to-image model can keep consistent without a
+   * trained likeness.
+   */
+  private illustrate(turn: number, imageKey: string, text: string): void {
+    if (store.get().sceneShots[imageKey]) {
+      store.showShot(turn, imageKey);
+      return;
+    }
+    if (!store.spend('sceneImage')) return;
+    const residentId = store.get().residentId;
+    void drawScene(residentId, text).then((url) => {
+      if (!url) {
+        // Charged for a picture that never arrived.
+        store.refund('sceneImage');
+        return;
+      }
+      const now = store.get();
+      if (now.residentId !== residentId || now.step !== 'stage') return;
+      store.keepShot(imageKey, url);
+      store.showShot(turn, imageKey);
+    });
+  }
+
   startQuest(id: string): void {
     if (!store.startQuest(id)) return;
     this.ambience.chime(760);
@@ -997,7 +1026,9 @@ class App implements UIActions {
     const reply = result.nextPrompt ?? result.choice.outcome;
     store.pushTurn({ from: 'resident', text: reply });
     this.speak(reply);
-    this.streamIn(store.get().chat.length - 1, reply, Promise.resolve(null), false);
+    const turn = store.get().chat.length - 1;
+    this.streamIn(turn, reply, Promise.resolve(null), false);
+    if (choice.imageKey) this.illustrate(turn, choice.imageKey, choice.outcome);
     if (result.completed) {
       this.ambience.chime(980);
       if (!store.nextQuest()) void this.writeScene();

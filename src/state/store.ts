@@ -157,6 +157,13 @@ export interface AppState {
   questOutcomes: Record<string, string>;
   /** Turn the last scene closed on, so the next one does not follow instantly. */
   questClosedAt: number;
+  /**
+   * Pictures of the places a branch left behind, keyed by the choice's
+   * imageKey and persisted: taking the same branch again should not redraw it.
+   */
+  sceneShots: Record<string, string>;
+  /** Which shot belongs to which turn on screen. Session only. */
+  turnShots: Record<number, string>;
 
   // --- creator universe ---
   characterId: string;
@@ -200,6 +207,8 @@ const initialState: AppState = {
   storyFlags: {},
   questOutcomes: {},
   questClosedAt: -99,
+  sceneShots: {},
+  turnShots: {},
 
   characterId: CHARACTERS[0].id,
   gen: { mode: 'text', text: '', photoUrl: null, photoName: null },
@@ -231,6 +240,7 @@ export class Store {
           transactions?: CreditTransaction[];
           onboardingCompleted?: string[];
           storyFlags?: Record<string, string[]>;
+          sceneShots?: Record<string, string>;
           questOutcomes?: Record<string, string>;
         };
         this.state = {
@@ -242,6 +252,7 @@ export class Store {
           transactions: saved.transactions ?? [],
           onboardingCompleted: saved.onboardingCompleted ?? [],
           storyFlags: saved.storyFlags ?? {},
+          sceneShots: saved.sceneShots ?? {},
           questOutcomes: saved.questOutcomes ?? {},
         };
       }
@@ -281,6 +292,7 @@ export class Store {
           transactions: this.state.transactions,
           onboardingCompleted: this.state.onboardingCompleted,
           storyFlags: this.state.storyFlags,
+          sceneShots: this.state.sceneShots,
           questOutcomes: this.state.questOutcomes,
         })
       );
@@ -549,6 +561,30 @@ export class Store {
    * Advance an explicit branch. Free chat can enrich the scene, but only an
    * authored choice changes canon or pays a quest reward.
    */
+  /**
+   * Give back what an action charged for but never delivered. A drawing that
+   * fails upstream must not quietly cost the visitor anything.
+   */
+  refund(what: Spend): void {
+    const transaction = this.transaction('earn', what, COST[what]);
+    this.set({
+      credits: this.state.credits + COST[what],
+      transactions: [...this.state.transactions, transaction].slice(-30),
+    });
+    this.persist();
+  }
+
+  /** Remember a drawing so the same branch never pays to be drawn twice. */
+  keepShot(imageKey: string, url: string): void {
+    this.set({ sceneShots: { ...this.state.sceneShots, [imageKey]: url } });
+    this.persist();
+  }
+
+  /** Attach an already-known drawing to the line it belongs to. */
+  showShot(turn: number, imageKey: string): void {
+    this.set({ turnShots: { ...this.state.turnShots, [turn]: imageKey } });
+  }
+
   chooseActiveQuest(choiceId: string): QuestChoiceResult | null {
     const id = this.state.activeQuestId;
     const quest = id ? this.questById2(id) : undefined;

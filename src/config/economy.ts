@@ -8,6 +8,7 @@ export const COST = {
   speakForMe: 6,
   saveChapter: 12,
   turntable: 30,
+  sceneImage: 4,
 } as const;
 
 export type Spend = keyof typeof COST;
@@ -18,6 +19,7 @@ export const CREDIT_LABEL: Record<CreditFeature, string> = {
   speakForMe: 'Để em nói hộ',
   saveChapter: 'Lưu chương',
   turntable: 'Bàn xoay',
+  sceneImage: 'Ảnh bối cảnh',
   redeem: 'Nạp mã',
   storyQuest: 'Quest cốt truyện',
   onboardingQuest: 'Quest tân thủ',
@@ -28,4 +30,5 @@ export const CREDIT_CATALOG: { feature: Spend; label: string; price: number }[] 
   { feature: 'speakForMe', label: CREDIT_LABEL.speakForMe, price: COST.speakForMe },
   { feature: 'saveChapter', label: CREDIT_LABEL.saveChapter, price: COST.saveChapter },
   { feature: 'turntable', label: CREDIT_LABEL.turntable, price: COST.turntable },
+  { feature: 'sceneImage', label: CREDIT_LABEL.sceneImage, price: COST.sceneImage },
 ];

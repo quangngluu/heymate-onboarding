@@ -589,6 +589,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   let lastChatLen = -1;
   let lastWaiting = false;
   let lastRevealKey = '';
+  let lastShotKeys = '';
   let lastGateOpen = false;
 
   return {
@@ -703,7 +704,14 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       const lastTurn = s.chat[s.chat.length - 1];
       const waiting = s.thinking || (s.voicing && lastTurn?.from === 'user');
       const revealKey = s.reveal ? `${s.reveal.turn}:${s.reveal.words}` : '';
-      if (s.chat.length !== lastChatLen || waiting !== lastWaiting || revealKey !== lastRevealKey) {
+      const shotKeys = Object.keys(s.turnShots).join(',');
+      if (
+        s.chat.length !== lastChatLen ||
+        waiting !== lastWaiting ||
+        revealKey !== lastRevealKey ||
+        shotKeys !== lastShotKeys
+      ) {
+        lastShotKeys = shotKeys;
         lastChatLen = s.chat.length;
         lastWaiting = waiting;
         lastRevealKey = revealKey;
@@ -714,12 +722,17 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
             if (t.from !== 'resident') return [h('p', { class: 'bubble bubble-user' }, t.text)];
             const partial = s.reveal?.turn === i;
             const parts = partial ? segmentsUpTo(t.text, s.reveal!.words) : segments(t.text);
-            return parts.map((seg, k) => {
+            const shotKey = s.turnShots[i];
+            const shotUrl = shotKey ? s.sceneShots[shotKey] : undefined;
+            const shot: HTMLElement[] = shotUrl
+              ? [h('img', { class: 'scene-shot', src: shotUrl, alt: '', loading: 'lazy' })]
+              : [];
+            return shot.concat(parts.map((seg, k) => {
               const tail = partial && k === parts.length - 1 ? ' is-typing' : '';
               return seg.kind === 'beat'
                 ? h('p', { class: `beat-line${tail}` }, seg.text)
                 : h('p', { class: `bubble bubble-resident${tail}` }, seg.text);
-            });
+            }));
           }),
           ...(waiting
             ? [
