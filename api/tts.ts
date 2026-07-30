@@ -6,7 +6,7 @@
 // await, and we cap the wait so a slow render degrades to text-only instead
 // of hanging the conversation.
 
-import { delivery } from '../src/chat/dialogue';
+import { delivery, type Delivery } from '../src/chat/dialogue';
 
 export const config = { runtime: 'edge' };
 
@@ -33,6 +33,26 @@ interface TtsRequest {
   vol?: number;
 }
 
+function finite(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+/** Keep both MiniMax paths on the exact same emotional performance settings. */
+function voiceSetting(body: TtsRequest, performed: Delivery, defaultVoice?: string) {
+  const speed = clamp(finite(body.speed, 1) * performed.speedScale, 0.5, 2);
+  return {
+    voice_id: body.voiceId || defaultVoice,
+    speed: Number(speed.toFixed(2)),
+    vol: finite(body.vol, 1),
+    pitch: performed.pitch,
+    ...(performed.emotion ? { emotion: performed.emotion } : {}),
+  };
+}
+
 async function rpc(key: string, method: string, input: unknown): Promise<Record<string, unknown>> {
   const res = await fetch(ENDPOINT, {
     method: 'POST',
@@ -55,7 +75,7 @@ async function minimax(body: TtsRequest, text: string): Promise<Response> {
   const defaultVoice = process.env.MINIMAX_VOICE_ID;
   if (!key) return Response.json({ error: 'not-configured' }, { status: 503 });
 
-  const performed = body.raw ? delivery(body.raw, body.mood) : { text, emotion: undefined };
+  const performed = delivery(body.raw || text, body.mood);
   if (body.stream) return minimaxStream(key, body, performed, defaultVoice);
   const upstream = await fetch(MINIMAX_ENDPOINT, {
     method: 'POST',
@@ -63,12 +83,7 @@ async function minimax(body: TtsRequest, text: string): Promise<Response> {
     body: JSON.stringify({
       model: process.env.MINIMAX_MODEL || 'speech-2.8-turbo',
       text: performed.text || text,
-      voice_setting: {
-        voice_id: body.voiceId || defaultVoice,
-        speed: body.speed ?? 1,
-        vol: body.vol ?? 1,
-        ...(performed.emotion ? { emotion: performed.emotion } : {}),
-      },
+      voice_setting: voiceSetting(body, performed, defaultVoice),
       audio_setting: { format: 'mp3', sample_rate: 32000 },
       language_boost: 'Vietnamese',
     }),
@@ -112,7 +127,7 @@ const PCM_RATE = 32000;
 function minimaxStream(
   key: string,
   body: TtsRequest,
-  performed: { text: string; emotion?: string },
+  performed: Delivery,
   defaultVoice?: string
 ): Response {
   const out = new TransformStream<Uint8Array, Uint8Array>();
@@ -127,12 +142,7 @@ function minimaxStream(
           model: process.env.MINIMAX_MODEL || 'speech-2.8-turbo',
           text: performed.text,
           stream: true,
-          voice_setting: {
-            voice_id: body.voiceId || defaultVoice,
-            speed: body.speed ?? 1,
-            vol: body.vol ?? 1,
-            ...(performed.emotion ? { emotion: performed.emotion } : {}),
-          },
+          voice_setting: voiceSetting(body, performed, defaultVoice),
           audio_setting: { format: 'pcm', sample_rate: PCM_RATE },
           language_boost: 'Vietnamese',
         }),

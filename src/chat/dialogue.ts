@@ -149,32 +149,86 @@ export function spoken(text: string): string {
 /** Interjections MiniMax renders as sound rather than words. */
 const SOUNDS: [RegExp, string][] = [
   [/\b(cười (phá|lớn|ph[aá] l[eê]n))|bật cười to/i, '(laughs)'],
+  [/phì cười|bật cười khẽ/i, '(snorts)'],
   [/cười|khúc khích|nhếch mép/i, '(chuckle)'],
   [/thở dài|thở hắt/i, '(sighs)'],
+  [/thở gấp|thở dốc/i, '(pant)'],
+  [/thở khẽ|lấy hơi/i, '(breath)'],
   [/hít (một )?hơi|hít vào/i, '(inhale)'],
   [/thở ra|buông hơi/i, '(exhale)'],
   [/hắng giọng|đằng hắng/i, '(clear-throat)'],
   [/\bho\b|ho khan/i, '(coughs)'],
   [/ngân nga|hát khẽ|ậm ừ/i, '(humming)'],
+  [/rên khẽ|rít khẽ/i, '(groans)'],
   [/nín thở|hụt hơi|nghẹn/i, '(gasps)'],
   [/khịt mũi/i, '(sniffs)'],
   [/\bừm\b|ậm/i, '(emm)'],
 ];
 
 /** What a beat says about how the next line should land. */
-const FEELINGS: [RegExp, string][] = [
+const FEELINGS: [RegExp, DeliveryEmotion][] = [
   [/cười|tủm tỉm|nheo mắt|trêu|nhếch mép/i, 'happy'],
-  [/thở dài|cúi (đầu|mặt)|lặng|buồn|khẽ nói/i, 'sad'],
-  [/nhíu mày|siết|gắt|lườm/i, 'angry'],
-  [/nhướn mày|khựng|sững|tròn mắt|ngẩng phắt/i, 'surprised'],
+  [/thở dài|cúi (đầu|mặt)|lặng đi|buồn|nghẹn|rưng rưng|rơm rớm|run giọng/i, 'sad'],
+  [/nhíu mày|cau mày|siết|gắt|lườm|nghiến|bực|quắc mắt/i, 'angry'],
+  [/hoảng|sợ|run lên|co lại|rụt lại|lùi lại|nín thở/i, 'fearful'],
+  [/nhăn mặt|ghê|kinh|khinh|rùng mình|né ra/i, 'disgusted'],
+  [/nhướn mày|khựng|sững|tròn mắt|ngẩng phắt|giật mình|chớp mắt liên tục/i, 'surprised'],
+  [/thả lỏng|dịu giọng|nhắm mắt|hạ giọng/i, 'calm'],
 ];
 
-export type Delivery = { text: string; emotion?: string };
+/** MiniMax Speech 2.8 supports these seven categorical emotions. */
+export type DeliveryEmotion =
+  | 'happy'
+  | 'sad'
+  | 'angry'
+  | 'fearful'
+  | 'disgusted'
+  | 'surprised'
+  | 'calm';
 
-function match(table: [RegExp, string][], beat: string): string | undefined {
+export type Delivery = {
+  text: string;
+  emotion?: DeliveryEmotion;
+  /** Multiplied by the resident's own base speed. */
+  speedScale: number;
+  /** Small semitone adjustment; kept narrow so cloned identity stays intact. */
+  pitch: number;
+};
+
+function match<T extends string>(table: [RegExp, T][], beat: string): T | undefined {
   for (const [re, value] of table) if (re.test(beat)) return value;
   return undefined;
 }
+
+type Performance = {
+  sentencePause: string;
+  beatPause: string;
+  speedScale: number;
+  pitch: number;
+};
+
+/**
+ * Category alone is often too subtle on a cloned voice. These restrained
+ * prosody shifts make the category audible without turning the character into
+ * a different voice. MiniMax's separate intensity control cannot be used on
+ * our PCM stream, so rhythm and pitch carry that extra expression instead.
+ */
+const PERFORMANCE: Record<DeliveryEmotion, Performance> = {
+  happy: { sentencePause: '0.14', beatPause: '0.18', speedScale: 1.05, pitch: 1 },
+  sad: { sentencePause: '0.38', beatPause: '0.5', speedScale: 0.9, pitch: -1 },
+  angry: { sentencePause: '0.1', beatPause: '0.14', speedScale: 1.07, pitch: -2 },
+  fearful: { sentencePause: '0.16', beatPause: '0.2', speedScale: 1.08, pitch: 2 },
+  disgusted: { sentencePause: '0.28', beatPause: '0.34', speedScale: 0.93, pitch: -1 },
+  surprised: { sentencePause: '0.1', beatPause: '0.14', speedScale: 1.1, pitch: 2 },
+  calm: { sentencePause: '0.32', beatPause: '0.48', speedScale: 0.94, pitch: 0 },
+};
+
+const DEFAULT_PERFORMANCE: Performance = {
+  sentencePause: '0.22',
+  beatPause: '0.4',
+  speedScale: 1,
+  pitch: 0,
+};
 
 /**
  * Turn a written reply into something a voice can perform: the spoken half,
@@ -184,32 +238,53 @@ function match(table: [RegExp, string][], beat: string): string | undefined {
  * `mood` is the session setting, used when no beat says otherwise.
  */
 export function delivery(raw: string, mood?: string): Delivery {
+  const parsed = segments(raw);
   const parts: string[] = [];
-  let emotion: string | undefined;
+  const emotion =
+    parsed
+      .filter((seg) => seg.kind === 'beat')
+      .map((seg) => match(FEELINGS, seg.text))
+      .find((value): value is DeliveryEmotion => value !== undefined) ??
+    MOOD_FEELING[mood ?? ''];
+  const performance = emotion ? PERFORMANCE[emotion] : DEFAULT_PERFORMANCE;
 
-  for (const seg of segments(raw)) {
+  for (let index = 0; index < parsed.length; index++) {
+    const seg = parsed[index];
     if (seg.kind === 'speech') {
       parts.push(seg.text);
       continue;
     }
-    emotion ??= match(FEELINGS, seg.text);
     const sound = match(SOUNDS, seg.text);
-    // The action itself takes a moment, whether or not it makes a noise.
-    parts.push(sound ? `${sound}<#0.25#>` : '<#0.4#>');
+    const speechBefore = parsed.slice(0, index).some((part) => part.kind === 'speech');
+    const speechAfter = parsed.slice(index + 1).some((part) => part.kind === 'speech');
+    if (sound) parts.push(sound);
+    // MiniMax only accepts a pause marker between two speakable segments.
+    // A sound tag counts as the first segment; a silent opening action does
+    // not, so its emotion still shapes delivery without emitting invalid text.
+    if ((sound || speechBefore) && speechAfter) {
+      parts.push(`<#${performance.beatPause}#>`);
+    }
   }
 
   return {
     // A short rest between sentences matches the rhythm of the bubbles
     // arriving one after another on screen.
-    text: parts.join(' ').replace(/([.!?…])\s+(?=\S)/g, '$1<#0.22#> ').trim(),
-    emotion: emotion ?? MOOD_FEELING[mood ?? ''],
+    text: parts
+      .join(' ')
+      .replace(/([.!?…])\s+(?=\S)/g, `$1<#${performance.sentencePause}#> `)
+      .trim(),
+    emotion,
+    speedScale: performance.speedScale,
+    pitch: performance.pitch,
   };
 }
 
-const MOOD_FEELING: Record<string, string | undefined> = {
+const MOOD_FEELING: Record<string, DeliveryEmotion | undefined> = {
   calm: 'calm',
   playful: 'happy',
-  caring: 'calm',
+  // Caring and serious describe intent, not a fixed acoustic emotion. Let the
+  // 2.8 model read the actual Vietnamese line when no physical beat overrides.
+  caring: undefined,
   energetic: 'happy',
-  serious: 'fluent',
+  serious: undefined,
 };
