@@ -1,4 +1,5 @@
 import { CHARACTERS } from '../config/characters';
+import { segments } from '../chat/dialogue';
 import {
   PERSONAL_OUTPUTS,
   defaultBond,
@@ -457,6 +458,29 @@ export class Store {
       transcripts: { ...this.state.transcripts, [this.state.residentId]: chat },
     });
     this.persist();
+  }
+
+  /**
+   * How many lines she has said since he last said anything.
+   *
+   * Counted in *bubbles*, not turns, because that is the unit he sees and the
+   * unit he would count: one reply is split by sentence into several bubbles, so
+   * a greeting alone is already two. Beats are excluded — an action is the room,
+   * not her talking.
+   *
+   * Derived from the transcript rather than kept in a field, so it survives a
+   * reload and a switch away and back, and cannot drift out of step with what is
+   * on screen. The greeting and any scene she opened both count, because from
+   * his side they are all her talking into the same silence.
+   */
+  get unansweredLines(): number {
+    const chat = this.state.chat;
+    let n = 0;
+    for (let i = chat.length - 1; i >= 0; i--) {
+      if (chat[i].from === 'user') break;
+      n += segments(chat[i].text).filter((seg) => seg.kind === 'speech').length;
+    }
+    return n;
   }
 
   /** Forget one resident's transcript. Her bond and memories are untouched. */

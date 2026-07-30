@@ -58,6 +58,14 @@ const FREE_ARC = Math.PI / 3;
 const MIN_WORD_MS = 26;
 const MAX_WORD_MS = 220;
 
+/**
+ * How many lines she will say into a silence before she stops.
+ *
+ * A companion who never speaks first is a form; one who keeps going after five
+ * unanswered lines is talking at someone who has left.
+ */
+const MAX_UNANSWERED = 5;
+
 function storyContext(residentId: ResidentId): { flags: string[]; outcomes: string[] } {
   const state = store.get();
   const questTitles = new Map(store.questsFor(residentId).map((quest) => [quest.id, quest.title]));
@@ -548,12 +556,19 @@ class App implements UIActions {
   }
 
   /**
-   * If the visitor goes quiet she speaks first, at most twice per encounter.
-   * Waiting for permission to talk is what makes a companion feel like a form.
+   * If the visitor goes quiet she speaks first — but she stops rather than talk
+   * at a wall.
+   *
+   * Five unanswered lines is the limit, counted from the transcript, so the
+   * greeting and any scene she opened count towards it: from his side they are
+   * all her talking into the same silence. The count clears the moment he says
+   * anything, which is the point — the old rule was two nudges per *encounter*
+   * and never reset, so an hour into a real conversation she had permanently
+   * lost the ability to speak first.
    */
   private armIdleNudge(): void {
     window.clearTimeout(this.idleTimer);
-    if (this.idleSpoken >= 2) return;
+    if (store.unansweredLines >= MAX_UNANSWERED) return;
     this.idleTimer = window.setTimeout(() => this.speakIntoSilence(), 30000);
   }
 
@@ -563,12 +578,13 @@ class App implements UIActions {
 
   private speakIntoSilence(): void {
     const s = store.get();
-    if (s.step !== 'stage' || this.idleSpoken >= 2) return;
+    if (s.step !== 'stage' || store.unansweredLines >= MAX_UNANSWERED) return;
     if (s.thinking || s.voicing || s.speaking || s.reveal) {
       this.armIdleNudge();
       return;
     }
     const r = residentById(s.residentId);
+    // Only the phrasing rotates off this; the stopping rule is the count above.
     const spokenIndex = this.idleSpoken;
     this.idleSpoken++;
 
