@@ -6,6 +6,14 @@
   --line: rgba(239, 230, 212, 0.14);
   --accent: #efe6d4;
   --font: 'Avenir Next', 'Futura', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  /* The viewport meta says `viewport-fit=cover`, so the layout owns the whole
+     screen including the strips the hardware has already claimed: the notch or
+     Dynamic Island at the top, the home indicator at the bottom. Every fixed
+     edge below adds these, otherwise the credit pill sits under the island and
+     the composer under the swipe bar. Zero on anything without a cutout, which
+     is why the stage keeps the room it gained. */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1421,7 +1429,7 @@ html, body {
      of these controls missed at 32-36px: the top chrome, the roster chips, the
      session segments and the composer field. Padding grows rather than font
      size, so nothing reflows. */
-  .chrome { padding: 14px 12px; }
+  .chrome { padding: calc(14px + var(--safe-t)) 12px 14px; }
   .chrome-btn { width: 44px; height: 44px; font-size: 16px; }
   .chrome-credits { min-height: 44px; padding: 0 14px; }
   .chrome-right { gap: 8px; }
@@ -1434,7 +1442,11 @@ html, body {
      the kicker was drawn on top of the wordmark and the top padding did
      nothing. Two tiles never fit a phone, so this stack starts at the top and
      the page scrolls normally. */
-  .gallery-wrap { justify-content: flex-start; padding-top: 92px; }
+  .gallery-wrap {
+    justify-content: flex-start;
+    padding-top: calc(92px + var(--safe-t));
+    padding-bottom: calc(24px + var(--safe-b));
+  }
 
   /* A wrapped decline label beside a right-floated primary reads as two
      unrelated controls. On a phone both go full width, primary on top where
@@ -1446,7 +1458,7 @@ html, body {
   .memory-item { padding: 12px; min-height: 48px; align-items: center; }
   .memory-item input[type='checkbox'] { width: 20px; height: 20px; flex: 0 0 20px; }
 
-  .bottom-cluster { bottom: 12px; width: calc(100vw - 20px); padding: 14px; }
+  .bottom-cluster { bottom: calc(12px + var(--safe-b)); width: calc(100vw - 20px); padding: 14px; }
   .identity-modes { grid-template-columns: 1fr; }
   .side-cluster {
     right: 50%;
@@ -1478,9 +1490,16 @@ html, body {
      still show her. The rail breaks apart: card under the roster, words above
      the dock, the figurine in the band between them. */
   .stage-rail { display: contents; }
+  /* The stage is laid out from two edges, and both of them move on a phone with
+     a cutout. Naming them once keeps the rail, the card, her words and the dock
+     agreeing about where the screen actually starts and ends. */
+  :root {
+    --rail-t: calc(68px + var(--safe-t));
+    --dock-b: calc(10px + var(--safe-b));
+  }
   /* One row for navigation: back, card, then the cast. Putting the roster on
      its own line below cost 44px of the only viewport there is. */
-  .stage-top { left: 10px; top: 68px; gap: 6px; }
+  .stage-top { left: 10px; top: var(--rail-t); gap: 6px; }
   .stage-top .btn {
     width: 44px;
     height: 44px;
@@ -1502,16 +1521,17 @@ html, body {
     position: absolute;
     left: 10px;
     right: 10px;
-    top: 120px;
+    /* Clear of the rail row above it. */
+    top: calc(var(--rail-t) + 52px);
     width: auto;
-    max-height: calc(100vh - 120px - var(--dock-h, 150px) - 24px);
-    max-height: calc(100dvh - 120px - var(--dock-h, 150px) - 24px);
+    max-height: calc(100vh - var(--rail-t) - 52px - var(--dock-b) - var(--dock-h, 150px) - 14px);
+    max-height: calc(100dvh - var(--rail-t) - 52px - var(--dock-b) - var(--dock-h, 150px) - 14px);
     overflow-y: auto;
     cursor: pointer;
   }
   .stage-info.is-open {
-    max-height: calc(100vh - 120px - var(--dock-h, 150px) - 24px);
-    max-height: calc(100dvh - 120px - var(--dock-h, 150px) - 24px);
+    max-height: calc(100vh - var(--rail-t) - 52px - var(--dock-b) - var(--dock-h, 150px) - 14px);
+    max-height: calc(100dvh - var(--rail-t) - 52px - var(--dock-b) - var(--dock-h, 150px) - 14px);
   }
   .stage-info::after {
     content: '\25be';
@@ -1534,12 +1554,12 @@ html, body {
     right: auto;
     width: 56%;
     max-width: 232px;
-    bottom: calc(var(--dock-h, 150px) + 14px);
+    bottom: calc(var(--dock-b) + var(--dock-h, 150px) + 4px);
     /* A hard cap, not just whatever room is left: the column has to stay a
        band beside her, and letting it grow to fill the gap squeezed the
        figurine into a thumbnail with nowhere left to drag. Older turns scroll. */
-    max-height: min(32vh, calc(100vh - 128px - var(--dock-h, 150px) - 24px));
-    max-height: min(32dvh, calc(100dvh - 128px - var(--dock-h, 150px) - 24px));
+    max-height: min(32vh, calc(100vh - var(--rail-t) - 70px - var(--dock-b) - var(--dock-h, 150px) - 4px));
+    max-height: min(32dvh, calc(100dvh - var(--rail-t) - 70px - var(--dock-b) - var(--dock-h, 150px) - 4px));
     padding: 4px 2px 4px 0;
     gap: 6px;
     pointer-events: none;
@@ -1558,7 +1578,7 @@ html, body {
   .roster {
     left: 116px;
     right: 10px;
-    top: 68px;
+    top: var(--rail-t);
     align-items: center;
     height: 44px;
     gap: 0;
@@ -1586,7 +1606,7 @@ html, body {
   .roster-chip .dot { width: 6px; height: 6px; }
   .chip-full { display: none; }
   .chip-short { display: inline; }
-  .stage-dock { bottom: 10px; width: calc(100vw - 20px); padding: 8px; gap: 8px; }
+  .stage-dock { bottom: var(--dock-b); width: calc(100vw - 20px); padding: 8px; gap: 8px; }
   /* Mobile has one primary action: type. Secondary actions stay in the nearby menu. */
   .dock-top { display: none; }
   .dock-bar { position: relative; gap: 4px; padding: 4px; }

@@ -5,6 +5,85 @@
 // LFO and lowpass — a faint city-hum. Registered under the logical key
 // `cyber-district-ambience` in mint-assets.json for later replacement.
 
+/**
+ * Put iOS in the audio session that media belongs in.
+ *
+ * By default a page's WebAudio runs in the *ambient* session: it is mixed at
+ * ringer volume and the hardware Ring/Silent switch mutes it outright. That is
+ * correct for a UI blip and wrong for a character who talks — with the switch
+ * flipped, which is how most phones sit, every line of hers was silent while
+ * the same build was audible on desktop. Resuming the context on a gesture,
+ * which is the autoplay fix, does nothing about this: the context reaches
+ * `running` and plays into a muted session.
+ *
+ * `playback` is the session for content the visitor came for. It ignores the
+ * switch and follows media volume. Absent before iOS 16.4, hence the guard and
+ * the element fallback below.
+ */
+function claimPlaybackSession(): void {
+  const session = (navigator as { audioSession?: { type: string } }).audioSession;
+  if (!session) return;
+  try {
+    session.type = 'playback';
+  } catch {
+    // A value this Safari does not know: leave whatever it had.
+  }
+}
+
+/**
+ * The pre-16.4 form of the same fix.
+ *
+ * An `<audio>` element always played in the media session, so starting a
+ * silent looping one promotes the whole page — WebAudio included — out of the
+ * ambient session. It has to begin inside the entry gesture like everything
+ * else here, and it stays playing, because the session reverts when the last
+ * element stops.
+ */
+function startSessionAnchor(): HTMLAudioElement | null {
+  try {
+    // A 0.05s silent mono WAV, written out rather than pasted as a base64
+    // blob so it is readable and obviously silent.
+    const rate = 8000;
+    const frames = rate / 20;
+    const bytes = new Uint8Array(44 + frames * 2);
+    const view = new DataView(bytes.buffer);
+    const ascii = (at: number, s: string) => {
+      for (let i = 0; i < s.length; i++) view.setUint8(at + i, s.charCodeAt(i));
+    };
+    ascii(0, 'RIFF');
+    view.setUint32(4, 36 + frames * 2, true);
+    ascii(8, 'WAVEfmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, 1, true); // mono
+    view.setUint32(24, rate, true);
+    view.setUint32(28, rate * 2, true); // byte rate
+    view.setUint16(32, 2, true); // block align
+    view.setUint16(34, 16, true); // bits
+    ascii(36, 'data');
+    view.setUint32(40, frames * 2, true);
+    // Samples stay zero — silence is the point.
+
+    const el = document.createElement('audio');
+    el.src = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+    el.loop = true;
+    // Without this iOS can take the element over fullscreen rather than just
+    // playing it. Typed on video only, so it goes on as an attribute.
+    el.setAttribute('playsinline', '');
+    // Audible enough to hold the session, silent because the file is.
+    el.volume = 1;
+    // In the document, because Safari establishes the session from elements the
+    // page actually has; hidden, because there is nothing to show.
+    el.setAttribute('aria-hidden', 'true');
+    el.style.display = 'none';
+    document.body.appendChild(el);
+    void el.play().catch(() => undefined);
+    return el;
+  } catch {
+    return null;
+  }
+}
+
 /** A clip being fed in as it arrives. */
 export interface PcmStream {
   push(samples: Float32Array): void;
@@ -18,6 +97,8 @@ export class Ambience {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private started = false;
+  /** The silent element holding the media session open on older iOS. */
+  private anchor: HTMLAudioElement | null = null;
   muted = false;
 
   private clipCache = new Map<string, Promise<AudioBuffer>>();
@@ -149,6 +230,11 @@ export class Ambience {
       this.resumeIfNeeded();
       return;
     }
+    // Both of these have to happen before the context exists and inside the
+    // gesture, so the context is created into a session that is already the
+    // media one. See the notes on the two helpers.
+    claimPlaybackSession();
+    this.anchor = startSessionAnchor();
     try {
       const ctx = new AudioContext();
       const master = ctx.createGain();
@@ -204,7 +290,13 @@ export class Ambience {
    */
   private resumeIfNeeded(): void {
     const ctx = this.ctx;
-    if (!ctx || ctx.state === 'running' || ctx.state === 'closed') return;
+    if (!ctx || ctx.state === 'closed') return;
+    // A call, an alarm or Control Center hands the session back as ambient and
+    // pauses the anchor, so both are re-asserted on every wake — not only when
+    // the context itself needs resuming.
+    claimPlaybackSession();
+    if (this.anchor?.paused) void this.anchor.play().catch(() => undefined);
+    if (ctx.state === 'running') return;
     void ctx.resume().catch(() => undefined);
   }
 
