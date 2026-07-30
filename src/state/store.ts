@@ -1,4 +1,12 @@
 import { CHARACTERS } from '../config/characters';
+import {
+  PERSONAL_OUTPUTS,
+  defaultBond,
+  defaultRapport,
+  sanitizeRapport,
+  type BondDna,
+  type Rapport,
+} from '../config/bond';
 import { RESIDENTS, type ResidentId, type VoiceSlot } from '../config/residents';
 import {
   questById,
@@ -73,6 +81,15 @@ export interface SavedProgress {
   identity: string;
   visits: number;
   completedQuests: string[];
+  /**
+   * The relationship this player shaped, and where it currently stands.
+   *
+   * These persist per resident because they are the whole point: two players
+   * with the same resident should not have the same her. Optional so saves
+   * written before the bond layer keep loading.
+   */
+  bond?: BondDna;
+  rapport?: Rapport;
 }
 
 /** Mock unlock code, as if printed on the figurine's box. */
@@ -131,6 +148,15 @@ export interface AppState {
   reveal: { turn: number; words: number } | null;
   /** Session-scoped reveal count, seeded from saved progress. */
   revealed: number;
+  /**
+   * The bond and the relationship state for the resident on stage.
+   *
+   * Live copies: `progress[id]` holds what was paid for and kept, these hold
+   * what is true right now. Rapport moves every turn, so it cannot wait for a
+   * save gate — but it is only written to disk when a chapter is saved.
+   */
+  bond: BondDna;
+  rapport: Rapport;
   sessionPanelOpen: boolean;
   walletOpen: boolean;
   questHubOpen: boolean;
@@ -184,6 +210,8 @@ const initialState: AppState = {
   voicing: false,
   reveal: null,
   revealed: 0,
+  bond: defaultBond(),
+  rapport: defaultRapport(),
   sessionPanelOpen: false,
   walletOpen: false,
   questHubOpen: false,
@@ -304,6 +332,8 @@ export class Store {
         persona: saved.persona ?? '',
         identity: saved.identity ?? '',
         completedQuests: saved.completedQuests ?? [],
+        bond: { ...defaultBond(), ...(saved.bond ?? {}) },
+        rapport: sanitizeRapport(saved.rapport ?? defaultRapport()),
       };
     }
     return {
@@ -314,6 +344,8 @@ export class Store {
       identity: '',
       visits: 0,
       completedQuests: [],
+      bond: defaultBond(),
+      rapport: defaultRapport(),
     };
   }
 
@@ -329,6 +361,8 @@ export class Store {
       voicing: false,
       reveal: null,
       revealed: saved.revealed,
+      bond: saved.bond ?? defaultBond(),
+      rapport: saved.rapport ?? defaultRapport(),
       sessionPanelOpen: false,
       walletOpen: false,
       questHubOpen: false,
@@ -343,6 +377,38 @@ export class Store {
         identity: saved.identity,
       },
     });
+  }
+
+  /** Shape the bond. Never touches who she is — see config/bond.ts. */
+  updateBond(patch: Partial<BondDna>): void {
+    this.set({ bond: { ...this.state.bond, ...patch } });
+  }
+
+  /** Add to the private canon. Only ever from something that happened. */
+  addSharedCanon(entry: string): void {
+    const line = entry.trim().slice(0, 200);
+    if (!line || this.state.bond.sharedCanon.includes(line)) return;
+    this.updateBond({ sharedCanon: [...this.state.bond.sharedCanon, line].slice(-12) });
+  }
+
+  /** Mint an object that exists only in this save. */
+  addPrivateObject(entry: string): void {
+    const line = entry.trim().slice(0, 160);
+    if (!line || this.state.bond.privateObjects.includes(line)) return;
+    this.updateBond({ privateObjects: [...this.state.bond.privateObjects, line].slice(-8) });
+  }
+
+  /**
+   * Take the relationship state she reported after a turn.
+   *
+   * Sanitised on the way in: it arrives from a model, so every number is
+   * clamped and every string is bounded. A missing report leaves the previous
+   * state in place rather than resetting it, which is the whole reason this
+   * exists.
+   */
+  applyRapport(next: unknown): void {
+    if (!next) return;
+    this.set({ rapport: sanitizeRapport(next) });
   }
 
   updateSession(patch: Partial<SessionSetup>): void {
@@ -455,6 +521,8 @@ export class Store {
         identity: this.state.session.identity || prev.identity,
         visits: prev.visits + 1,
         completedQuests: prev.completedQuests,
+        bond: this.state.bond,
+        rapport: this.state.rapport,
       },
     };
     const transaction = this.transaction('spend', 'saveChapter', COST.saveChapter);
@@ -595,11 +663,22 @@ export class Store {
       choice.unlockEpisode === undefined
         ? prev.revealed
         : Math.max(prev.revealed, choice.unlockEpisode + 1);
+    // Grow the bond BEFORE snapshotting it into progress. The other order
+    // persists a bond one entry behind, so the newest branch would be missing
+    // from the save it was supposed to be part of.
+    this.addSharedCanon(choice.outcome);
+    if (!choice.nextNodeId && !prev.completedQuests.includes(quest.id)) {
+      // A finished chapter has to leave behind something that exists only in
+      // this save. Lore alone gives him more of her story; this gives him a thing.
+      this.addPrivateObject(PERSONAL_OUTPUTS[quest.residentId].object);
+    }
     const progress = {
       ...this.state.progress,
       [quest.residentId]: {
         ...prev,
         revealed,
+        bond: this.state.bond,
+        rapport: this.state.rapport,
       },
     };
     const questHistory = {

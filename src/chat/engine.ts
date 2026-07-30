@@ -88,7 +88,7 @@ const LINES: Record<ResidentId, Record<Intent, [string, string]>> = {
       'Em ổn. Thế kỷ này ồn ào, nhưng em ổn.',
     ],
     identity: [
-      'Kagura Sanada. Em mang Akagane. Giờ đó là phần lớn con người em.',
+      'Kagura Akagane. Em mang thanh kiếm đó, và giờ nó là phần lớn con người em.',
       'Em là con gái của thợ rèn, nhặt nhầm thanh kiếm rồi thắng.',
     ],
     capability: [

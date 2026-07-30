@@ -8,6 +8,7 @@
 
 import { buildSystemPrompt, type PromptSession } from '../src/chat/prompt';
 import { RESIDENTS } from '../src/config/residents';
+import { DEFAULT_DARK_VARIANT, type DarkVariant } from '../src/config/dark-patterns';
 
 interface QuestRequest {
   residentId: string;
@@ -17,6 +18,8 @@ interface QuestRequest {
   level?: number;
   /** Titles she has already used, so she does not circle the same ground. */
   used: string[];
+  /** Narrative pressure variant this session is running. */
+  dark?: DarkVariant;
 }
 
 export const config = { runtime: 'edge' };
@@ -56,7 +59,12 @@ export default async function handler(req: Request): Promise<Response> {
     body.revealed ?? 0,
     undefined,
     false,
-    body.level ?? 0
+    body.level ?? 0,
+    undefined,
+    undefined,
+    body.dark ?? DEFAULT_DARK_VARIANT
+    // Scene invitations stay at the default register regardless of the session:
+    // a quest hook is structure, not intimacy.
   );
 
   const used = (Array.isArray(body.used) ? body.used : [])

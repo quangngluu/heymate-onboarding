@@ -220,6 +220,11 @@ export default async function handler(req: Request): Promise<Response> {
     }
   }
 
+  // Everything past the switch is the Spoon path. The guard above already
+  // rejected a missing Spoon key for it; restated here so it is a type fact
+  // too, rather than something only the control flow knows.
+  if (!key || !defaultVoice) return Response.json({ error: 'not-configured' }, { status: 503 });
+
   try {
     // The account allows one export at a time; a burst of lines can collide,
     // so back off briefly rather than dropping the line.

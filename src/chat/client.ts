@@ -10,11 +10,15 @@ import {
 } from './engine';
 import type { ChatTurn } from '../state/store';
 import type { PromptStoryState } from './prompt';
+import { resolveDarkVariant } from '../config/dark-patterns';
+import { resolveMaturity } from '../config/maturity';
 
 export type ChatSource = 'model' | 'scripted';
 
 export interface ChatOutcome extends ReplyResult {
   source: ChatSource;
+  /** What she reported about the relationship after this turn, if anything. */
+  rapport?: unknown;
 }
 
 /** Skip the network entirely once we know there is no endpoint here. */
@@ -29,6 +33,8 @@ export async function getReply(
     level?: number;
     quest?: { prompt: string; objective: string };
     story?: PromptStoryState;
+    bond?: unknown;
+    rapport?: unknown;
   } = {}
 ): Promise<ChatOutcome> {
   // An idle nudge is already-authored dialogue, not a user message that the
@@ -52,6 +58,10 @@ export async function getReply(
         level: opts.level ?? 0,
         quest: opts.quest,
         story: opts.story,
+        dark: resolveDarkVariant(),
+        maturity: resolveMaturity(),
+        bond: opts.bond,
+        rapport: opts.rapport,
         history: history.map((t) => ({
           role: t.from === 'user' ? 'user' : 'assistant',
           content: t.text,
@@ -67,13 +77,14 @@ export async function getReply(
     }
     if (!res.ok) return { ...scripted, source: 'scripted' };
 
-    const data = (await res.json()) as { text?: string };
+    const data = (await res.json()) as { text?: string; rapport?: unknown };
     if (!data.text) return { ...scripted, source: 'scripted' };
     // The reveal schedule stays owned by the app, not the model.
     return {
       text: data.text,
       revealedRung: opts.idle ? undefined : scripted.revealedRung,
       source: 'model',
+      rapport: data.rapport,
     };
   } catch {
     return { ...scripted, source: 'scripted' };

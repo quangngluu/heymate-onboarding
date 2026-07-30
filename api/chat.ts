@@ -7,6 +7,15 @@ import {
   type PromptSession,
   type PromptStoryState,
 } from '../src/chat/prompt';
+import { DEFAULT_DARK_VARIANT, type DarkVariant } from '../src/config/dark-patterns';
+import { DEFAULT_MATURITY, type MaturityLevel } from '../src/config/maturity';
+import {
+  defaultBond,
+  defaultRapport,
+  sanitizeRapport,
+  type BondDna,
+  type Rapport,
+} from '../src/config/bond';
 
 interface ChatRequest {
   residentId: string;
@@ -18,6 +27,14 @@ interface ChatRequest {
   level?: number;
   quest?: { prompt: string; objective: string };
   story?: PromptStoryState;
+  /** Narrative pressure variant this session is running. */
+  dark?: DarkVariant;
+  /** Intimacy register. Never trusted upward without the client's own gate. */
+  maturity?: MaturityLevel;
+  /** The relationship this player shaped. */
+  bond?: BondDna;
+  /** Where the two of them stood before this turn. */
+  rapport?: Rapport;
   history: { role: 'user' | 'assistant'; content: string }[];
   message: string;
 }
@@ -28,6 +45,14 @@ export const config = { runtime: 'edge' };
 const ENDPOINT = 'https://api.deepseek.com/chat/completions';
 const MODEL = process.env.DEEPSEEK_MODEL ?? 'deepseek-chat';
 const MAX_TOKENS = { short: 120, natural: 220, expressive: 320 } as const;
+/**
+ * Headroom for the trailing `<<state {...}>>` line.
+ *
+ * Without it the state line is the first thing the token cap eats, which looked
+ * like the model ignoring the instruction — it was answering fully and getting
+ * truncated. The budget is not part of what she is allowed to say.
+ */
+const STATE_BUDGET = 90;
 const INVALID_ADDRESSING = /(^|[^\p{L}])(?:tôi|tao|tớ|mình(?!\s+anh(?=$|[^\p{L}]))|chị|cậu|bạn|ngươi|ngài|i|you|your)(?=$|[^\p{L}])/iu;
 
 /**
@@ -44,6 +69,28 @@ function trimToSentence(text: string | undefined, finishReason?: string): string
     text.lastIndexOf('\u2026')
   );
   return cut > text.length * 0.4 ? text.slice(0, cut + 1) : text;
+}
+
+/**
+ * Pull the relationship state off the end of a reply.
+ *
+ * She is asked to append one `<<state {...}>>` line so trust, desire, respect,
+ * irritation and any unresolved conflict survive the turn instead of resetting.
+ * It is stripped here and never reaches the browser as text. A missing or
+ * malformed line is not an error — the caller simply keeps the previous state,
+ * which is the safe direction to fail in.
+ */
+const STATE_RE = /<<\s*state\s*(\{[\s\S]*?\})\s*>>/;
+
+function splitState(text: string): { text: string; state: unknown | null } {
+  const m = text.match(STATE_RE);
+  if (!m) return { text, state: null };
+  const clean = text.replace(STATE_RE, '').trim();
+  try {
+    return { text: clean, state: JSON.parse(m[1]) as unknown };
+  } catch {
+    return { text: clean, state: null };
+  }
 }
 
 /** Never leak a model turn that breaks the app-wide em/anh relationship. */
@@ -78,7 +125,12 @@ export default async function handler(req: Request): Promise<Response> {
       body.idle,
       body.level ?? 0,
       body.quest,
-      body.story
+      body.story,
+      body.dark ?? DEFAULT_DARK_VARIANT,
+      body.maturity === 'explicit' ? 'explicit' : DEFAULT_MATURITY,
+      body.bond ?? defaultBond(),
+      sanitizeRapport(body.rapport ?? defaultRapport()),
+      String(body.message ?? '')
     );
   } catch {
     return Response.json({ error: 'unknown-resident' }, { status: 400 });
@@ -122,12 +174,17 @@ export default async function handler(req: Request): Promise<Response> {
     const data = (await upstream.json()) as {
       choices?: { message?: { content?: string }; finish_reason?: string }[];
     };
-    const text = trimToSentence(
-      data.choices?.[0]?.message?.content?.trim(),
-      data.choices?.[0]?.finish_reason
-    );
+    const rawFull = data.choices?.[0]?.message?.content?.trim();
+    if (!rawFull) return Response.json({ error: 'empty' }, { status: 502 });
+    // Split the state off first, then trim. Doing it the other way round means a
+    // reply that hit the cap has its state line cut by trimToSentence, and the
+    // addressing check ends up reading JSON rather than prose.
+    const { text: prose, state } = splitState(rawFull);
+    const text = trimToSentence(prose, data.choices?.[0]?.finish_reason);
     if (!text) return Response.json({ error: 'empty' }, { status: 502 });
-    if (!hasInvalidAddressing(text)) return Response.json({ text });
+    if (!hasInvalidAddressing(text)) {
+      return Response.json({ text, rapport: state ? sanitizeRapport(state) : undefined });
+    }
 
     // DeepSeek may occasionally follow a visitor's request to alter its form
     // of address. Give it one stricter regeneration; the client uses authored
@@ -148,7 +205,7 @@ export default async function handler(req: Request): Promise<Response> {
           ...messages.slice(1),
         ],
         temperature: 0.7,
-        max_tokens: MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural,
+        max_tokens: (MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural) + STATE_BUDGET,
         stop: ['\nUser:', '\nYou:', '\nAnh:'],
       }),
       signal: AbortSignal.timeout(20000),
@@ -157,11 +214,15 @@ export default async function handler(req: Request): Promise<Response> {
     const retryData = (await retry.json()) as {
       choices?: { message?: { content?: string } }[];
     };
-    const rewritten = retryData.choices?.[0]?.message?.content?.trim();
+    const rewrittenRaw = retryData.choices?.[0]?.message?.content?.trim();
+    const { text: rewritten, state: retryState } = splitState(rewrittenRaw ?? '');
     if (!rewritten || hasInvalidAddressing(rewritten)) {
       return Response.json({ error: 'invalid-addressing' }, { status: 502 });
     }
-    return Response.json({ text: rewritten });
+    return Response.json({
+      text: rewritten,
+      rapport: retryState ? sanitizeRapport(retryState) : undefined,
+    });
   } catch {
     return Response.json({ error: 'unreachable' }, { status: 502 });
   }

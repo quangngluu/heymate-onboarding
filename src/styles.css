@@ -480,6 +480,7 @@ html, body {
 .roster-chip.is-active { border-color: var(--accent); }
 .roster-chip.is-active .dot { opacity: 1; box-shadow: 0 0 10px var(--accent); }
 .roster-chip:focus-visible { outline: 2px solid var(--ivory); outline-offset: 2px; }
+.chip-short { display: none; }
 
 /* What she says sits next to her rather than inside a box: the stage stays
    the subject, the words are cards on it. */
@@ -1057,7 +1058,51 @@ html, body {
   flex-direction: column;
   gap: 12px;
 }
+/* Variant C only: the test label, and the clock the label says is not real. */
+.gate-banner {
+  border: 1px solid rgba(255, 138, 92, 0.35);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.gate-urgency { color: #e8927a; font-variant-numeric: tabular-nums; }
+.gate-urgency[hidden] { display: none; }
+
 .memory-list { display: flex; flex-direction: column; gap: 8px; }
+
+/* The bond half of the sheet. Visually separated because it is a different
+   promise from the session settings above it: these persist. */
+.bond-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 6px 0 2px;
+}
+.segment-stack { flex-direction: column; }
+.segment-stack .segment-btn {
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  padding: 9px 12px;
+}
+.segment-stack .segment-btn small {
+  color: var(--ivory-dim);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.segment-stack .segment-btn[aria-checked='true'] small { color: var(--ivory); }
+.bond-card-title { color: var(--accent); }
+.bond-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.bond-card .hint { color: var(--ivory); font-size: 12.5px; }
 .memory-item {
   display: flex;
   align-items: flex-start;
@@ -1362,6 +1407,45 @@ html, body {
   .slider-thumb { width: 44px; height: 56px; flex-shrink: 0; }
 }
 @media (max-width: 700px) {
+  /* Safari zooms the page when a focused form control renders below 16px.
+     Keep native pinch zoom available; fixing the control size avoids the
+     keyboard jump without an accessibility-hostile viewport lock. */
+  .chat-input,
+  .dock-bar .chat-input,
+  .name-input,
+  .persona-input,
+  .describe-input,
+  select { font-size: 16px; }
+
+  /* Touch targets. Everything a finger has to hit clears 44px, which several
+     of these controls missed at 32-36px: the top chrome, the roster chips, the
+     session segments and the composer field. Padding grows rather than font
+     size, so nothing reflows. */
+  .chrome { padding: 14px 12px; }
+  .chrome-btn { width: 44px; height: 44px; font-size: 16px; }
+  .chrome-credits { min-height: 44px; padding: 0 14px; }
+  .chrome-right { gap: 8px; }
+  .segment-btn { min-height: 44px; padding: 0 13px; }
+  .chat-input { padding: 13px 16px; }
+  .dock-bar .chat-input { min-height: 44px; }
+
+  /* `justify-content: center` on a scroll container whose content is taller
+     than the viewport overflows upward, and that overflow is unreachable — so
+     the kicker was drawn on top of the wordmark and the top padding did
+     nothing. Two tiles never fit a phone, so this stack starts at the top and
+     the page scrolls normally. */
+  .gallery-wrap { justify-content: flex-start; padding-top: 92px; }
+
+  /* A wrapped decline label beside a right-floated primary reads as two
+     unrelated controls. On a phone both go full width, primary on top where
+     the thumb already is. */
+  .gate-card .row { flex-direction: column-reverse; align-items: stretch; gap: 8px; }
+  .gate-card .row .btn { margin-left: 0; width: 100%; min-height: 46px; }
+  /* The row is the target, but a 13px box is still the thing a finger aims at,
+     so it grows with it. */
+  .memory-item { padding: 12px; min-height: 48px; align-items: center; }
+  .memory-item input[type='checkbox'] { width: 20px; height: 20px; flex: 0 0 20px; }
+
   .bottom-cluster { bottom: 12px; width: calc(100vw - 20px); padding: 14px; }
   .identity-modes { grid-template-columns: 1fr; }
   .side-cluster {
@@ -1394,7 +1478,9 @@ html, body {
      still show her. The rail breaks apart: card under the roster, words above
      the dock, the figurine in the band between them. */
   .stage-rail { display: contents; }
-  .stage-top { left: 10px; gap: 6px; }
+  /* One row for navigation: back, card, then the cast. Putting the roster on
+     its own line below cost 44px of the only viewport there is. */
+  .stage-top { left: 10px; top: 68px; gap: 6px; }
   .stage-top .btn {
     width: 44px;
     height: 44px;
@@ -1409,19 +1495,24 @@ html, body {
     line-height: 1;
   }
   .stage-back-icon { font-size: 28px; transform: translateX(-1px); }
+  /* Hidden on arrival (see stageStep) and summoned by the card button, so it
+     can take real room when it is actually wanted instead of permanently
+     costing a header's worth of the stage. */
   .stage-info {
     position: absolute;
     left: 10px;
     right: 10px;
-    top: 148px;
+    top: 120px;
     width: auto;
-    position: absolute;
-    /* Collapsed to a header so the figurine keeps the middle of the screen. */
-    max-height: 106px;
-    overflow: hidden;
+    max-height: calc(100vh - 120px - var(--dock-h, 150px) - 24px);
+    max-height: calc(100dvh - 120px - var(--dock-h, 150px) - 24px);
+    overflow-y: auto;
     cursor: pointer;
   }
-  .stage-info.is-open { max-height: 58vh; overflow-y: auto; }
+  .stage-info.is-open {
+    max-height: calc(100vh - 120px - var(--dock-h, 150px) - 24px);
+    max-height: calc(100dvh - 120px - var(--dock-h, 150px) - 24px);
+  }
   .stage-info::after {
     content: '\25be';
     position: absolute;
@@ -1433,14 +1524,68 @@ html, body {
   }
   .stage-info.is-open::after { transform: rotate(180deg); }
   .stage-info .card-promise { display: none; }
+  /* Her words sit in a column down the left, so the figurine keeps the right
+     two thirds of the screen and stays draggable. The column itself is
+     transparent to pointers — only the bubbles catch taps — otherwise a rotate
+     gesture that started over an empty gap would be swallowed. */
   .speech-log {
     position: absolute;
-    left: 16px;
-    right: 16px;
-    bottom: calc(var(--dock-h, 150px) + 18px);
-    max-height: 21vh;
-    padding: 5px 2px 4px 0;
+    left: 10px;
+    right: auto;
+    width: 56%;
+    max-width: 232px;
+    bottom: calc(var(--dock-h, 150px) + 14px);
+    /* A hard cap, not just whatever room is left: the column has to stay a
+       band beside her, and letting it grow to fill the gap squeezed the
+       figurine into a thumbnail with nowhere left to drag. Older turns scroll. */
+    max-height: min(32vh, calc(100vh - 128px - var(--dock-h, 150px) - 24px));
+    max-height: min(32dvh, calc(100dvh - 128px - var(--dock-h, 150px) - 24px));
+    padding: 4px 2px 4px 0;
+    gap: 6px;
+    pointer-events: none;
   }
+  .speech-log .bubble {
+    pointer-events: auto;
+    font-size: 12.5px;
+    line-height: 1.45;
+    padding: 8px 11px;
+    border-radius: 11px;
+    max-width: 100%;
+  }
+  .speech-log .scene-shot { pointer-events: auto; }
+
+  /* The cast is one compact tab strip, not three competing pills. */
+  .roster {
+    left: 116px;
+    right: 10px;
+    top: 68px;
+    align-items: center;
+    height: 44px;
+    gap: 0;
+    border-bottom: 1px solid rgba(239, 230, 212, 0.14);
+  }
+  .roster-chip {
+    min-height: 44px;
+    padding: 0 10px;
+    gap: 6px;
+    border: 0;
+    border-bottom: 1px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--ivory-dim);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .roster-chip.is-active {
+    color: var(--ivory);
+    border-bottom-color: var(--accent);
+  }
+  .roster-chip.is-active .dot { box-shadow: none; }
+  .roster-chip .dot { width: 6px; height: 6px; }
+  .chip-full { display: none; }
+  .chip-short { display: inline; }
   .stage-dock { bottom: 10px; width: calc(100vw - 20px); padding: 8px; gap: 8px; }
   /* Mobile has one primary action: type. Secondary actions stay in the nearby menu. */
   .dock-top { display: none; }
@@ -1513,29 +1658,34 @@ html, body {
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
   }
-  .mobile-tools-menu:not([hidden]) { display: flex; }
+  /* Three items in a row made every label wrap to two lines on a 390px
+     screen. A popover stacks instead, which is also where a thumb expects it. */
+  .mobile-tools-menu:not([hidden]) { display: flex; flex-direction: column; align-items: stretch; }
   .mobile-tool-item {
     min-height: 44px;
     display: inline-flex;
     align-items: center;
+    justify-content: flex-start;
+    white-space: nowrap;
     gap: 7px;
-    padding: 0 12px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 8px;
     color: var(--ivory-dim);
-    background: rgba(239, 230, 212, 0.05);
+    background: transparent;
     font-family: var(--font);
     font-size: 11px;
     letter-spacing: 0.05em;
     cursor: pointer;
   }
+  .mobile-tool-item + .mobile-tool-item {
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+  }
   .mobile-tool-item.is-active { color: var(--ivory); border-color: var(--accent); }
   .mobile-tool-symbol { color: var(--accent); font-size: 15px; line-height: 1; }
   /* The roster moves out of the conversation's way and scrolls sideways. */
   .roster {
-    left: 10px;
-    right: 10px;
-    top: 106px;
     bottom: auto;
     transform: none;
     flex-wrap: nowrap;
@@ -1544,7 +1694,16 @@ html, body {
     scrollbar-width: none;
   }
   .roster::-webkit-scrollbar { display: none; }
-  .roster-chip { flex: 0 0 auto; }
+  /* A chip cut off at the bezel reads as broken, not as scrollable. The strip
+     keeps a chip's edge under a fade so the gesture is discoverable, and the
+     active chip is scrolled into view when it changes. */
+  .roster {
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 10px;
+    mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 28px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 28px), transparent 100%);
+  }
+  .roster-chip { flex: 0 0 auto; min-height: 44px; scroll-snap-align: center; }
 
   .session-sheet { left: 10px; width: min(340px, calc(100vw - 20px)); }
   .wallet-scrim,
@@ -1567,6 +1726,19 @@ html, body {
     min-height: 44px;
     text-align: left;
   }
+  /* The scene prompt is already in the log as her own bubbles, so restating it
+     in full here was costing ~130px of a 844px screen to duplicated text. Two
+     lines is enough to say which question the options answer. */
+  .stage-dock .quest-line {
+    font-size: 10.5px;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .stage-dock .quest-strip { gap: 6px; padding-bottom: 8px; }
+  .stage-dock .quest-option { font-size: 12px; padding: 8px 11px; }
   .credit-error-scrim {
     place-items: end center;
     padding: 10px;

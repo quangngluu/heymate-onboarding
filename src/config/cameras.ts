@@ -13,6 +13,11 @@ const BASE_PRESETS: Record<string, CamPreset> = {
   // Companion stage: hero sits right of frame center so the giant name and
   // the waiting residents own the left side.
   stage: { pos: [0.6, 1.5, 4.7], target: [-0.62, 0.88, 0], fov: 36 },
+  // Portrait. The wide framing left her a thumbnail in the corner: a phone's
+  // narrow horizontal field plus a target pushed a long way left put her at the
+  // edge, with the top half of the screen empty stage. This comes in closer and
+  // keeps only enough left bias to clear the column her words sit in.
+  'stage-portrait': { pos: [0.42, 1.32, 3.1], target: [-0.3, 1.0, 0], fov: 34 },
   arrival: { pos: [0, 1.7, 9.6], target: [0, 1.35, 0], fov: 40 },
   hall: { pos: [0, 2.5, 7.4], target: [0, 1.0, -2.8], fov: 46 },
   reveal: { pos: [1.0, 1.5, 3.2], target: [-0.1, 1.05, 0], fov: 38 },
@@ -41,3 +46,17 @@ export const CAMERA_PRESETS: Record<string, CamPreset> = {
   ...BASE_PRESETS,
   ...plinthPresets(),
 };
+
+/**
+ * How she is framed on the companion stage, for the viewport in front of us.
+ *
+ * Read through this rather than off `CAMERA_PRESETS.stage` directly: the rim
+ * lights, the nameplate and the free-inspection arc are all derived from the
+ * camera position, so a second framing has to reach all of them or the lighting
+ * ends up aimed at where she used to stand.
+ */
+export function stagePreset(): CamPreset {
+  const portrait =
+    typeof window !== 'undefined' && window.matchMedia?.('(max-width: 700px)').matches;
+  return portrait ? CAMERA_PRESETS['stage-portrait'] : CAMERA_PRESETS.stage;
+}

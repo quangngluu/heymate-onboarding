@@ -42,7 +42,7 @@ export class Ambience {
     this.start();
     const ctx = this.ctx;
     if (!ctx) return null;
-    if (ctx.state === 'suspended') void ctx.resume();
+    this.resumeIfNeeded();
     let p = this.clipCache.get(url);
     if (!p) {
       p = fetch(url)
@@ -64,7 +64,7 @@ export class Ambience {
   playBuffer(buffer: AudioBuffer): void {
     this.start();
     if (!this.ctx) return;
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    this.resumeIfNeeded();
     this.clipToken = (this.clipToken + 1) | 0;
     this.startBuffer(buffer);
   }
@@ -88,7 +88,7 @@ export class Ambience {
     this.clipSource = null;
     if (!ctx) return { push: () => {}, end: () => 0, playedFrom: () => null };
 
-    if (ctx.state === 'suspended') void this.ctx?.resume();
+    this.resumeIfNeeded();
     if (!this.clipGain) {
       this.clipGain = ctx.createGain();
       this.clipGain.connect(ctx.destination);
@@ -145,7 +145,10 @@ export class Ambience {
 
   /** Must be called from a user gesture. */
   start(): void {
-    if (this.started) return;
+    if (this.started) {
+      this.resumeIfNeeded();
+      return;
+    }
     try {
       const ctx = new AudioContext();
       const master = ctx.createGain();
@@ -184,9 +187,25 @@ export class Ambience {
       this.ctx = ctx;
       this.master = master;
       this.started = true;
+      // iOS can create a suspended context even inside the entry tap. Resume
+      // while that gesture is still active; later TTS responses arrive outside
+      // the autoplay allowance.
+      this.resumeIfNeeded();
     } catch {
       // Audio is optional — never block the experience on it.
     }
+  }
+
+  /**
+   * Safari may report `interrupted` after the app is backgrounded or the phone
+   * is locked. That state is not in every TypeScript DOM lib, so checking for
+   * anything other than running/closed covers it without a browser-specific
+   * branch.
+   */
+  private resumeIfNeeded(): void {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state === 'running' || ctx.state === 'closed') return;
+    void ctx.resume().catch(() => undefined);
   }
 
   setMuted(m: boolean): void {

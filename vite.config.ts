@@ -1,6 +1,8 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 
 const MAX_TOKENS = { short: 70, natural: 130, expressive: 180 } as const;
+/** Headroom for the trailing state line; see STATE_BUDGET in api/chat.ts. */
+const STATE_BUDGET = 90;
 const INVALID_ADDRESSING = /(^|[^\p{L}])(?:tôi|tao|tớ|mình(?!\s+anh(?=$|[^\p{L}]))|chị|cậu|bạn|ngươi|ngài|i|you|your)(?=$|[^\p{L}])/iu;
 
 function hasInvalidAddressing(text: string): boolean {
@@ -41,7 +43,12 @@ function devChatApi(key: string): Plugin {
             body.idle,
             body.level ?? 0,
             body.quest,
-            body.story
+            body.story,
+            body.dark,
+            body.maturity,
+            body.bond,
+            body.rapport,
+            body.message
           );
           const model = 'deepseek-chat';
           const messages = [
@@ -61,17 +68,31 @@ function devChatApi(key: string): Plugin {
               model,
               messages,
               temperature: 0.92,
-              max_tokens: MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural,
+              max_tokens: (MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural) + STATE_BUDGET,
               stop: ['\nUser:', '\nYou:', '\nAnh:'],
             }),
           });
           const data = await upstream.json();
-          const text = data?.choices?.[0]?.message?.content?.trim();
+          const raw = data?.choices?.[0]?.message?.content?.trim();
+          if (!raw) {
+            res.statusCode = 502;
+            return res.end(JSON.stringify({ error: 'empty' }));
+          }
+          const stateMatch = raw.match(/<<\s*state\s*(\{[\s\S]*?\})\s*>>/);
+          const text = raw.replace(/<<\s*state\s*\{[\s\S]*?\}\s*>>/, '').trim();
+          let rapport;
+          if (stateMatch) {
+            try {
+              rapport = JSON.parse(stateMatch[1]);
+            } catch {
+              rapport = undefined;
+            }
+          }
           if (!text) {
             res.statusCode = 502;
             return res.end(JSON.stringify({ error: 'empty' }));
           }
-          if (!hasInvalidAddressing(text)) return res.end(JSON.stringify({ text }));
+          if (!hasInvalidAddressing(text)) return res.end(JSON.stringify({ text, rapport }));
 
           const retry = await fetch('https://api.deepseek.com/chat/completions', {
             method: 'POST',
@@ -87,7 +108,7 @@ function devChatApi(key: string): Plugin {
                 ...messages.slice(1),
               ],
               temperature: 0.7,
-              max_tokens: MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural,
+              max_tokens: (MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural) + STATE_BUDGET,
               stop: ['\nUser:', '\nYou:', '\nAnh:'],
             }),
           });
@@ -190,6 +211,40 @@ function devQuestApi(key: string): Plugin {
   };
 }
 
+/** Keep optional branch illustrations on the same route in dev and Vercel. */
+function devSceneImageApi(writerKey: string, drawerKey: string): Plugin {
+  return {
+    name: 'dev-scene-image-api',
+    configureServer(server) {
+      server.middlewares.use('/api/scene-image', async (req, res) => {
+        try {
+          process.env.DEEPSEEK_API_KEY ??= writerKey;
+          process.env.FAL_KEY ??= drawerKey;
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) chunks.push(chunk as Buffer);
+          const method = req.method ?? 'GET';
+          const { default: handler } = await server.ssrLoadModule('/api/scene-image.ts');
+          const response = await handler(
+            new Request(`http://localhost${req.url ?? '/api/scene-image'}`, {
+              method,
+              headers: { 'Content-Type': req.headers['content-type'] ?? 'application/json' },
+              body: method === 'GET' || method === 'HEAD' ? undefined : Buffer.concat(chunks),
+            })
+          );
+
+          res.statusCode = response.status;
+          response.headers.forEach((value, header) => res.setHeader(header, value));
+          res.end(Buffer.from(await response.arrayBuffer()));
+        } catch {
+          res.statusCode = 502;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'unreachable' }));
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
@@ -200,6 +255,7 @@ export default defineConfig(({ mode }) => {
       devChatApi(env.DEEPSEEK_API_KEY ?? ''),
       devTtsApi(env.SPOON_API_KEY ?? '', env.SPOON_VOICE_ID ?? ''),
       devQuestApi(env.DEEPSEEK_API_KEY ?? ''),
+      devSceneImageApi(env.DEEPSEEK_API_KEY ?? '', env.FAL_KEY ?? ''),
     ],
   };
 });

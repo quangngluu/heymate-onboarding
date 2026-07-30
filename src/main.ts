@@ -30,7 +30,7 @@ import { Ambience } from './audio/ambience';
 import { COST, store, type SessionSetup, type Step } from './state/store';
 import { mountUI } from './ui/overlay';
 import type { UIActions } from './ui/actions';
-import { CAMERA_PRESETS } from './config/cameras';
+import { CAMERA_PRESETS, stagePreset } from './config/cameras';
 import { COPY } from './config/copy';
 import { factionById } from './config/factions';
 import { CHARACTERS, characterById, characterIndex } from './config/characters';
@@ -40,7 +40,10 @@ import { fnv1a } from './util/hash';
 const PLINTHS = plinthPositions(CHARACTERS.length);
 
 /** Horizontal angle the stage preset frames her from. */
-const STAGE_AZIMUTH = Math.atan2(CAMERA_PRESETS.stage.pos[0], CAMERA_PRESETS.stage.pos[2]);
+function stageAzimuth(): number {
+  const [x, , z] = stagePreset().pos;
+  return Math.atan2(x, z);
+}
 
 /** Half of the 120-degree arc a visitor may inspect for free. */
 const FREE_ARC = Math.PI / 3;
@@ -429,7 +432,7 @@ class App implements UIActions {
       this.residentStage.setHero(s.residentId);
       this.applyStageAccent();
     }
-    void this.rig.flyTo(CAMERA_PRESETS.stage, this.engine.reducedMotion ? 0 : 1.4).then((done) => {
+    void this.rig.flyTo(stagePreset(), this.engine.reducedMotion ? 0 : 1.4).then((done) => {
       if (done && store.get().step === 'stage') this.enableStageOrbit();
     });
   }
@@ -454,7 +457,7 @@ class App implements UIActions {
 
   /** Signed angle away from the front framing, wrapped to [-PI, PI]. */
   private azimuthOffset(): number {
-    let d = this.controls.getAzimuthalAngle() - STAGE_AZIMUTH;
+    let d = this.controls.getAzimuthalAngle() - stageAzimuth();
     while (d > Math.PI) d -= Math.PI * 2;
     while (d < -Math.PI) d += Math.PI * 2;
     return d;
@@ -477,7 +480,7 @@ class App implements UIActions {
 
   /** Return to the edge of the free arc once the offer is on screen. */
   private snapIntoFreeArc(): void {
-    const edge = STAGE_AZIMUTH + Math.sign(this.azimuthOffset()) * FREE_ARC;
+    const edge = stageAzimuth() + Math.sign(this.azimuthOffset()) * FREE_ARC;
     const r = this.controls.getDistance();
     const polar = this.controls.getPolarAngle();
     const t = this.controls.target;
@@ -499,7 +502,7 @@ class App implements UIActions {
     this.residentStage?.setAccent(r.accentColor);
     this.residentStage?.setMotes(v.moteColor, v.moteMotif);
     this.backdrop.showStudio(v.domeTop, v.domeBottom, 0.8);
-    const camPos = new THREE.Vector3(...CAMERA_PRESETS.stage.pos);
+    const camPos = new THREE.Vector3(...stagePreset().pos);
     const heroPos = new THREE.Vector3(0, 0, 0);
     this.placeRims(heroPos, camPos, v.rimKey);
     this.rimB.color.setHex(v.rimFill);
@@ -562,6 +565,8 @@ class App implements UIActions {
       idle: true,
       level: store.level,
       story: storyContext(s.residentId),
+      bond: s.bond,
+      rapport: s.rapport,
     }).then(async (result) => {
       // Do not insert a late nudge after the visitor has started talking, or
       // after the encounter has changed while the request was in flight.
@@ -860,8 +865,13 @@ class App implements UIActions {
       level: store.level,
       quest: openQuest && openNode && { prompt: openNode.prompt, objective: openQuest.objective },
       story: storyContext(s.residentId),
+      bond: s.bond,
+      rapport: s.rapport,
     }).then(async (result) => {
       if (store.get().residentId !== s.residentId) return; // switched residents
+      // Trust, desire, respect and irritation carry to the next turn instead of
+      // resetting; a missing report keeps whatever was already there.
+      store.applyRapport(result.rapport);
       // The line starts arriving the moment the model answers. Its clip is
       // rendered alongside and joins in when it is ready.
       store.set({ thinking: false, voicing: true });
@@ -871,9 +881,6 @@ class App implements UIActions {
         store.set({ revealed: result.revealedRung + 1 });
       }
       this.streamIn(store.get().chat.length - 1, result.text, prepared);
-      // Most visitors never open the quest list, so she opens the scene
-      // herself once the conversation has warmed up.
-      this.offerScene();
       // The free encounter ends by offering to keep what was said, not by
       // blocking the conversation mid-sentence.
       // Offer to keep the chapter once there is one worth keeping, rather
@@ -917,26 +924,6 @@ class App implements UIActions {
   }
 
   /**
-   * Bring the next scene into the conversation, or write one when ours have
-   * run out. Waits two turns so it never lands on top of a greeting.
-   */
-  private offerScene(): void {
-    const s = store.get();
-    // Two turns to warm up, and a few more between scenes so the conversation
-    // does not become a queue of tasks.
-    if (s.step !== 'stage' || s.activeQuestId || s.turns < 2) return;
-    if (s.turns - s.questClosedAt < 4) return;
-    const next = store.nextQuest();
-    if (next) {
-      window.setTimeout(() => {
-        const now = store.get();
-        if (now.step === 'stage' && !now.activeQuestId && !now.thinking) this.startQuest(next.id);
-      }, 2600);
-      return;
-    }
-  }
-
-  /**
    * Draw what a branch left behind, once the line is already on screen.
    *
    * Only outcomes get a picture. Every line would be noise, and noise that
@@ -966,6 +953,10 @@ class App implements UIActions {
 
   startQuest(id: string): void {
     if (!store.startQuest(id)) return;
+    // A story scene only enters the conversation after the visitor explicitly
+    // starts it from Quest Hub. Close the hub so chat and quest never compete
+    // as two simultaneous primary surfaces.
+    store.set({ questHubOpen: false });
     this.ambience.chime(760);
     // She sets the scene herself. A quest that only changes a badge is a task
     // list; a quest she says out loud is a turn in the conversation.

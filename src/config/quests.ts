@@ -420,7 +420,7 @@ export const QUESTS: QuestDefinition[] = [
       {
         id: 'oath',
         prompt:
-          'Không còn thanh kiếm ra lệnh, em chỉ còn một câu hỏi khó hơn: nếu hôm nay không ai cần được cứu, Kagura Sanada có quyền muốn điều gì cho chính mình?',
+          'Không còn thanh kiếm ra lệnh, em chỉ còn một câu hỏi khó hơn: nếu hôm nay không ai cần được cứu, Kagura Akagane có quyền muốn điều gì cho chính mình?',
         choices: [
           {
             id: 'choose-rest',

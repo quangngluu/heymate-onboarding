@@ -19,6 +19,18 @@ import {
   residentById,
 } from '../config/residents';
 import { questNode } from '../config/quests';
+import {
+  DARK_VARIANTS,
+  GATE_COPY,
+  darkMechanics,
+  resolveDarkVariant,
+} from '../config/dark-patterns';
+import {
+  FORBIDDEN_OPTIONS,
+  bondCard,
+  fantasiesFor,
+  type LeadDynamic,
+} from '../config/bond';
 import { ONBOARDING_QUESTS } from '../config/onboarding-quests';
 import { segments, segmentsUpTo } from '../chat/dialogue';
 import { COST, store } from '../state/store';
@@ -122,8 +134,12 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         onClick: () => actions.selectResident(r.id),
       },
       h('span', { class: 'dot', 'aria-hidden': 'true' }),
-      r.name
+      // Both spellings ship; the stylesheet decides which one is on screen, so
+      // the button's accessible name stays the full one on every width.
+      h('span', { class: 'chip-full' }, r.name),
+      h('span', { class: 'chip-short', 'aria-hidden': 'true' }, r.name.split(' ')[0])
     ) as HTMLButtonElement;
+    b.setAttribute('aria-label', r.name);
     rosterBtns.push(b);
     roster.append(b);
   });
@@ -226,7 +242,25 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h('span', { class: 'mobile-tool-symbol', 'aria-hidden': 'true' }, '〰'),
     COPY.stage.speakAs
   ) as HTMLButtonElement;
-  const mobileToolsMenu = h('div', { class: 'mobile-tools-menu', hidden: true }, mobileQuestBtn, mobileSpeakBtn);
+  // Voice chat is not open yet. It stays visible as a labelled item in the
+  // tools menu rather than as a dead 44px button inside the composer.
+  const mobileMicBtn = h(
+    'button',
+    {
+      class: 'mobile-tool-item mobile-mic is-locked',
+      disabled: true,
+      'aria-label': `${COPY.stage.voiceChat}. ${COPY.stage.voiceChatLocked}`,
+      title: COPY.stage.voiceChatLocked,
+    },
+    h(
+      'span',
+      { class: 'mobile-tool-symbol mic-icon', 'aria-hidden': 'true' },
+      h('span', { class: 'mic-stem' }),
+      h('span', { class: 'mic-base' })
+    ),
+    COPY.stage.voiceChat
+  ) as HTMLButtonElement;
+  const mobileToolsMenu = h('div', { class: 'mobile-tools-menu', hidden: true }, mobileQuestBtn, mobileSpeakBtn, mobileMicBtn);
   const mobileToolsToggle = h(
     'button',
     {
@@ -236,21 +270,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       onClick: () => setMobileToolsOpen(!mobileToolsOpen),
     },
     h('span', { class: 'mobile-icon-symbol', 'aria-hidden': 'true' }, '＋')
-  ) as HTMLButtonElement;
-  const mobileMicBtn = h(
-    'button',
-    {
-      class: 'mobile-icon-btn mobile-mic is-locked',
-      disabled: true,
-      'aria-label': `${COPY.stage.voiceChat}. ${COPY.stage.voiceChatLocked}`,
-      title: COPY.stage.voiceChatLocked,
-    },
-    h(
-      'span',
-      { class: 'mic-icon', 'aria-hidden': 'true' },
-      h('span', { class: 'mic-stem' }),
-      h('span', { class: 'mic-base' })
-    )
   ) as HTMLButtonElement;
   const mobileSettingsBtn = h(
     'button',
@@ -294,17 +313,27 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       mobileToolsToggle,
       mobileToolsMenu,
       h('div', { class: 'field-wrap' }, input),
-      mobileMicBtn,
       mobileSettingsBtn,
       sendBtn
     )
   );
   // Left is her dossier, right is her voice, bottom is what you do. The card
   // can step off the frame entirely when the visitor wants the stage clear.
+  // On a phone she gets the screen and her dossier starts out of the way: one
+  // viewport has to hold the roster, her, her words and the composer, and the
+  // card is the only one of those the visitor can ask for later.
+  const compact = window.matchMedia?.('(max-width: 700px)').matches ?? false;
+  const setInfoHidden = (hidden: boolean) => {
+    info.classList.toggle('is-hidden', hidden);
+    info.toggleAttribute('inert', hidden);
+    info.setAttribute('aria-hidden', String(hidden));
+  };
+  setInfoHidden(compact);
   const cardToggle = h(
     'button',
-    { class: 'btn btn-ghost sm', 'aria-label': COPY.stage.cardToggle, 'aria-pressed': 'true', onClick: () => {
-      const hidden = info.classList.toggle('is-hidden');
+    { class: 'btn btn-ghost sm', 'aria-label': COPY.stage.cardToggle, 'aria-pressed': String(!compact), onClick: () => {
+      const hidden = !info.classList.contains('is-hidden');
+      setInfoHidden(hidden);
       cardToggle.setAttribute('aria-pressed', String(!hidden));
     } },
     h('span', { class: 'stage-control-icon', 'aria-hidden': 'true' }, '☰'),
@@ -373,6 +402,44 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   const style = segment(COPY.stage.style, STYLES, (id) => actions.updateSession({ style: id }));
   const len = segment(COPY.stage.length, LENGTHS, (id) => actions.updateSession({ length: id }));
 
+  // --- the bond: how she is with him, not who she is ---
+  //
+  // These sit in the same sheet as the session settings but they are a different
+  // kind of thing and the copy says so: session settings are weather for one
+  // visit, the bond persists and is what makes this her-with-him.
+  const bondFantasy = h('div', { role: 'radiogroup', 'aria-label': 'Góc quan hệ', class: 'segment segment-stack' });
+  const fantasyBtns = new Map<string, HTMLButtonElement>();
+  const bondAddress = h('input', {
+    type: 'text',
+    class: 'chat-input',
+    placeholder: 'Ví dụ: Player Zero',
+    'aria-label': 'Em gọi anh là gì',
+    maxlength: '28',
+  }) as HTMLInputElement;
+  bondAddress.addEventListener('change', () => store.updateBond({ address: bondAddress.value.trim() }));
+  const leadSeg = segment(
+    'Ai thường mở lời',
+    [
+      { id: 'she-leads', label: 'Em dẫn' },
+      { id: 'contested', label: 'Đổi qua lại' },
+      { id: 'you-lead', label: 'Anh dẫn' },
+      { id: 'equals', label: 'Ngang nhau' },
+    ] as { id: LeadDynamic; label: string }[],
+    (id) => store.updateBond({ lead: id })
+  );
+  const forbidBox = h('div', { class: 'memory-list' });
+  const forbidChecks = new Map<string, HTMLInputElement>();
+  for (const o of FORBIDDEN_OPTIONS) {
+    const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
+    box.addEventListener('change', () => {
+      const on = [...forbidChecks.entries()].filter(([, b]) => b.checked).map(([id]) => id);
+      store.updateBond({ forbidden: on });
+    });
+    forbidChecks.set(o.id, box);
+    forbidBox.append(h('label', { class: 'memory-item' }, box, h('span', {}, o.label)));
+  }
+  const bondCardBox = h('div', { class: 'bond-card' });
+
   const sessionCard = h(
     'aside',
     { class: 'panel session-sheet' },
@@ -404,7 +471,36 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       scen.el,
       mood.el,
       style.el,
-      len.el
+      len.el,
+      h('div', { class: 'bond-divider' }),
+      h('p', { class: 'hint faint' }, 'Phần dưới không phải thiết lập cho một lần gặp. Nó định hình cách em ở bên anh, và nó được giữ lại. Con người em thì không đổi.'),
+      h(
+        'div',
+        { class: 'custom-group' },
+        h('h3', { class: 'group-label' }, 'Góc quan hệ anh muốn ở phía trước'),
+        bondFantasy
+      ),
+      leadSeg.el,
+      h(
+        'div',
+        { class: 'custom-group' },
+        h('h3', { class: 'group-label' }, 'Em gọi anh là'),
+        bondAddress,
+        h('p', { class: 'hint faint' }, 'Cách gọi của riêng em với anh. Để trống thì em tự đặt khi tới lúc.')
+      ),
+      h(
+        'div',
+        { class: 'custom-group' },
+        h('h3', { class: 'group-label' }, 'Điều em không được làm'),
+        forbidBox,
+        h('p', { class: 'hint faint' }, 'Ranh giới của anh. Em tôn trọng những cái này, và chúng chỉ bớt đi hành vi chứ không làm em dễ tính hơn.')
+      ),
+      h(
+        'div',
+        { class: 'custom-group' },
+        h('h3', { class: 'group-label bond-card-title' }, 'Đây là em, của riêng anh'),
+        bondCardBox
+      )
     ),
     h(
       'div',
@@ -429,33 +525,79 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   );
 
   // --- save gate ---
+  //
+  // The action, the price and what is kept are identical in every variant.
+  // Only the wording around the two buttons moves, which is what makes A/B/C
+  // measurable: if behaviour changes, it changed because of the copy.
+  const variant = resolveDarkVariant();
+  const gate = GATE_COPY[variant];
+  const mech = darkMechanics(variant);
   const memList = h('div', { class: 'memory-list' });
   const gateCost = h('p', { class: 'hint' });
+  const gateUrgency = h('p', { class: 'hint gate-urgency', hidden: !gate.saveUrgency });
   const saveBtn = h('button', { class: 'btn btn-primary' }, COPY.stage.saveCta) as HTMLButtonElement;
+  const skipBtn = h('button', { class: 'btn btn-ghost' }, gate.saveSkip) as HTMLButtonElement;
   const memChecks = new Map<string, HTMLInputElement>();
   saveBtn.addEventListener('click', () => {
     const keep = [...memChecks.entries()].filter(([, c]) => c.checked).map(([id]) => id);
     actions.saveChapter(keep);
   });
+
+  // Obstructed exit: leaving costs a second tap it does not need to cost.
+  // Deliberately visible as friction — it is the thing being measured.
+  let skipArmed = false;
+  skipBtn.addEventListener('click', () => {
+    if (mech.obstructedExit && !skipArmed) {
+      skipArmed = true;
+      skipBtn.textContent = gate.skipConfirm;
+      return;
+    }
+    skipArmed = false;
+    skipBtn.textContent = gate.saveSkip;
+    actions.continueWithoutSaving();
+  });
+
   const saveGate = h(
     'div',
     { class: 'save-gate', hidden: true, role: 'dialog', 'aria-label': COPY.stage.saveTitle },
     h(
       'div',
       { class: 'panel gate-card' },
+      ...(DARK_VARIANTS[variant].banner
+        ? [h('p', { class: 'hint faint gate-banner' }, DARK_VARIANTS[variant].banner as string)]
+        : []),
       h('h2', { class: 'panel-title' }, COPY.stage.saveTitle),
-      h('p', { class: 'hint' }, COPY.stage.saveBody),
+      h('p', { class: 'hint' }, gate.saveBody),
+      gateUrgency,
       h('p', { class: 'group-label' }, COPY.stage.saveList),
       memList,
       gateCost,
-      h(
-        'div',
-        { class: 'row' },
-        h('button', { class: 'btn btn-ghost', onClick: () => actions.continueWithoutSaving() }, COPY.stage.saveSkip),
-        saveBtn
-      )
+      h('div', { class: 'row' }, skipBtn, saveBtn)
     )
   );
+
+  // Fake urgency: a countdown against no deadline. It stops at zero and
+  // nothing happens, because nothing was ever going to. Only variant C runs
+  // it, and only under the banner above that says the clock is not real.
+  let gateTimer: number | null = null;
+  function stopGateCountdown(): void {
+    if (gateTimer !== null) window.clearInterval(gateTimer);
+    gateTimer = null;
+  }
+  function startGateCountdown(): void {
+    stopGateCountdown();
+    if (!mech.fakeUrgency) return;
+    let left = 299;
+    const paint = () => {
+      const mm = Math.floor(left / 60);
+      const ss = String(left % 60).padStart(2, '0');
+      gateUrgency.textContent = `Chỉ còn ${mm}:${ss} để giữ lại chương này.`;
+      if (left <= 0) stopGateCountdown();
+      left -= 1;
+    };
+    paint();
+    gateTimer = window.setInterval(paint, 1000);
+  }
 
   // --- Quest Hub: story progression and onboarding rewards are different loops. ---
   const storyQuestList = h('div', { class: 'quest-list' });
@@ -596,6 +738,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   });
 
   let lastResident = '';
+  let lastRosterScrolledTo = '';
+  let lastFantasyFor = '';
   let lastQuestId = '';
   let lastChatLen = -1;
   let lastWaiting = false;
@@ -608,6 +752,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     el,
     destroy() {
       watchDock.disconnect();
+      stopGateCountdown();
     },
     update(s) {
       const r = residentById(s.residentId);
@@ -670,7 +815,51 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         const active = RESIDENTS[i].id === s.residentId;
         b.setAttribute('aria-checked', String(active));
         b.classList.toggle('is-active', active);
+        // The roster is a sideways strip on a phone, so whoever is selected has
+        // to be the one on screen — otherwise the highlight is off in the part
+        // of the strip nobody scrolled to.
+        if (active && lastRosterScrolledTo !== s.residentId && roster.scrollWidth > roster.clientWidth) {
+          lastRosterScrolledTo = s.residentId;
+          b.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
       });
+      // The fantasy options are per-resident, so the list is rebuilt whenever
+      // the resident changes rather than filtered on every frame.
+      if (bondFantasy.childElementCount === 0 || s.residentId !== lastFantasyFor) {
+        lastFantasyFor = s.residentId;
+        fantasyBtns.clear();
+        bondFantasy.replaceChildren(
+          ...fantasiesFor(s.residentId).map((f) => {
+            const b = h(
+              'button',
+              {
+                role: 'radio',
+                'aria-checked': 'false',
+                class: 'segment-btn',
+                onClick: () => store.updateBond({ fantasyId: f.id }),
+              },
+              h('span', { class: 'segment-label' }, f.label),
+              h('small', {}, f.promise)
+            ) as HTMLButtonElement;
+            fantasyBtns.set(f.id, b);
+            return b;
+          })
+        );
+      }
+      for (const [id, b] of fantasyBtns) {
+        b.setAttribute('aria-checked', String(s.bond.fantasyId === id));
+      }
+      leadSeg.btns.forEach((b, i) =>
+        b.setAttribute(
+          'aria-checked',
+          String((['she-leads', 'contested', 'you-lead', 'equals'] as const)[i] === s.bond.lead)
+        )
+      );
+      if (document.activeElement !== bondAddress) bondAddress.value = s.bond.address;
+      for (const [id, box] of forbidChecks) box.checked = s.bond.forbidden.includes(id);
+      bondCardBox.replaceChildren(
+        ...bondCard(s.residentId, s.bond).map((line) => h('p', { class: 'hint' }, line))
+      );
       scen.btns.forEach((b, i) => b.setAttribute('aria-checked', String(SCENARIOS[i].id === s.session.scenario)));
       mood.btns.forEach((b, i) => b.setAttribute('aria-checked', String(MOODS[i].id === s.session.mood)));
       style.btns.forEach((b, i) => b.setAttribute('aria-checked', String(STYLES[i].id === s.session.style)));
@@ -774,13 +963,16 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         memList.replaceChildren(
           ...(candidates.length
             ? candidates.map((c) => {
-                const box = h('input', { type: 'checkbox', checked: true }) as HTMLInputElement;
-                box.checked = true;
+                const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
+                box.checked = gate.preselectMemories;
                 memChecks.set(c.text, box);
                 return h('label', { class: 'memory-item' }, box, h('span', {}, c.text));
               })
             : [h('p', { class: 'hint faint' }, COPY.stage.saveNothing)])
         );
+        skipArmed = false;
+        skipBtn.textContent = gate.saveSkip;
+        startGateCountdown();
         const canPay = s.credits >= COST.saveChapter && candidates.length > 0;
         gateCost.textContent = canPay
           ? `${COPY.stage.saveCost} Anh còn ${s.credits} credit.`
@@ -789,6 +981,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
             : COPY.stage.noCredits;
         saveBtn.disabled = !canPay;
       }
+      if (!s.saveGateOpen && lastGateOpen) stopGateCountdown();
       lastGateOpen = s.saveGateOpen;
 
       const level = Math.min(5, s.revealed);

@@ -6,6 +6,7 @@
 // were doing anyway.
 
 import type { SessionSetup } from '../state/store';
+import { resolveDarkVariant } from '../config/dark-patterns';
 
 export interface WrittenQuest {
   title: string;
@@ -26,7 +27,7 @@ export async function writeQuest(input: {
     const res = await fetch('/api/quest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, dark: resolveDarkVariant() }),
       signal: AbortSignal.timeout(28000),
     });
     if (!res.ok) return null;
