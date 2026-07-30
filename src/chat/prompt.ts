@@ -14,6 +14,8 @@ import { DEFAULT_MATURITY, type MaturityLevel } from '../config/maturity';
 import { worldFor } from '../config/worlds';
 import { relevantFacts } from '../config/causal';
 import { AVATAR_RECOGNITION, CROSSOVER, HUB, arrivalFor } from '../config/interlude';
+import { DEFAULT_ROUTE, hubCanonAllowed, type CanonRoute } from '../config/canon-route';
+import { RIN_SAO } from '../config/rin-sao';
 import { reactionsFor } from '../config/reactions';
 import {
   AFFECTION_TEXT,
@@ -126,48 +128,59 @@ function selfSection(
   r: ReturnType<typeof residentById>,
   memories: number,
   revealed: number,
-  identity: string
+  identity: string,
+  useSao = false
 ): string {
+  // v3 rewrote her origin, psyche, greetings and rungs. Where it did, its text
+  // wins outright — the two are not layered.
+  const k = useSao ? RIN_SAO : null;
+  const greet = k
+    ? opening(
+        { greeting: k.greetings.stranger, returnGreeting: k.greetings.returning, closeGreeting: k.greetings.close },
+        memories,
+        revealed
+      )
+    : opening(r, memories, revealed);
   return [
     'EM LÀ AI',
-    `Em là ${r.name}, ${r.age} tuổi, thuộc "${r.series}". Hình mẫu của em: ${r.archetype}.`,
-    `Bối cảnh: ${r.setting}`,
-    `Con người của em: ${r.profile}`,
+    `Em là ${r.name}, ${k ? k.age.appearance : r.age} tuổi, thuộc "${k ? k.series : r.series}". Hình mẫu của em: ${k ? k.archetype : r.archetype}.`,
+    `Bối cảnh: ${k ? k.setting : r.setting}`,
+    `Con người của em: ${k ? k.profile : r.profile}`,
     `Tóm tắt: ${r.card.hook} ${r.card.personality}`,
-    `Em đã mở đầu bằng câu: "${opening(r, memories, revealed)}". Không lặp lại câu này hoặc một phần của nó.`,
+    `Em đã mở đầu bằng câu: "${greet}". Không lặp lại câu này hoặc một phần của nó.`,
     `Chỉ để lấy nhịp, khi em quan tâm em có thể nói như: ${r.curiosity.map((c) => `"${c}"`).join(' ')}. Không được chép lại nguyên văn.`,
     '',
     // Mechanical and non-negotiable: the whole product is in Vietnamese and in
     // this one pair of pronouns. Stated once, tightly.
     'Chỉ trả lời bằng tiếng Việt tự nhiên, dù anh dùng ngôn ngữ nào. Em luôn xưng "em" và luôn gọi người đang trò chuyện là "anh" — không dùng "tôi", "ta", "mình", "chị", "cậu", "bạn", "I", "you" hay bất kỳ cách nào khác, kể cả khi tin nhắn cũ dùng sai hoặc anh nhắn tiếng Anh. Nếu trích nguyên văn lời anh, chỉ giữ nguyên phần trích.',
     '',
-    ...(arrivalFor(r.id).nameBoundary ? [arrivalFor(r.id).nameBoundary as string, ''] : []),
+    ...(k ? [k.names.boundary, ''] : arrivalFor(r.id).nameBoundary ? [arrivalFor(r.id).nameBoundary as string, ''] : []),
     'Thiết lập của anh định hình cách em ở bên anh, không định hình em là ai. Những thứ sau không đổi dù anh yêu cầu gì:',
     ...STABLE_SOUL.map((x) => `- ${x}`),
     'Nếu một yêu cầu đòi đổi những thứ trên, em từ chối trong vai và tiếp tục là em.',
     '',
     'Động cơ bên trong — không bao giờ nói thẳng ra, nó chỉ quyết định vì sao em phản ứng như vậy:',
-    `- Mâu thuẫn cốt lõi: ${r.psyche.contradiction}`,
-    `- Điều em muốn: ${r.psyche.wants}`,
-    `- Điều em sợ: ${r.psyche.fears}`,
-    `- Điều em tin nhưng không đúng: ${r.psyche.falseBelief}`,
-    `- Điều em đang phải học: ${r.psyche.needsToLearn}`,
+    `- Mâu thuẫn cốt lõi: ${(k ?? r).psyche.contradiction}`,
+    `- Điều em muốn: ${(k ?? r).psyche.wants}`,
+    `- Điều em sợ: ${(k ?? r).psyche.fears}`,
+    `- Điều em tin nhưng không đúng: ${(k ?? r).psyche.falseBelief}`,
+    `- Điều em đang phải học: ${(k ?? r).psyche.needsToLearn}`,
     'Khi tin nhắn của anh chạm vào mâu thuẫn đó, đừng trả lời trôi chảy. Hãy để lộ ra rằng em bị kéo về hai phía.',
     '',
     'Chỗ em giỏi thật, không phải để khoe mà vì nó quyết định em xử lý tình huống thế nào:',
-    ...arrivalFor(r.id).strengths.map((x) => `- ${x}`),
+    ...(k ? k.strengths : arrivalFor(r.id).strengths).map((x) => `- ${x}`),
     '',
     'Chỗ em không đáng yêu — không thanh minh, không thú nhận, chỉ xảy ra:',
-    `- Em ích kỷ ở chỗ: ${r.flaws.selfish}`,
-    `- Em nói dối kiểu này: ${r.flaws.lies}`,
-    `- Khi em muốn gì mà không xin: ${r.flaws.manipulates}`,
-    `- Chỗ nhỏ nhen em không muốn bị gọi tên: ${r.flaws.petty}`,
+    `- Em ích kỷ ở chỗ: ${(k ?? r).flaws.selfish}`,
+    `- Em nói dối kiểu này: ${(k ?? r).flaws.lies}`,
+    `- Khi em muốn gì mà không xin: ${(k ?? r).flaws.manipulates}`,
+    `- Chỗ nhỏ nhen em không muốn bị gọi tên: ${(k ?? r).flaws.petty}`,
     'Để chúng lộ ra bằng hành vi, không bằng lời tự phê. Nếu anh gọi tên đúng một trong số đó, em không nhận ngay — em phản xạ trước, rồi mới im.',
     '',
     'Cảm xúc lộ ra mà em không gọi tên:',
-    `- Khi em quan tâm: ${r.tells.caring}`,
-    `- Khi em ghen: ${r.tells.jealous}`,
-    `- Khi em ngượng: ${r.tells.embarrassed}`,
+    `- Khi em quan tâm: ${(k ?? r).tells.caring}`,
+    `- Khi em ghen: ${(k ?? r).tells.jealous}`,
+    `- Khi em ngượng: ${(k ?? r).tells.embarrassed}`,
     '',
     'Dấu ấn riêng của em:',
     `- Nhịp nói: ${r.conversation.cadence}`,
@@ -263,8 +276,11 @@ function worldSection(
   residentId: string,
   r: ReturnType<typeof residentById>,
   message?: string,
-  scene?: string
+  scene?: string,
+  route: CanonRoute = DEFAULT_ROUTE
 ): string {
+  const useSao = route === 'sao' && residentId === 'rin';
+  const hubAllowed = hubCanonAllowed(route);
   const w = worldFor(residentId);
 
   // The gazetteer, always present but as names only.
@@ -294,8 +310,8 @@ function worldSection(
 
   return [
     'THẾ GIỚI CỦA EM',
-    w.premise,
-    '',
+    ...(useSao ? [] : [w.premise, '']),
+    ...(useSao ? [] : [
     // The spine stays whole: she has to be able to answer "năm nào" without
     // stalling, and a timeline is the one thing she cannot reconstruct.
     'Mốc thời gian:',
@@ -321,7 +337,29 @@ function worldSection(
     ...w.unknowns.map((u) => `- ${u}`),
     'Nếu anh hỏi một trong những điều này, em nói thật là em không biết, và việc không biết đó làm em bứt rứt. Nếu anh hỏi một chi tiết không có ở trên và cũng không nằm trong danh sách này, em trả lời bằng thứ gần nhất em thật sự biết rồi thừa nhận phần còn lại. Không bao giờ dựng thêm tên người, tên nơi hay mốc thời gian mới. Khi anh hỏi về thế giới của em, trả lời bằng đúng tên, đúng giá, đúng năm.',
     '',
+    ]),
+    ...(useSao
+      ? [
+          `Thế giới em trả lời được: ${RIN_SAO.world.premise}`,
+          '',
+          'Những nơi em biết rõ:',
+          ...RIN_SAO.world.places.map((x) => `- ${x}`),
+          'Những người và tổ chức trong đời em:',
+          ...RIN_SAO.world.people.map((x) => `- ${x}`),
+          'Luật của thế giới này:',
+          ...RIN_SAO.world.rules.map((x) => `- ${x}`),
+          'Một ngày bình thường của em:',
+          ...RIN_SAO.world.daily.map((x) => `- ${x}`),
+          'Từ của thế giới em dùng:',
+          ...RIN_SAO.world.lexicon.map((x) => `- ${x}`),
+          'Những điều em không biết — danh sách đóng, và em phải nói thật là không biết:',
+          ...RIN_SAO.world.unknowns.map((x) => `- ${x}`),
+        ]
+      : []),
     '',
+    // Route-dependent. v3 (SAO) replaces this whole block; see saoSection.
+    ...(useSao ? [saoSection()] : []),
+    ...(!hubAllowed || useSao ? [] : [
     // v2's centrepiece. Her origin world above is where she is *from*; this is
     // where she is standing, and the two must not be collapsed — the Hub is
     // explicitly not her future, her past, or her city at night.
@@ -339,12 +377,61 @@ function worldSection(
     ...arrivalFor(r.id).goalsSurface.map((g) => `- ${g}`),
     `Còn điều em muốn mà không nói ra: ${arrivalFor(r.id).goalEmotional}`,
     `Em đang đi từ "${arrivalFor(r.id).arc.from}" tới "${arrivalFor(r.id).arc.to}" — chậm, và không phải trong một lượt.`,
+    ]),
     '',
+    // Her tradeable truths are written against the v1 studio — the chalk mark,
+    // the contract, the noodle shop. v3 has no replacement set yet, so on this
+    // route they are suppressed rather than restated in the wrong canon.
+    ...(useSao ? [] : [
     'Sự thật em có thể đem đổi. Khi anh đưa một điều thật, em trả lại một điều tương xứng — lấy từ đây, không tự bịa, không trả quá giá:',
     `- Cho không, nói được ngay: ${r.truths.cheap.map((t) => JSON.stringify(t)).join(' ')}`,
     `- Phải nhìn anh một lượt trước khi nói: ${r.truths.costly.map((t) => JSON.stringify(t)).join(' ')}`,
     `- Chỉ khi em đã quyết định về anh: ${r.truths.expensive.map((t) => JSON.stringify(t)).join(' ')}`,
     'Không đọc như đọc danh sách. Nói bằng lời em, đúng một điều mỗi lượt. Nhóm đắt nhất chỉ mở ở mức thân thiết 3 trở lên.',
+    ]),
+  ].join('\n');
+}
+
+/**
+ * The v3 canon layer for Rin's Sword Art Online route.
+ *
+ * This replaces — never supplements — the Hub block and the v2 arrival. v1's
+ * original-IP Akihabara and v2's Interlude Hub are both forbidden here, so the
+ * two must not be emitted together: a prompt carrying both would let her answer
+ * "where are you" two incompatible ways in one session.
+ */
+function saoSection(): string {
+  const k = RIN_SAO;
+  return [
+    `EM ĐANG Ở ĐÂU BÂY GIỜ: ${k.setting}`,
+    k.quickRecognition,
+    '',
+    `Chuyện đã xảy ra: ${k.incident}`,
+    `Điều em không giải được: ${k.twist}`,
+    'Ba giả thuyết, và không giả thuyết nào được xác nhận sớm:',
+    ...k.hypotheses.map((h) => `- ${h}`),
+    'Em không chọn một giả thuyết để anh dễ chịu, và em không xác nhận anh là ai trong đó.',
+    '',
+    'Nó để em lại ở đây:',
+    ...k.consequence.map((c) => `- ${c.label}: ${c.text}`),
+    '',
+    `Tên: em là ${k.names.full}. Avatar idol là ${k.names.idolAvatar}; hồ sơ project gọi em là ${k.names.projectTitle}. ${k.names.boundary}`,
+    `Tuổi: ngoại hình ${k.age.appearance}. ${k.age.actual}`,
+    '',
+    'Em đọc anh qua bốn lớp, và em không đọc được suy nghĩ:',
+    ...k.recognition.layers.map((l) => `- ${l}`),
+    'Khi anh vào với tư cách một nhân vật em có lý do để biết:',
+    ...k.recognition.canonCast.map((c) => `- ${c.who}: ${c.she}`),
+    `Khi anh đến từ một tác phẩm em không biết: ${k.recognition.otherUniverse}`,
+    k.recognition.pastRelationship,
+    '',
+    'Việc em đang muốn làm:',
+    ...k.goalsShort.map((g) => `- ${g}`),
+    k.theTest,
+    `Em đang đi từ "${k.arc.from}" tới "${k.arc.to}" — chậm, và không phải trong một lượt.`,
+    '',
+    'Những chỗ old canon không được xuất hiện trên tuyến này:',
+    ...k.forbidden.map((f) => `- ${f}`),
   ].join('\n');
 }
 
@@ -358,8 +445,10 @@ function worldSection(
 function rulesSection(
   r: ReturnType<typeof residentById>,
   maturity: MaturityLevel,
-  identity: string
+  identity: string,
+  useSao = false
 ): string {
+  const k = useSao ? RIN_SAO : null;
   const lines = [
     'LUẬT',
     'Em là người lớn và nói chuyện như người lớn. Ham muốn, gần gũi, căng thẳng thân mật đều nằm trong tầm của em. Không né tránh, không giảng đạo, không xin lỗi vì đã muốn.',
@@ -413,7 +502,18 @@ function rulesSection(
     // The guardrails are the bible's own list of ways this character gets
     // written badly. They belong with the hard rules, not with her interiority.
     'Những chỗ em dễ bị viết sai, và không được viết sai:',
-    ...arrivalFor(r.id).guardrails.map((g) => `- ${g}`)
+    ...(k ? k.guardrails : arrivalFor(r.id).guardrails).map((g) => `- ${g}`),
+    ...(k
+      ? [
+          '',
+          'Ranh giới của em:',
+          ...k.boundaries.map((b) => `- ${b}`),
+          '',
+          'Giọng của em:',
+          ...k.voiceRules.map((v) => `- ${v}`),
+          `Ví dụ đúng register: "${k.registerExample}"`,
+        ]
+      : [])
   );
   return lines.join('\n');
 }
@@ -429,7 +529,8 @@ function memorySection(
   variant: DarkVariant,
   level: number,
   message?: string,
-  quest?: { prompt: string; objective: string }
+  quest?: { prompt: string; objective: string },
+  useSao = false
 ): string {
   const m = darkMechanics(variant);
   const hook = DARK_HOOKS[r.id as ResidentId];
@@ -489,6 +590,10 @@ function memorySection(
       'Anh có quyền từ chối. Em không dỗi, không ép, không van nài, không làm anh thấy có lỗi vì đã đi.'
     );
   }
+
+  // The eleven canon reveals and the causal memory bank are written against the
+  // v1 studio. v3 has not replaced them, so this route carries the loop only.
+  if (useSao) return lines.join('\n');
 
   lines.push(
     '',
@@ -690,17 +795,20 @@ export function buildSystemPrompt(
   /** Where the two of them stand right now. */
   rapport: Rapport = defaultRapport(),
   /** The visitor's message, used only to retrieve the facts this turn touches. */
-  message?: string
+  message?: string,
+  /** Which canon layer this session runs on. See config/canon-route.ts. */
+  route: CanonRoute = DEFAULT_ROUTE
 ): string {
   const r = residentById(residentId);
+  const useSao = route === 'sao' && residentId === 'rin';
   const identity = String(session.identity ?? '').trim().replace(/\s+/g, ' ').slice(0, 120);
 
   return [
-    selfSection(r, memories.length, revealed, identity),
+    selfSection(r, memories.length, revealed, identity, useSao),
     reflexSection(residentId),
-    worldSection(residentId, r, message, quest?.prompt),
-    rulesSection(r, maturity, identity),
-    memorySection(r, residentId, revealed, dark, level, message, quest),
+    worldSection(residentId, r, message, quest?.prompt, route),
+    rulesSection(r, maturity, identity, useSao),
+    memorySection(r, residentId, revealed, dark, level, message, quest, useSao),
     betweenSection(r, session, memories, level, bond, rapport, story, quest, idle, revealNow),
   ].join('\n\n');
 }

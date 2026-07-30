@@ -9,6 +9,7 @@ import {
 } from '../src/chat/prompt';
 import { DEFAULT_DARK_VARIANT, type DarkVariant } from '../src/config/dark-patterns';
 import { DEFAULT_MATURITY, type MaturityLevel } from '../src/config/maturity';
+import { DEFAULT_ROUTE, type CanonRoute } from '../src/config/canon-route';
 import {
   defaultBond,
   defaultRapport,
@@ -33,6 +34,8 @@ interface ChatRequest {
   dark?: DarkVariant;
   /** Intimacy register. Never trusted upward without the client's own gate. */
   maturity?: MaturityLevel;
+  /** Which canon layer this session runs on. */
+  route?: CanonRoute;
   /** The relationship this player shaped. */
   bond?: BondDna;
   /** Where the two of them stood before this turn. */
@@ -145,7 +148,10 @@ export default async function handler(req: Request): Promise<Response> {
       body.maturity === 'explicit' ? 'explicit' : DEFAULT_MATURITY,
       body.bond ?? defaultBond(),
       sanitizeRapport(body.rapport ?? defaultRapport()),
-      String(body.message ?? '')
+      String(body.message ?? ''),
+      body.route === 'sao' || body.route === 'origin' || body.route === 'hub'
+        ? body.route
+        : DEFAULT_ROUTE
     );
   } catch {
     return Response.json({ error: 'unknown-resident' }, { status: 400 });

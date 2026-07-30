@@ -12,6 +12,7 @@ import type { ChatTurn } from '../state/store';
 import type { PromptStoryState } from './prompt';
 import { resolveDarkVariant } from '../config/dark-patterns';
 import { resolveMaturity } from '../config/maturity';
+import { resolveCanonRoute } from '../config/canon-route';
 
 export type ChatSource = 'model' | 'scripted';
 
@@ -69,6 +70,7 @@ export async function getReply(
         story: opts.story,
         dark: resolveDarkVariant(),
         maturity: resolveMaturity(),
+        route: resolveCanonRoute(),
         bond: opts.bond,
         rapport: opts.rapport,
         // Separate request fields make it impossible for the server to
