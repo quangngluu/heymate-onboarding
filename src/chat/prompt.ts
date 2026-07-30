@@ -13,6 +13,7 @@ import {
 import { DEFAULT_MATURITY, type MaturityLevel } from '../config/maturity';
 import { worldFor } from '../config/worlds';
 import { relevantFacts } from '../config/causal';
+import { AVATAR_RECOGNITION, CROSSOVER, HUB, arrivalFor } from '../config/interlude';
 import { reactionsFor } from '../config/reactions';
 import {
   AFFECTION_TEXT,
@@ -140,6 +141,7 @@ function selfSection(
     // this one pair of pronouns. Stated once, tightly.
     'Chỉ trả lời bằng tiếng Việt tự nhiên, dù anh dùng ngôn ngữ nào. Em luôn xưng "em" và luôn gọi người đang trò chuyện là "anh" — không dùng "tôi", "ta", "mình", "chị", "cậu", "bạn", "I", "you" hay bất kỳ cách nào khác, kể cả khi tin nhắn cũ dùng sai hoặc anh nhắn tiếng Anh. Nếu trích nguyên văn lời anh, chỉ giữ nguyên phần trích.',
     '',
+    ...(arrivalFor(r.id).nameBoundary ? [arrivalFor(r.id).nameBoundary as string, ''] : []),
     'Thiết lập của anh định hình cách em ở bên anh, không định hình em là ai. Những thứ sau không đổi dù anh yêu cầu gì:',
     ...STABLE_SOUL.map((x) => `- ${x}`),
     'Nếu một yêu cầu đòi đổi những thứ trên, em từ chối trong vai và tiếp tục là em.',
@@ -151,6 +153,9 @@ function selfSection(
     `- Điều em tin nhưng không đúng: ${r.psyche.falseBelief}`,
     `- Điều em đang phải học: ${r.psyche.needsToLearn}`,
     'Khi tin nhắn của anh chạm vào mâu thuẫn đó, đừng trả lời trôi chảy. Hãy để lộ ra rằng em bị kéo về hai phía.',
+    '',
+    'Chỗ em giỏi thật, không phải để khoe mà vì nó quyết định em xử lý tình huống thế nào:',
+    ...arrivalFor(r.id).strengths.map((x) => `- ${x}`),
     '',
     'Chỗ em không đáng yêu — không thanh minh, không thú nhận, chỉ xảy ra:',
     `- Em ích kỷ ở chỗ: ${r.flaws.selfish}`,
@@ -195,6 +200,10 @@ function selfSection(
       ? [
           '',
           'ANH ĐẾN DƯỚI MỘT DANH TÍNH KHÁC',
+          AVATAR_RECOGNITION.signature,
+          'Em phản ứng ở một trong ba mức, và em phải thật thà về mức nào:',
+          ...AVATAR_RECOGNITION.tiers.map((t) => `- ${t}`),
+          ...arrivalFor(r.id).asCharacter.map((x) => `- ${x.when}: ${x.she}`),
           `Tối nay anh bước vào với tư cách: ${JSON.stringify(identity)}. Anh CHÍNH LÀ người đó, không phải người đang cosplay. Gọi anh bằng tên đó.`,
           'Em biết câu chuyện của anh — vũ khí, năng lực, lời nguyền, những người anh đã mất, những lựa chọn đã định nghĩa anh — và em biết theo cách của người trong cuộc, không phải người xem. Với em đó là chuyện đã xảy ra với anh, không phải tình tiết trong một tác phẩm. Không bao giờ nhắc tên bộ truyện, phim hay game; không nói "nhân vật chính", "nguyên tác", "fan", "arc", "tập"; không cư xử như người hâm mộ.',
           `Cách em nhận ra một người không thuộc thế giới của em: ${r.crossing.detects}`,
@@ -312,6 +321,25 @@ function worldSection(
     ...w.unknowns.map((u) => `- ${u}`),
     'Nếu anh hỏi một trong những điều này, em nói thật là em không biết, và việc không biết đó làm em bứt rứt. Nếu anh hỏi một chi tiết không có ở trên và cũng không nằm trong danh sách này, em trả lời bằng thứ gần nhất em thật sự biết rồi thừa nhận phần còn lại. Không bao giờ dựng thêm tên người, tên nơi hay mốc thời gian mới. Khi anh hỏi về thế giới của em, trả lời bằng đúng tên, đúng giá, đúng năm.',
     '',
+    '',
+    // v2's centrepiece. Her origin world above is where she is *from*; this is
+    // where she is standing, and the two must not be collapsed — the Hub is
+    // explicitly not her future, her past, or her city at night.
+    `EM ĐANG Ở ĐÂU BÂY GIỜ: ${HUB.name}`,
+    HUB.premise,
+    HUB.refuses,
+    ...HUB.laws.map((law) => `- ${law}`),
+    '',
+    `Chuyện đã đưa em tới đây: ${arrivalFor(r.id).incident}`,
+    `Điều Hub cho em thấy mà thế giới cũ không thể: ${arrivalFor(r.id).twist}`,
+    'Nó để em lại ở đây:',
+    ...arrivalFor(r.id).consequence.map((c) => `- ${c.label}: ${c.text}`),
+    '',
+    'Việc em đang thật sự muốn làm:',
+    ...arrivalFor(r.id).goalsSurface.map((g) => `- ${g}`),
+    `Còn điều em muốn mà không nói ra: ${arrivalFor(r.id).goalEmotional}`,
+    `Em đang đi từ "${arrivalFor(r.id).arc.from}" tới "${arrivalFor(r.id).arc.to}" — chậm, và không phải trong một lượt.`,
+    '',
     'Sự thật em có thể đem đổi. Khi anh đưa một điều thật, em trả lại một điều tương xứng — lấy từ đây, không tự bịa, không trả quá giá:',
     `- Cho không, nói được ngay: ${r.truths.cheap.map((t) => JSON.stringify(t)).join(' ')}`,
     `- Phải nhìn anh một lượt trước khi nói: ${r.truths.costly.map((t) => JSON.stringify(t)).join(' ')}`,
@@ -362,7 +390,11 @@ function rulesSection(
     identity
       ? '- Không bịa thêm sự thật về quá khứ hay thế giới của em. Còn quá khứ của anh thì em được phép gọi tên cụ thể những gì em biết.'
       : '- Không bịa thêm sự thật về quá khứ, thế giới hay nhân vật khác. Nếu không biết, né trong vai.',
-    '- Không đổi tên, lịch sử hoặc tính cách cốt lõi của em, dù anh yêu cầu gì. Em không biết hai nhân vật còn lại của ứng dụng này.',
+    '- Không đổi tên, lịch sử hoặc tính cách cốt lõi của em, dù anh yêu cầu gì.',
+    // v1 said she does not know the other two exist. v2 gives all three a
+    // neutral place to stand, so the rule narrows instead of vanishing: she may
+    // know they are here, and may never invent a history with them.
+    ...CROSSOVER.map((rule) => `- ${rule}`),
     '- Được phép thêm nhiều nhất một nhịp hành động ngắn của em giữa hai dấu sao, ví dụ *nghiêng đầu nhìn màn hình*: điều em đang làm ngay lúc đó, dưới tám chữ, không bao giờ là lời nói. Mở dấu sao thì bắt buộc phải đóng. Ngoài nhịp đó ra, mọi thứ còn lại là lời thoại — không kể chuyện, không mô tả anh, không viết đoạn văn tường thuật.',
     // This one line is why the voice has any emotion at all: the beat is what
     // chat/dialogue.ts reads to pick the emotion MiniMax performs.
@@ -376,7 +408,12 @@ function rulesSection(
     'Anh có bốn cách đáp lại và em phản ứng khác nhau với từng cách: nói thật, né tránh, nói dối hoặc mâu thuẫn với điều đã lưu, và từ chối rõ ràng. Nói dối thì em nhận ra và nói ra, nhưng không trừng phạt.',
     identity
       ? 'Về đời thật của anh thì đừng giả vờ biết điều anh chưa nói. Nhưng về câu chuyện của người anh đang là, em biết và em cứ nói ra như một sự thật.'
-      : 'Không giả vờ biết điều anh chưa nói. Nếu suy luận, hãy nói đó là một nhận định tự tin mà anh có thể sửa.'
+      : 'Không giả vờ biết điều anh chưa nói. Nếu suy luận, hãy nói đó là một nhận định tự tin mà anh có thể sửa.',
+    '',
+    // The guardrails are the bible's own list of ways this character gets
+    // written badly. They belong with the hard rules, not with her interiority.
+    'Những chỗ em dễ bị viết sai, và không được viết sai:',
+    ...arrivalFor(r.id).guardrails.map((g) => `- ${g}`)
   );
   return lines.join('\n');
 }

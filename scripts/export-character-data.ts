@@ -22,6 +22,7 @@ import { factsFor } from '../src/config/causal';
 import { reactionsFor } from '../src/config/reactions';
 import { DARK_HOOKS } from '../src/config/dark-patterns';
 import { PERSONAL_OUTPUTS, STABLE_SOUL, TOGETHER } from '../src/config/bond';
+import { AVATAR_RECOGNITION, CROSSOVER, HUB, SERIES_PROMISE, arrivalFor } from '../src/config/interlude';
 
 const arg = process.argv[2] ?? 'docs/characters.json';
 const jsonPath = resolve(arg.endsWith('/') ? `${arg}characters.json` : arg);
@@ -78,6 +79,9 @@ const characters = RESIDENTS.map((r) => {
     ordinaryTime: TOGETHER[r.id],
     personalOutput: PERSONAL_OUTPUTS[r.id],
     canonReveals: r.canonReveals,
+    /** Character Bible v2: how she reached the Hub and what she wants there. */
+    arrival: arrivalFor(r.id),
+    seriesPromise: SERIES_PROMISE[r.id],
     quest: quest
       ? {
           id: quest.id,
@@ -95,7 +99,11 @@ const characters = RESIDENTS.map((r) => {
 
 writeFileSync(
   jsonPath,
-  `${JSON.stringify({ sharedSoul: STABLE_SOUL, characters }, null, 2)}\n`,
+  `${JSON.stringify(
+    { hub: HUB, avatarRecognition: AVATAR_RECOGNITION, crossover: CROSSOVER, sharedSoul: STABLE_SOUL, characters },
+    null,
+    2
+  )}\n`,
   'utf8'
 );
 
