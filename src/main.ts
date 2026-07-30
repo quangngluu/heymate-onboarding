@@ -21,13 +21,13 @@ import { FactionBackdrop } from './three/backdrop';
 import { WaifuStage } from './three/waifu-stage';
 import { idleLine, openingLine, speakingDuration } from './chat/engine';
 import { getReply } from './chat/client';
-import { cancelSpeech, renderSpeech, streamSpeech } from './chat/voice';
+import { cancelSpeech, renderSpeech, resetSpeechEmotion, streamSpeech } from './chat/voice';
 import { spoken } from './chat/dialogue';
 import { residentById, type ResidentId } from './config/residents';
 import { drawScene } from './chat/scene';
 import { questNode } from './config/quests';
 import { Ambience } from './audio/ambience';
-import { COST, store, type SessionSetup, type Step } from './state/store';
+import { COST, store, type ChatTurn, type SessionSetup, type Step } from './state/store';
 import { mountUI } from './ui/overlay';
 import type { UIActions } from './ui/actions';
 import { CAMERA_PRESETS, stagePreset } from './config/cameras';
@@ -398,6 +398,13 @@ class App implements UIActions {
     store.set({ universeId: id });
 
     if (universe.kind === 'companion') {
+      // Opening the universe is an encounter like any other, so it goes through
+      // the same door as a resident switch. Without this the first entry after a
+      // reload left `chat` empty and she opened on the greeting while the
+      // transcript sat in storage — the saved thread has to be picked up here,
+      // not only when the visitor changes who is on the plinth.
+      resetSpeechEmotion();
+      store.beginEncounter(store.get().residentId);
       const first = residentById(store.get().residentId);
       this.backdrop.showStudio(first.visual.domeTop, first.visual.domeBottom, 0.8);
       this.setPlinthsVisible(false);
@@ -519,13 +526,25 @@ class App implements UIActions {
     const s = store.get();
     const r = residentById(s.residentId);
     const saved = store.progressFor(s.residentId);
-    const line = openingLine(r, saved.memories, saved.nickname, saved.revealed);
     this.idleSpoken = 0;
-    store.set({ chat: [{ from: 'resident', text: line }] });
+
+    // A transcript came back with her, so this is not an opening — it is her
+    // noticing he is back. `returnGreeting` is authored for exactly this and
+    // says so out loud, and the history stays on screen underneath it.
+    const resuming = s.chat.length > 0;
+    const line = resuming
+      ? r.returnGreeting
+      : openingLine(r, saved.memories, saved.nickname, saved.revealed);
+    const chat: ChatTurn[] = resuming
+      ? [...s.chat, { from: 'resident', text: line }]
+      : [{ from: 'resident', text: line }];
+    store.set({ chat });
+
     const voice = r.voices.find((v) => v.slot === s.session.voice) ?? r.voices[0];
-    // Only the authored signature greeting has audio; a callback is text.
-    this.speak(line, saved.memories.length ? undefined : voice.url);
-    this.streamIn(0, line, Promise.resolve(null), false);
+    // Only the authored signature greeting has a recording; everything else is
+    // rendered, or stays text when there is no endpoint.
+    this.speak(line, !resuming && !saved.memories.length ? voice.url : undefined);
+    this.streamIn(chat.length - 1, line, Promise.resolve(null), false);
   }
 
   /**
@@ -826,6 +845,8 @@ class App implements UIActions {
     if (store.get().step !== 'stage' || store.get().residentId === id) return;
     this.controls.enabled = false;
     this.speechToken++;
+    // Her mood does not travel to the next person on the plinth.
+    resetSpeechEmotion();
     store.beginEncounter(id as ResidentId);
     this.residentStage?.restoreHero();
     this.residentStage?.setHero(id);

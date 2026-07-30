@@ -11,10 +11,36 @@ let current: SpeakHandle | null = null;
 /** The provider renders one clip at a time; serialise so lines never collide. */
 let chain: Promise<unknown> = Promise.resolve();
 
+/**
+ * The emotion her last line was read in.
+ *
+ * It lives here because this module is the one place every spoken line passes
+ * through, and because the endpoint is a stateless edge function that cannot
+ * remember it. Sent as `prev` so a reply naming no feeling sustains the mood
+ * instead of resetting to neutral; updated from the `X-Emotion` the server
+ * reports back. See the note on `delivery()` in dialogue.ts.
+ */
+let lastEmotion: string | undefined;
+
 /** Cancel whatever is being fetched or is about to play. */
 export function cancelSpeech(): void {
   if (current) current.cancelled = true;
   current = null;
+}
+
+/**
+ * Forget the carried mood. Called when the conversation is no longer the same
+ * conversation — a different resident, or a fresh encounter — because holding
+ * Kagura's anger into Momo's first line is the same bug in the other direction.
+ */
+export function resetSpeechEmotion(): void {
+  lastEmotion = undefined;
+}
+
+/** Remember what the server actually used, when it says. */
+function rememberEmotion(res: Response): void {
+  const chosen = res.headers.get('X-Emotion');
+  if (chosen) lastEmotion = chosen;
 }
 
 /**
@@ -54,10 +80,11 @@ async function request(
     const res = await fetch('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, voiceId, speed, raw, mood, vol }),
+      body: JSON.stringify({ text, voiceId, speed, raw, mood, vol, prev: lastEmotion }),
       signal: AbortSignal.timeout(30000),
     });
     if (handle.cancelled || !res.ok) return null;
+    rememberEmotion(res);
     const blob = await res.blob();
     if (handle.cancelled) return null;
     return URL.createObjectURL(blob);
@@ -98,10 +125,11 @@ export async function streamSpeech(
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...opts, stream: true }),
+        body: JSON.stringify({ ...opts, stream: true, prev: lastEmotion }),
         signal: AbortSignal.timeout(35000),
       });
       if (!res.ok || !res.body) return null;
+      rememberEmotion(res);
       const rate = Number(res.headers.get('X-Sample-Rate')) || 32000;
       const reader = res.body.getReader();
 

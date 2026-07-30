@@ -191,8 +191,6 @@ export type Delivery = {
   emotion?: DeliveryEmotion;
   /** Multiplied by the resident's own base speed. */
   speedScale: number;
-  /** Small semitone adjustment; kept narrow so cloned identity stays intact. */
-  pitch: number;
 };
 
 function match<T extends string>(table: [RegExp, T][], beat: string): T | undefined {
@@ -204,40 +202,51 @@ type Performance = {
   sentencePause: string;
   beatPause: string;
   speedScale: number;
-  pitch: number;
 };
 
 /**
- * Category alone is often too subtle on a cloned voice. These restrained
- * prosody shifts make the category audible without turning the character into
- * a different voice. MiniMax's separate intensity control cannot be used on
- * our PCM stream, so rhythm and pitch carry that extra expression instead.
+ * How each emotion is performed, in the two channels that do not touch who she
+ * sounds like: rhythm and a small speed trim.
+ *
+ * Pitch is deliberately absent. Shifting it per line is what broke her — on a
+ * *cloned* voice pitch is identity, not expression, and stepping between -2 and
+ * +2 across adjacent replies read as three different women rather than one
+ * woman with feelings. Expression comes from the emotion category itself, from
+ * how long she leaves the gaps, and from the sound tags (`(sighs)`,
+ * `(chuckle)`), none of which move her timbre.
+ *
+ * The speed band is narrow for the same reason: a clone sped up 10% starts to
+ * sound like a different recording.
  */
 const PERFORMANCE: Record<DeliveryEmotion, Performance> = {
-  happy: { sentencePause: '0.14', beatPause: '0.18', speedScale: 1.05, pitch: 1 },
-  sad: { sentencePause: '0.38', beatPause: '0.5', speedScale: 0.9, pitch: -1 },
-  angry: { sentencePause: '0.1', beatPause: '0.14', speedScale: 1.07, pitch: -2 },
-  fearful: { sentencePause: '0.16', beatPause: '0.2', speedScale: 1.08, pitch: 2 },
-  disgusted: { sentencePause: '0.28', beatPause: '0.34', speedScale: 0.93, pitch: -1 },
-  surprised: { sentencePause: '0.1', beatPause: '0.14', speedScale: 1.1, pitch: 2 },
-  calm: { sentencePause: '0.32', beatPause: '0.48', speedScale: 0.94, pitch: 0 },
+  happy: { sentencePause: '0.16', beatPause: '0.2', speedScale: 1.03 },
+  sad: { sentencePause: '0.4', beatPause: '0.52', speedScale: 0.96 },
+  angry: { sentencePause: '0.1', beatPause: '0.14', speedScale: 1.04 },
+  fearful: { sentencePause: '0.14', beatPause: '0.18', speedScale: 1.04 },
+  disgusted: { sentencePause: '0.3', beatPause: '0.36', speedScale: 0.97 },
+  surprised: { sentencePause: '0.1', beatPause: '0.14', speedScale: 1.04 },
+  calm: { sentencePause: '0.34', beatPause: '0.5', speedScale: 0.97 },
 };
 
 const DEFAULT_PERFORMANCE: Performance = {
-  sentencePause: '0.22',
+  sentencePause: '0.24',
   beatPause: '0.4',
   speedScale: 1,
-  pitch: 0,
 };
 
 /**
  * Turn a written reply into something a voice can perform: the spoken half,
  * with a breath where each action happened, the action rendered as a sound
- * when it makes one, and an emotion taken from the first beat that names one.
+ * when it makes one, and an emotion to read it in.
  *
- * `mood` is the session setting, used when no beat says otherwise.
+ * The emotion is chosen with the previous line in hand, which is the whole
+ * point. Deriving it from one line alone meant a reply that happened to carry
+ * no beat fell back to neutral, so a conversation came out as happy → neutral →
+ * sad → neutral: a feeling arriving and being dropped every second turn. Now a
+ * beat *changes* how she feels and silence *sustains* it, which is how a mood
+ * actually behaves. `mood` is the session setting, used only to open.
  */
-export function delivery(raw: string, mood?: string): Delivery {
+export function delivery(raw: string, mood?: string, prev?: DeliveryEmotion): Delivery {
   const parsed = segments(raw);
   const parts: string[] = [];
   const emotion =
@@ -245,6 +254,7 @@ export function delivery(raw: string, mood?: string): Delivery {
       .filter((seg) => seg.kind === 'beat')
       .map((seg) => match(FEELINGS, seg.text))
       .find((value): value is DeliveryEmotion => value !== undefined) ??
+    prev ??
     MOOD_FEELING[mood ?? ''];
   const performance = emotion ? PERFORMANCE[emotion] : DEFAULT_PERFORMANCE;
 
@@ -275,7 +285,6 @@ export function delivery(raw: string, mood?: string): Delivery {
       .trim(),
     emotion,
     speedScale: performance.speedScale,
-    pitch: performance.pitch,
   };
 }
 

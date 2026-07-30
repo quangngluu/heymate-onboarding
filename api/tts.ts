@@ -6,7 +6,7 @@
 // await, and we cap the wait so a slow render degrades to text-only instead
 // of hanging the conversation.
 
-import { delivery, type Delivery } from '../src/chat/dialogue';
+import { delivery, type Delivery, type DeliveryEmotion } from '../src/chat/dialogue';
 
 export const config = { runtime: 'edge' };
 
@@ -31,6 +31,13 @@ interface TtsRequest {
   stream?: boolean;
   /** Per-voice loudness trim; clips from different clones do not match. */
   vol?: number;
+  /**
+   * The emotion the previous line was read in, so a reply that names no feeling
+   * holds the one she already had instead of snapping back to neutral. The
+   * browser owns this because a stateless edge function cannot remember it; the
+   * chosen emotion goes back out on `X-Emotion`.
+   */
+  prev?: DeliveryEmotion;
 }
 
 function finite(value: number | undefined, fallback: number): number {
@@ -41,15 +48,32 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-/** Keep both MiniMax paths on the exact same emotional performance settings. */
+/**
+ * Keep both MiniMax paths on the exact same performance settings.
+ *
+ * No `pitch`: it is the one setting that changes who she sounds like rather
+ * than how she feels. See the note on PERFORMANCE in chat/dialogue.ts.
+ */
 function voiceSetting(body: TtsRequest, performed: Delivery, defaultVoice?: string) {
   const speed = clamp(finite(body.speed, 1) * performed.speedScale, 0.5, 2);
   return {
     voice_id: body.voiceId || defaultVoice,
     speed: Number(speed.toFixed(2)),
     vol: finite(body.vol, 1),
-    pitch: performed.pitch,
     ...(performed.emotion ? { emotion: performed.emotion } : {}),
+  };
+}
+
+/**
+ * Hand the chosen emotion back so the next request can continue from it. Also
+ * exposed on `Access-Control-Expose-Headers` in case this is ever read from a
+ * different origin than the one that serves the app.
+ */
+function emotionHeader(performed: Delivery): Record<string, string> {
+  if (!performed.emotion) return {};
+  return {
+    'X-Emotion': performed.emotion,
+    'Access-Control-Expose-Headers': 'X-Emotion, X-Sample-Rate',
   };
 }
 
@@ -75,7 +99,7 @@ async function minimax(body: TtsRequest, text: string): Promise<Response> {
   const defaultVoice = process.env.MINIMAX_VOICE_ID;
   if (!key) return Response.json({ error: 'not-configured' }, { status: 503 });
 
-  const performed = delivery(body.raw || text, body.mood);
+  const performed = delivery(body.raw || text, body.mood, body.prev);
   if (body.stream) return minimaxStream(key, body, performed, defaultVoice);
   const upstream = await fetch(MINIMAX_ENDPOINT, {
     method: 'POST',
@@ -107,7 +131,11 @@ async function minimax(body: TtsRequest, text: string): Promise<Response> {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   return new Response(bytes, {
-    headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'public, max-age=86400' },
+    headers: {
+      'Content-Type': 'audio/mpeg',
+      'Cache-Control': 'public, max-age=86400',
+      ...emotionHeader(performed),
+    },
   });
 }
 
@@ -197,6 +225,7 @@ function minimaxStream(
       'Content-Type': 'application/octet-stream',
       'X-Sample-Rate': String(PCM_RATE),
       'Cache-Control': 'no-store',
+      ...emotionHeader(performed),
     },
   });
 }

@@ -133,7 +133,18 @@ export interface AppState {
   /** Saved-and-paid progress, keyed by resident. */
   progress: Record<string, SavedProgress>;
   chat: ChatTurn[];
-  /** User turns spent this session; gates the free encounter. */
+  /**
+   * Every resident's transcript, kept across a switch and across a reload.
+   *
+   * `chat` is the one on stage; this is where the others wait. Leaving her for
+   * someone else used to throw the conversation away, so coming back opened on
+   * the greeting again — she remembered the bond and not a word of how it was
+   * earned. Written on every turn rather than at the save gate, because the
+   * gate buys *memories she will quote*, which is a different promise from
+   * simply not losing the thread.
+   */
+  transcripts: Record<string, ChatTurn[]>;
+  /** User turns spent with the resident on stage; gates the free encounter. */
   turns: number;
   speaking: boolean;
   /** True while her reply is in flight. */
@@ -204,6 +215,7 @@ const initialState: AppState = {
   session: defaultSession(),
   progress: {},
   chat: [],
+  transcripts: {},
   turns: 0,
   speaking: false,
   thinking: false,
@@ -263,10 +275,12 @@ export class Store {
           sceneShots?: Record<string, string>;
           questOutcomes?: Record<string, string>;
           questHistory?: Record<string, string[]>;
+          transcripts?: Record<string, ChatTurn[]>;
         };
         this.state = {
           ...this.state,
           progress: saved.progress ?? {},
+          transcripts: saved.transcripts ?? {},
           credits: saved.credits ?? this.state.credits,
           viewUnlocked: saved.viewUnlocked ?? {},
           transactions: saved.transactions ?? [],
@@ -315,6 +329,7 @@ export class Store {
           sceneShots: this.state.sceneShots,
           questOutcomes: this.state.questOutcomes,
           questHistory: this.state.questHistory,
+          transcripts: this.state.transcripts,
         })
       );
     } catch {
@@ -349,13 +364,22 @@ export class Store {
     };
   }
 
-  /** Start a fresh encounter with a resident, seeded by any saved progress. */
+  /** Open a resident, resuming her transcript and any saved progress. */
   beginEncounter(id: ResidentId): void {
     const saved = this.progressFor(id);
+    // Park whoever was on stage before picking the next one up, so a switch
+    // mid-sentence does not cost the sentence.
+    const transcripts = this.state.chat.length
+      ? { ...this.state.transcripts, [this.state.residentId]: this.state.chat }
+      : this.state.transcripts;
+    const resumed = transcripts[id] ?? [];
     this.set({
       residentId: id,
-      chat: [],
-          turns: 0,
+      transcripts,
+      chat: resumed,
+      // Derived, not reset. The free allowance is spent per resident, so it has
+      // to come back with her — otherwise hopping away and back mints turns.
+      turns: resumed.filter((t) => t.from === 'user').length,
       speaking: false,
       thinking: false,
       voicing: false,
@@ -424,7 +448,26 @@ export class Store {
 
   pushTurn(turn: ChatTurn): void {
     const turns = turn.from === 'user' ? this.state.turns + 1 : this.state.turns;
-    this.set({ chat: [...this.state.chat, turn].slice(-60), turns });
+    const chat = [...this.state.chat, turn].slice(-60);
+    // Mirrored and written out every turn: a phone that backgrounds the tab
+    // never gets a chance to save on the way out.
+    this.set({
+      chat,
+      turns,
+      transcripts: { ...this.state.transcripts, [this.state.residentId]: chat },
+    });
+    this.persist();
+  }
+
+  /** Forget one resident's transcript. Her bond and memories are untouched. */
+  clearTranscript(id = this.state.residentId): void {
+    const transcripts = { ...this.state.transcripts };
+    delete transcripts[id];
+    this.set({
+      transcripts,
+      ...(id === this.state.residentId ? { chat: [], turns: 0 } : {}),
+    });
+    this.persist();
   }
 
   /**
