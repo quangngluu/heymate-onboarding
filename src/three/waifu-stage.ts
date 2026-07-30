@@ -13,6 +13,17 @@ import type { QuestPresentation } from '../config/quests';
 
 type MoteMotif = VisualIdentity['moteMotif'];
 
+/**
+ * Where Frame 12 hangs, laterally.
+ *
+ * Right of the character, and that side specifically. Dead centre put it behind
+ * her; the left is where the mobile speech column sits — 56% wide off the left
+ * edge, so it covers roughly the first two thirds of a 390px screen. The right
+ * band is the only part of a phone viewport that is reliably clear of both her
+ * body and her words, which is where the one reveal in Episode 0 has to live.
+ */
+const FRAME12_X = 0.92;
+
 /** Total height on the base, including the figure's own display plinth. */
 const HERO_HEIGHT = 1.3;
 const GHOST_HEIGHT = 1.05;
@@ -57,6 +68,10 @@ export class WaifuStage {
   private frame12: THREE.Mesh;
   private frame12Material: THREE.MeshBasicMaterial;
   private archiveSilhouette: THREE.Mesh;
+  /** Opacity `update()` breathes toward; owned by setQuestVisual. */
+  private frame12Target = 0.18;
+  /** Multiplier that steps the other eleven frames back on the reveal. */
+  private archiveDim = 1;
 
   constructor(
     private scene: THREE.Scene,
@@ -131,19 +146,25 @@ export class WaifuStage {
       depthWrite: false,
     });
     this.frame12 = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 1.45), this.frame12Material);
-    this.frame12.position.set(0, baseTopY + 1.05, -4.9);
+    // Off the character's axis on purpose. Dead-centre at the end of the
+    // corridor put it directly behind her, so she occluded the silhouette —
+    // which is the one thing beat 4 is supposed to reveal.
+    this.frame12.position.set(FRAME12_X, baseTopY + 1.05, -4.5);
     this.archive.add(this.frame12);
 
     this.archiveSilhouette = new THREE.Mesh(
       new THREE.PlaneGeometry(0.34, 1.05),
       new THREE.MeshBasicMaterial({
-        color: 0x0d1724,
+        // Near-black rather than navy: the corridor reads light, and the
+        // silhouette has to be the darkest thing in the frame to register as a
+        // person standing in it.
+        color: 0x05090f,
         transparent: true,
-        opacity: 0.72,
+        opacity: 0.88,
         depthWrite: false,
       })
     );
-    this.archiveSilhouette.position.set(0.16, baseTopY + 0.98, -4.86);
+    this.archiveSilhouette.position.set(FRAME12_X + 0.16, baseTopY + 0.98, -4.46);
     this.archive.add(this.archiveSilhouette);
 
     const floor = new THREE.Mesh(
@@ -313,21 +334,31 @@ export class WaifuStage {
   ): void {
     if (!this.questMode) return;
     const frameActive = state !== 'archive-corridor';
-    this.frame12Material.opacity = frameActive ? 0.72 : 0.18;
+    // `update()` breathes the frame every tick, so a value written straight to
+    // the material was gone within a frame and every mutation's opacity change
+    // was invisible. The animation now oscillates around this target instead.
+    this.frame12Target = frameActive ? 0.86 : 0.18;
+    // The other eleven are data. When the twelfth powers on they step back so
+    // the reveal is the brightest thing in the corridor rather than one more
+    // wireframe among twelve.
+    this.archiveDim = frameActive ? 0.28 : 1;
+    this.frame12Material.opacity = this.frame12Target;
     this.frame12Material.color.setHex(
       state === 'frame-sealed' ? 0x778a99 : state === 'frame-open' ? 0xeaf6ff : 0x9ee9ff
     );
     this.archiveSilhouette.visible = frameActive;
     this.archiveSilhouette.scale.setScalar(state === 'archive-desync' ? 1.12 : 1);
     this.archiveSilhouette.position.x =
-      mutation === 'erase-signature' ? 8 : state === 'archive-desync' ? 0.29 : 0.16;
+      mutation === 'erase-signature'
+        ? 8
+        : FRAME12_X + (state === 'archive-desync' ? 0.29 : 0.16);
     if (mutation === 'quarantine') {
-      this.frame12Material.opacity = 0.28;
+      this.frame12Target = 0.3;
       this.frame12Material.color.setHex(0x8d9aa6);
     }
     if (mutation === 'open-channel') {
       this.frame12Material.color.setHex(0xffffff);
-      this.frame12Material.opacity = 0.92;
+      this.frame12Target = 0.98;
     }
     if (mutation === 'desync-motion') {
       this.archiveSilhouette.rotation.z = 0.055;
@@ -374,10 +405,11 @@ export class WaifuStage {
     if (this.questMode) {
       this.archiveFrames.forEach((frame, i) => {
         const material = frame.material as THREE.MeshBasicMaterial;
-        material.opacity = 0.07 + (0.5 + 0.5 * Math.sin(t * 1.8 + i)) * 0.08;
+        material.opacity =
+          (0.07 + (0.5 + 0.5 * Math.sin(t * 1.8 + i)) * 0.08) * this.archiveDim;
       });
       this.frame12Material.opacity +=
-        (0.58 + Math.sin(t * 3.2) * 0.12 - this.frame12Material.opacity) *
+        (this.frame12Target + Math.sin(t * 3.2) * 0.06 - this.frame12Material.opacity) *
         Math.min(1, dt * 2);
     }
   }

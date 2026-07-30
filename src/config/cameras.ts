@@ -68,5 +68,8 @@ export const QUEST_CAMERA_PRESETS: Record<QuestCamera, CamPreset> = {
   'side-composition': { pos: [-2.45, 1.38, 2.8], target: [0, 1.02, -0.45], fov: 38 },
   'object-pov': { pos: [0.08, 1.28, 2.35], target: [0, 1.02, -0.55], fov: 34 },
   'close-encounter': { pos: [0.72, 1.45, 2.58], target: [-0.08, 1.08, 0], fov: 32 },
-  'wide-mutation': { pos: [0, 1.72, 5.45], target: [0, 1.0, -1.15], fov: 44 },
+  // Pulled in and offset toward the reveal. At z 5.45 / fov 44 she was about
+  // forty pixels tall on a phone and the mutation was a detail in the distance,
+  // which is the opposite of what a "show the world changed" camera is for.
+  'wide-mutation': { pos: [0.9, 1.6, 4.05], target: [0.5, 1.05, -1.6], fov: 40 },
 };

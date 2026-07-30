@@ -1044,6 +1044,10 @@ class App implements UIActions {
   private enterQuestPresentation(): void {
     this.controls.enabled = false;
     this.picker.enabled = false;
+    // The giant 3D wordmark is showroom furniture, and it sits exactly where the
+    // corridor's far wall is. Leaving it up put a translucent "RIN" on top of
+    // the Frame 12 reveal, which is the one image Episode 0 exists to deliver.
+    this.nameplate.hide();
     this.residentStage?.setQuestMode(true);
     this.ambience.startQuestSoundscape();
   }
@@ -1054,6 +1058,7 @@ class App implements UIActions {
     this.ambience.stopQuestSoundscape();
     this.residentStage?.setQuestMode(false);
     this.residentStage?.setHero(store.get().residentId);
+    this.applyStageAccent();
     void this.rig.flyTo(stagePreset(), this.engine.reducedMotion ? 0 : 1.1).then((done) => {
       if (done && store.get().step === 'stage' && !store.get().activeQuestId) {
         this.enableStageOrbit();
