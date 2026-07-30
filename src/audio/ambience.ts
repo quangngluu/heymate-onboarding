@@ -104,6 +104,8 @@ export class Ambience {
   private clipCache = new Map<string, Promise<AudioBuffer>>();
   private clipSource: AudioBufferSourceNode | null = null;
   private clipGain: GainNode | null = null;
+  private questGain: GainNode | null = null;
+  private questSources: AudioScheduledSourceNode[] = [];
 
   /**
    * Play a one-shot clip (voice greeting). Routed through the WebAudio
@@ -224,6 +226,92 @@ export class Ambience {
     this.clipSource = null;
   }
 
+  /** Authored Rin archive layers: hum, rain texture and electrical air. */
+  startQuestSoundscape(): void {
+    this.start();
+    this.stopQuestSoundscape();
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.resumeIfNeeded();
+    const bus = ctx.createGain();
+    bus.gain.value = this.muted ? 0 : 0.055;
+    bus.connect(ctx.destination);
+    this.questGain = bus;
+
+    for (const frequency of [48, 96.5]) {
+      const oscillator = ctx.createOscillator();
+      oscillator.type = 'sine';
+      oscillator.frequency.value = frequency;
+      const gain = ctx.createGain();
+      gain.gain.value = frequency < 60 ? 0.28 : 0.09;
+      oscillator.connect(gain);
+      gain.connect(bus);
+      oscillator.start();
+      this.questSources.push(oscillator);
+    }
+
+    const seconds = 2;
+    const buffer = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < data.length; i++) {
+      const white = Math.random() * 2 - 1;
+      last = last * 0.985 + white * 0.015;
+      data[i] = last * 0.45;
+    }
+    const rain = ctx.createBufferSource();
+    rain.buffer = buffer;
+    rain.loop = true;
+    const high = ctx.createBiquadFilter();
+    high.type = 'highpass';
+    high.frequency.value = 900;
+    rain.connect(high);
+    high.connect(bus);
+    rain.start();
+    this.questSources.push(rain);
+  }
+
+  questCue(cue: 'footsteps' | 'frame-tick' | 'dropout'): void {
+    const ctx = this.ctx;
+    const bus = this.questGain;
+    if (!ctx || !bus || this.muted) return;
+    if (cue === 'dropout') {
+      bus.gain.cancelScheduledValues(ctx.currentTime);
+      bus.gain.setValueAtTime(bus.gain.value, ctx.currentTime);
+      bus.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.08);
+      bus.gain.exponentialRampToValueAtTime(0.04, ctx.currentTime + 1.8);
+      return;
+    }
+    const count = cue === 'footsteps' ? 2 : 1;
+    for (let i = 0; i < count; i++) {
+      const oscillator = ctx.createOscillator();
+      oscillator.type = cue === 'footsteps' ? 'triangle' : 'sine';
+      oscillator.frequency.value = cue === 'footsteps' ? 82 : 1180;
+      const gain = ctx.createGain();
+      const at = ctx.currentTime + i * 0.33;
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(cue === 'footsteps' ? 0.05 : 0.025, at + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + (cue === 'footsteps' ? 0.18 : 0.08));
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start(at);
+      oscillator.stop(at + 0.22);
+    }
+  }
+
+  stopQuestSoundscape(): void {
+    for (const source of this.questSources) {
+      try {
+        source.stop();
+      } catch {
+        // Already ended.
+      }
+    }
+    this.questSources = [];
+    this.questGain?.disconnect();
+    this.questGain = null;
+  }
+
   /** Must be called from a user gesture. */
   start(): void {
     if (this.started) {
@@ -307,6 +395,9 @@ export class Ambience {
     }
     if (this.clipGain && this.ctx) {
       this.clipGain.gain.setTargetAtTime(m ? 0 : 0.9, this.ctx.currentTime, 0.05);
+    }
+    if (this.questGain && this.ctx) {
+      this.questGain.gain.setTargetAtTime(m ? 0 : 0.055, this.ctx.currentTime, 0.08);
     }
   }
 

@@ -20,6 +20,9 @@ export interface UIActions {
   resetSession(): void;
   startQuest(id: string): void;
   chooseQuest(choiceId: string): void;
+  submitQuestAction(action: string): void;
+  interruptQuest(): void;
+  leaveQuest(): void;
   dismissCreditError(): void;
   speakCustomText(text: string): void;
   saveChapter(memories: string[]): void;

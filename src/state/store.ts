@@ -1,5 +1,6 @@
 import { CHARACTERS } from '../config/characters';
 import { segments } from '../chat/dialogue';
+import { questPrototypeEnabled } from '../config/prototype-flag';
 import {
   PERSONAL_OUTPUTS,
   defaultBond,
@@ -13,6 +14,7 @@ import {
   questById,
   questNode,
   questsForResident,
+  resolveFreeform,
   type QuestChoice,
   type QuestDefinition,
 } from '../config/quests';
@@ -56,6 +58,48 @@ export type GenPhase = 'idle' | 'processing' | 'done';
 export interface ChatTurn {
   from: 'user' | 'resident';
   text: string;
+}
+
+export type CanonType =
+  | 'fixed'
+  | 'branch'
+  | 'relationship'
+  | 'player-created'
+  | 'speculation'
+  | 'rejected';
+
+/** A permanent fact produced inside Quest Mode, separate from any transcript. */
+export interface CanonLedgerEntry {
+  id: string;
+  residentId: ResidentId;
+  questId: string;
+  nodeId: string;
+  canonType: CanonType;
+  text: string;
+  createdAt: number;
+}
+
+/**
+ * The small, deliberate bridge between modes.
+ *
+ * Raw Open Chat turns never enter this list. Only a stable principle or a
+ * relationship event selected by product logic may cross the boundary.
+ */
+export interface CrossModeMemory {
+  id: string;
+  residentId: ResidentId;
+  direction: 'chat-to-quest' | 'quest-to-chat' | 'both';
+  kind:
+    | 'preference'
+    | 'boundary'
+    | 'principle'
+    | 'relationship'
+    | 'private-object'
+    | 'oath'
+    | 'nickname'
+    | 'conflict';
+  text: string;
+  createdAt: number;
 }
 
 /** Session-only: applies to this encounter and is never persisted. */
@@ -133,6 +177,7 @@ export interface AppState {
   session: SessionSetup;
   /** Saved-and-paid progress, keyed by resident. */
   progress: Record<string, SavedProgress>;
+  /** Open Chat only. Quest dialogue is held in `questChat`. */
   chat: ChatTurn[];
   /**
    * Every resident's transcript, kept across a switch and across a reload.
@@ -145,6 +190,10 @@ export interface AppState {
    * simply not losing the thread.
    */
   transcripts: Record<string, ChatTurn[]>;
+  /** Current Quest Mode scene transcript. Never merged into Open Chat. */
+  questChat: ChatTurn[];
+  /** Quest dialogue persisted per authored arc for checkpoint resumes. */
+  questTranscripts: Record<string, ChatTurn[]>;
   /** User turns spent with the resident on stage; gates the free encounter. */
   turns: number;
   speaking: boolean;
@@ -174,6 +223,8 @@ export interface AppState {
   questHubOpen: boolean;
   activeQuestId: string | null;
   activeQuestNodeId: string | null;
+  questPhase: 'none' | 'threshold' | 'episode' | 'ending';
+  questInterruptible: boolean;
   saveGateOpen: boolean;
   /** Full 360 inspection, bought or unlocked by code. Per resident. */
   viewUnlocked: Record<string, boolean>;
@@ -187,6 +238,12 @@ export interface AppState {
   questOutcomes: Record<string, string>;
   /** Every authored consequence in order, not only the final ending. */
   questHistory: Record<string, string[]>;
+  /** Permanent Quest facts, classified independently from relationship memory. */
+  canonLedger: CanonLedgerEntry[];
+  /** Explicitly approved summaries that may cross the mode boundary. */
+  crossModeMemory: CrossModeMemory[];
+  /** Last safe node for each unfinished quest. */
+  questCheckpoints: Record<string, string>;
   /** Turn the last scene closed on, so the next one does not follow instantly. */
   questClosedAt: number;
   /**
@@ -217,6 +274,8 @@ const initialState: AppState = {
   progress: {},
   chat: [],
   transcripts: {},
+  questChat: [],
+  questTranscripts: {},
   turns: 0,
   speaking: false,
   thinking: false,
@@ -230,6 +289,8 @@ const initialState: AppState = {
   questHubOpen: false,
   activeQuestId: null,
   activeQuestNodeId: null,
+  questPhase: 'none',
+  questInterruptible: false,
   saveGateOpen: false,
   viewUnlocked: {},
   unlockGateOpen: false,
@@ -240,6 +301,9 @@ const initialState: AppState = {
   storyFlags: {},
   questOutcomes: {},
   questHistory: {},
+  canonLedger: [],
+  crossModeMemory: [],
+  questCheckpoints: {},
   questClosedAt: -99,
   sceneShots: {},
   turnShots: {},
@@ -277,11 +341,16 @@ export class Store {
           questOutcomes?: Record<string, string>;
           questHistory?: Record<string, string[]>;
           transcripts?: Record<string, ChatTurn[]>;
+          questTranscripts?: Record<string, ChatTurn[]>;
+          canonLedger?: CanonLedgerEntry[];
+          crossModeMemory?: CrossModeMemory[];
+          questCheckpoints?: Record<string, string>;
         };
         this.state = {
           ...this.state,
           progress: saved.progress ?? {},
           transcripts: saved.transcripts ?? {},
+          questTranscripts: saved.questTranscripts ?? {},
           credits: saved.credits ?? this.state.credits,
           viewUnlocked: saved.viewUnlocked ?? {},
           transactions: saved.transactions ?? [],
@@ -290,6 +359,9 @@ export class Store {
           sceneShots: saved.sceneShots ?? {},
           questOutcomes: saved.questOutcomes ?? {},
           questHistory: saved.questHistory ?? {},
+          canonLedger: saved.canonLedger ?? [],
+          crossModeMemory: saved.crossModeMemory ?? [],
+          questCheckpoints: saved.questCheckpoints ?? {},
         };
       }
     } catch {
@@ -331,6 +403,10 @@ export class Store {
           questOutcomes: this.state.questOutcomes,
           questHistory: this.state.questHistory,
           transcripts: this.state.transcripts,
+          questTranscripts: this.state.questTranscripts,
+          canonLedger: this.state.canonLedger,
+          crossModeMemory: this.state.crossModeMemory,
+          questCheckpoints: this.state.questCheckpoints,
         })
       );
     } catch {
@@ -378,6 +454,7 @@ export class Store {
       residentId: id,
       transcripts,
       chat: resumed,
+      questChat: [],
       // Derived, not reset. The free allowance is spent per resident, so it has
       // to come back with her — otherwise hopping away and back mints turns.
       turns: resumed.filter((t) => t.from === 'user').length,
@@ -393,6 +470,8 @@ export class Store {
       questHubOpen: false,
       activeQuestId: null,
       activeQuestNodeId: null,
+      questPhase: 'none',
+      questInterruptible: false,
       saveGateOpen: false,
       unlockGateOpen: false,
       session: {
@@ -450,12 +529,75 @@ export class Store {
   pushTurn(turn: ChatTurn): void {
     const turns = turn.from === 'user' ? this.state.turns + 1 : this.state.turns;
     const chat = [...this.state.chat, turn].slice(-60);
-    // Mirrored and written out every turn: a phone that backgrounds the tab
-    // never gets a chance to save on the way out.
+    // Open Chat is mirrored and written out every turn. Quest Mode has its own
+    // transcript and must never reach this path.
     this.set({
       chat,
       turns,
       transcripts: { ...this.state.transcripts, [this.state.residentId]: chat },
+    });
+    this.persist();
+  }
+
+  /** Append one turn to the active Quest scene without touching Open Chat. */
+  pushQuestTurn(turn: ChatTurn): void {
+    const questId = this.state.activeQuestId;
+    if (!questId) return;
+    const questChat = [...this.state.questChat, turn].slice(-80);
+    this.set({
+      questChat,
+      questTranscripts: { ...this.state.questTranscripts, [questId]: questChat },
+    });
+    this.persist();
+  }
+
+  /** The transcript visible in the current mode. */
+  get visibleChat(): ChatTurn[] {
+    return this.state.activeQuestId ? this.state.questChat : this.state.chat;
+  }
+
+  approvedForQuest(id = this.state.residentId): CrossModeMemory[] {
+    return this.state.crossModeMemory.filter(
+      (memory) =>
+        memory.residentId === id &&
+        (memory.direction === 'chat-to-quest' || memory.direction === 'both')
+    );
+  }
+
+  approvedForChat(id = this.state.residentId): CrossModeMemory[] {
+    return this.state.crossModeMemory.filter(
+      (memory) =>
+        memory.residentId === id &&
+        (memory.direction === 'quest-to-chat' || memory.direction === 'both')
+    );
+  }
+
+  /** Add an approved bridge summary; never accepts or stores a raw turn. */
+  approveCrossMode(
+    memory: Omit<CrossModeMemory, 'id' | 'residentId' | 'createdAt'>,
+    residentId = this.state.residentId
+  ): void {
+    const text = memory.text.trim().slice(0, 240);
+    if (!text) return;
+    const duplicate = this.state.crossModeMemory.some(
+      (item) =>
+        item.residentId === residentId &&
+        item.direction === memory.direction &&
+        item.text === text
+    );
+    if (duplicate) return;
+    const createdAt = Date.now();
+    this.set({
+      crossModeMemory: [
+        ...this.state.crossModeMemory,
+        {
+          ...memory,
+          id: `${residentId}:${createdAt}:${this.state.crossModeMemory.length}`,
+          residentId,
+          text,
+          createdAt,
+        },
+      ].slice(-80),
     });
     this.persist();
   }
@@ -666,9 +808,17 @@ export class Store {
   startQuest(id: string): boolean {
     const quest = this.questById2(id);
     if (!quest || quest.residentId !== this.state.residentId) return false;
+    // Quest Mode is internal-only. Checked here as well as in the UI so a
+    // console call or a stale DOM handler cannot open it either.
+    if (!questPrototypeEnabled(quest.residentId)) return false;
     if (this.nextQuest()?.id !== id) return false;
     const prev = this.progressFor(quest.residentId);
     const revealed = Math.max(prev.revealed, 1);
+    const hasCheckpoint = !!this.state.questCheckpoints[id];
+    const checkpoint = this.state.questCheckpoints[id] ?? quest.startNodeId;
+    // Leaving during Episode 0 restarts the threshold. A transcript alone is
+    // not a safe camera stop; only an explicit checkpoint may skip it.
+    const resumed = hasCheckpoint || (!quest.threshold && !!this.state.questTranscripts[id]?.length);
     this.set({
       progress: {
         ...this.state.progress,
@@ -676,11 +826,43 @@ export class Store {
       },
       revealed: Math.max(this.state.revealed, revealed),
       activeQuestId: id,
-      activeQuestNodeId: quest.startNodeId,
+      activeQuestNodeId: checkpoint,
+      questChat: resumed ? this.state.questTranscripts[id] ?? [] : [],
+      questPhase: quest.threshold && !resumed ? 'threshold' : 'episode',
+      questInterruptible: false,
       questHubOpen: false,
     });
     this.persist();
     return true;
+  }
+
+  completeQuestThreshold(): void {
+    const id = this.state.activeQuestId;
+    const quest = id ? this.questById2(id) : undefined;
+    if (!quest || this.state.questPhase !== 'threshold') return;
+    this.set({
+      questPhase: 'episode',
+      questInterruptible: false,
+      questCheckpoints: {
+        ...this.state.questCheckpoints,
+        [quest.id]: quest.startNodeId,
+      },
+    });
+    this.persist();
+  }
+
+  /** Return to Open Chat while keeping the latest safe Quest checkpoint. */
+  leaveQuest(): void {
+    if (!this.state.activeQuestId) return;
+    this.set({
+      activeQuestId: null,
+      activeQuestNodeId: null,
+      questPhase: 'none',
+      questInterruptible: false,
+      questChat: [],
+      questClosedAt: this.state.turns,
+    });
+    this.persist();
   }
 
   /**
@@ -718,6 +900,25 @@ export class Store {
     const node = questNode(quest, this.state.activeQuestNodeId ?? quest.startNodeId);
     const choice = node.choices.find((item) => item.id === choiceId);
     if (!choice) return null;
+    return this.applyQuestChoice(quest, node.id, choice);
+  }
+
+  /** Resolve and persist a player-authored action in the active scene. */
+  submitQuestAction(action: string): QuestChoiceResult | null {
+    const id = this.state.activeQuestId;
+    const quest = id ? this.questById2(id) : undefined;
+    if (!quest || quest.residentId !== this.state.residentId) return null;
+    const node = questNode(quest, this.state.activeQuestNodeId ?? quest.startNodeId);
+    const choice = resolveFreeform(node, action.trim());
+    if (!choice) return null;
+    return this.applyQuestChoice(quest, node.id, choice);
+  }
+
+  private applyQuestChoice(
+    quest: QuestDefinition,
+    nodeId: string,
+    choice: QuestChoice
+  ): QuestChoiceResult | null {
     const residentFlags = this.state.storyFlags[quest.residentId] ?? [];
     const storyFlags = {
       ...this.state.storyFlags,
@@ -727,13 +928,34 @@ export class Store {
     };
     const prev = this.progressFor();
     const revealed =
-      choice.unlockEpisode === undefined
+      choice.unlockCanonReveal === undefined
         ? prev.revealed
-        : Math.max(prev.revealed, choice.unlockEpisode + 1);
+        : Math.max(prev.revealed, choice.unlockCanonReveal + 1);
+    const createdAt = Date.now();
+    const canonEntry: CanonLedgerEntry = {
+      id: `${quest.id}:${nodeId}:${createdAt}:${this.state.canonLedger.length}`,
+      residentId: quest.residentId,
+      questId: quest.id,
+      nodeId,
+      canonType: choice.playerAuthored ? 'player-created' : 'branch',
+      text: choice.outcome,
+      createdAt,
+    };
     // Grow the bond BEFORE snapshotting it into progress. The other order
     // persists a bond one entry behind, so the newest branch would be missing
     // from the save it was supposed to be part of.
-    this.addSharedCanon(choice.outcome);
+    if (choice.crossMode) {
+      const sharedSummary = choice.crossMode.text ?? choice.outcome;
+      this.addSharedCanon(sharedSummary);
+      this.approveCrossMode(
+        {
+          direction: 'quest-to-chat',
+          kind: choice.crossMode.kind,
+          text: sharedSummary,
+        },
+        quest.residentId
+      );
+    }
     if (!choice.nextNodeId && !prev.completedQuests.includes(quest.id)) {
       // A finished chapter has to leave behind something that exists only in
       // this save. Lore alone gives him more of her story; this gives him a thing.
@@ -752,6 +974,7 @@ export class Store {
       ...this.state.questHistory,
       [quest.id]: [...(this.state.questHistory[quest.id] ?? []), choice.outcome].slice(-12),
     };
+    const canonLedger = [...this.state.canonLedger, canonEntry].slice(-240);
     if (choice.nextNodeId) {
       const next = questNode(quest, choice.nextNodeId);
       this.set({
@@ -761,6 +984,11 @@ export class Store {
         storyFlags,
         questOutcomes: { ...this.state.questOutcomes, [quest.id]: choice.outcome },
         questHistory,
+        canonLedger,
+        questCheckpoints: {
+          ...this.state.questCheckpoints,
+          [quest.id]: choice.nextNodeId,
+        },
       });
       this.persist();
       return { quest, choice, completed: false, nextPrompt: next.prompt };
@@ -772,6 +1000,8 @@ export class Store {
       completedQuests: [...prev.completedQuests, quest.id],
     };
     const transaction = this.transaction('earn', 'storyQuest', STORY_QUEST_REWARD);
+    const questCheckpoints = { ...this.state.questCheckpoints };
+    delete questCheckpoints[quest.id];
     this.set({
       progress,
       revealed: Math.max(this.state.revealed, revealed),
@@ -780,8 +1010,10 @@ export class Store {
       storyFlags,
       questOutcomes: { ...this.state.questOutcomes, [quest.id]: choice.outcome },
       questHistory,
-      activeQuestId: null,
-      activeQuestNodeId: null,
+      canonLedger,
+      questCheckpoints,
+      questPhase: 'ending',
+      questInterruptible: false,
       questClosedAt: this.state.turns,
     });
     this.persist();

@@ -1,5 +1,6 @@
 import { CHARACTERS } from './characters';
 import { plinthPositions } from './layout';
+import type { QuestCamera } from './quests';
 
 export interface CamPreset {
   pos: [number, number, number];
@@ -60,3 +61,12 @@ export function stagePreset(): CamPreset {
     typeof window !== 'undefined' && window.matchMedia?.('(max-width: 700px)').matches;
   return portrait ? CAMERA_PRESETS['stage-portrait'] : CAMERA_PRESETS.stage;
 }
+
+/** Fixed cinematic grammar for Quest Mode; no free orbit during a story beat. */
+export const QUEST_CAMERA_PRESETS: Record<QuestCamera, CamPreset> = {
+  follow: { pos: [0.35, 1.45, 4.15], target: [0, 1.05, -0.65], fov: 40 },
+  'side-composition': { pos: [-2.45, 1.38, 2.8], target: [0, 1.02, -0.45], fov: 38 },
+  'object-pov': { pos: [0.08, 1.28, 2.35], target: [0, 1.02, -0.55], fov: 34 },
+  'close-encounter': { pos: [0.72, 1.45, 2.58], target: [-0.08, 1.08, 0], fov: 32 },
+  'wide-mutation': { pos: [0, 1.72, 5.45], target: [0, 1.0, -1.15], fov: 44 },
+};

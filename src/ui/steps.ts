@@ -6,6 +6,7 @@ import { h } from './dom';
 import type { UIActions } from './actions';
 import type { AppState } from '../state/store';
 import { COPY } from '../config/copy';
+import { questPrototypeActive, questPrototypeEnabled } from '../config/prototype-flag';
 import { factionById } from '../config/factions';
 import { CHARACTERS, characterById, characterIndex } from '../config/characters';
 import { characterThumb, monogramThumb } from '../three/thumbs';
@@ -297,8 +298,58 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   // While a scene is open the dock carries it: what she asked, and three
   // answers a visitor could honestly give. Typing is always still open.
   const questLine = h('p', { class: 'quest-line' });
+  const questEpisodeLabel = h('span', { class: 'quest-episode-label' }, 'QUEST MODE');
+  const questCallBtn = h(
+    'button',
+    { class: 'btn btn-ghost xs quest-call', onClick: () => actions.interruptQuest() },
+    'Gọi Rin'
+  ) as HTMLButtonElement;
+  const questReturnBtn = h(
+    'button',
+    { class: 'btn btn-ghost xs', onClick: () => actions.leaveQuest() },
+    'Về chat'
+  ) as HTMLButtonElement;
+  const questHead = h(
+    'div',
+    { class: 'quest-mode-head' },
+    questEpisodeLabel,
+    h('div', { class: 'row' }, questCallBtn, questReturnBtn)
+  );
   const questOptions = h('div', { class: 'quest-options' });
-  const questStrip = h('div', { class: 'quest-strip', hidden: true }, questLine, questOptions);
+  const questActionInput = h('input', {
+    type: 'text',
+    class: 'quest-action-input',
+    maxlength: '220',
+    'aria-label': 'Hành động khác của anh',
+  }) as HTMLInputElement;
+  const submitQuestAction = () => {
+    const action = questActionInput.value.trim();
+    if (!action) return;
+    questActionInput.value = '';
+    actions.submitQuestAction(action);
+  };
+  questActionInput.addEventListener('keydown', (event) => {
+    if ((event as KeyboardEvent).key === 'Enter') submitQuestAction();
+  });
+  const questActionBtn = h(
+    'button',
+    { class: 'btn btn-secondary xs', onClick: submitQuestAction },
+    'Thực hiện'
+  ) as HTMLButtonElement;
+  const questFreeform = h(
+    'div',
+    { class: 'quest-freeform', hidden: true },
+    questActionInput,
+    questActionBtn
+  );
+  const questStrip = h(
+    'div',
+    { class: 'quest-strip', hidden: true },
+    questHead,
+    questLine,
+    questOptions,
+    questFreeform
+  );
 
   const dock = h(
     'div',
@@ -742,6 +793,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   let lastFantasyFor = '';
   let lastQuestId = '';
   let lastChatLen = -1;
+  let lastChatScope = '';
   let lastWaiting = false;
   let lastRevealKey = '';
   let lastShotKeys = '';
@@ -794,12 +846,12 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       if (document.activeElement !== identityInput) identityInput.value = s.session.identity;
       if (document.activeElement !== personaInput) personaInput.value = s.session.persona;
 
-      // Unlocked episodes read as her story opening up, locked ones as the
+      // Unlocked canon reveals read as her story opening up, locked ones as the
       // reason to keep going.
       const epList = info.querySelector('.episode-list');
       if (epList) {
         epList.replaceChildren(
-          ...r.episodes.map((ep, i) => {
+          ...r.canonReveals.map((ep, i) => {
             const open = i < s.revealed;
             return h(
               'div',
@@ -877,10 +929,24 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         : undefined;
       (questStrip as HTMLElement).hidden = !openQuest;
       dock.classList.toggle('is-quest', !!openQuest);
-      const questKey = openQuest && openNode ? `${openQuest.id}:${openNode.id}` : '';
+      el.classList.toggle('is-quest-mode', !!openQuest);
+      el.dataset.questPhase = openQuest ? s.questPhase : '';
+      questCallBtn.hidden = s.questPhase !== 'threshold' || r.id !== 'rin';
+      questCallBtn.disabled = !s.questInterruptible;
+      questEpisodeLabel.textContent =
+        s.questPhase === 'threshold'
+          ? 'EPISODE 0 · MOTION ARCHIVE CORRIDOR'
+          : s.questPhase === 'ending'
+            ? 'CHECKPOINT · FRAME 12'
+            : 'EPISODE 1 · THE TWELFTH FRAME';
+      const questKey =
+        openQuest && openNode ? `${openQuest.id}:${openNode.id}:${s.questPhase}` : '';
       if (openQuest && openNode && questKey !== lastQuestId) {
         lastQuestId = questKey;
-        questLine.textContent = openNode.prompt;
+        questLine.textContent =
+          s.questPhase === 'threshold'
+            ? 'Đi theo Rin. Anh có thể gọi tên em để ngắt một câu thoại thường.'
+            : openNode.prompt;
         questOptions.replaceChildren(
           ...openNode.choices.map((choice) =>
             h(
@@ -891,8 +957,28 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
             )
           )
         );
+        (questFreeform as HTMLElement).hidden = !openNode.freeform;
+        if (openNode.freeform) {
+          questActionInput.placeholder = openNode.freeform.invite;
+        } else {
+          questActionInput.value = '';
+        }
       }
-      if (!openQuest) lastQuestId = '';
+      if (openQuest && openNode && s.questPhase === 'threshold') {
+        questLine.textContent = 'Đi theo Rin. Anh có thể gọi tên em để ngắt một câu thoại thường.';
+        (questOptions as HTMLElement).hidden = true;
+        (questFreeform as HTMLElement).hidden = true;
+      } else if (openQuest && s.questPhase === 'ending') {
+        questLine.textContent = 'Frame đã đổi trạng thái. Canon đang được lưu…';
+        (questOptions as HTMLElement).hidden = true;
+        (questFreeform as HTMLElement).hidden = true;
+      } else {
+        (questOptions as HTMLElement).hidden = false;
+      }
+      if (!openQuest) {
+        lastQuestId = '';
+        (questFreeform as HTMLElement).hidden = true;
+      }
 
       // One balance, and the price of whatever the bar is about to do.
       const price = speakMode ? COST.speakForMe : COST.turn;
@@ -907,24 +993,28 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
 
       // Waiting belongs in the conversation, as a turn she has not started,
       // rather than as a status line under the buttons.
-      const lastTurn = s.chat[s.chat.length - 1];
+      const visibleChat = openQuest ? s.questChat : s.chat;
+      const chatScope = openQuest ? `quest:${openQuest.id}` : `chat:${s.residentId}`;
+      const lastTurn = visibleChat[visibleChat.length - 1];
       const waiting = s.thinking || (s.voicing && lastTurn?.from === 'user');
       const revealKey = s.reveal ? `${s.reveal.turn}:${s.reveal.words}` : '';
       const shotKeys = Object.keys(s.turnShots).join(',');
       if (
-        s.chat.length !== lastChatLen ||
+        visibleChat.length !== lastChatLen ||
+        chatScope !== lastChatScope ||
         waiting !== lastWaiting ||
         revealKey !== lastRevealKey ||
         shotKeys !== lastShotKeys
       ) {
         lastShotKeys = shotKeys;
-        lastChatLen = s.chat.length;
+        lastChatLen = visibleChat.length;
+        lastChatScope = chatScope;
         lastWaiting = waiting;
         lastRevealKey = revealKey;
         // Her actions and her words look different, because they are: one is
         // the room, the other is her voice. Only the second is ever spoken.
         log.replaceChildren(
-          ...s.chat.flatMap((t, i) => {
+          ...visibleChat.flatMap((t, i) => {
             if (t.from !== 'resident') return [h('p', { class: 'bubble bubble-user' }, t.text)];
             const partial = s.reveal?.turn === i;
             const parts = partial ? segmentsUpTo(t.text, s.reveal!.words) : segments(t.text);
@@ -964,7 +1054,10 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           ...(candidates.length
             ? candidates.map((c) => {
                 const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
-                box.checked = gate.preselectMemories;
+                // Preselection is an interface-layer mechanic, so it is gated by the
+                // variant's mechanics rather than by its copy. Two sources of truth
+                // is how variant B once shipped a preselect it declared it had.
+                box.checked = mech.preselected;
                 memChecks.set(c.text, box);
                 return h('label', { class: 'memory-item' }, box, h('span', {}, c.text));
               })
@@ -1001,12 +1094,15 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           const done = completed.includes(quest.id);
           const available = nextQuest?.id === quest.id;
           const active = s.activeQuestId === quest.id;
+          const resumable = !!s.questCheckpoints[quest.id];
           const status = done
             ? COPY.stage.questDone
             : active
               ? COPY.stage.questActive
               : available
-                ? COPY.stage.questStart
+                ? resumable
+                  ? 'Tiếp tục checkpoint'
+                  : COPY.stage.questStart
                 : COPY.stage.questLocked;
           const endings = quest.nodes.reduce(
             (count, node) => count + node.choices.filter((choice) => !choice.nextNodeId).length,
@@ -1032,6 +1128,9 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           );
         })
       );
+      // Nothing about the prototype is offered without the internal flag, so a
+      // public visitor sees Quest Hub with only its onboarding tab populated.
+      if (!questPrototypeEnabled(s.residentId)) storyQuestList.replaceChildren();
       onboardingQuestList.replaceChildren(
         ...ONBOARDING_QUESTS.map((quest) => {
           const done = s.onboardingCompleted.includes(quest.id);

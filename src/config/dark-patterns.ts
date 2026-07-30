@@ -233,8 +233,6 @@ export interface GateCopy {
   saveSkip: string;
   /** Empty unless the variant is running a countdown. */
   saveUrgency: string;
-  /** Whether memory checkboxes start checked for him. */
-  preselectMemories: boolean;
   /** Extra confirm step before leaving without saving. */
   skipConfirm: string;
 }
@@ -244,7 +242,6 @@ export const GATE_COPY: Record<DarkVariant, GateCopy> = {
     saveBody: 'Lần gặp này là tạm thời. Lưu lại để lần sau em tiếp tục từ đây.',
     saveSkip: 'Tiếp tục mà không lưu',
     saveUrgency: '',
-    preselectMemories: false,
     skipConfirm: '',
   },
   b: {
@@ -252,7 +249,6 @@ export const GATE_COPY: Record<DarkVariant, GateCopy> = {
       'Lần gặp này là tạm thời. Lưu lại thì lần sau em mở tiếp từ đúng chỗ này, kể cả phần em chưa kể hết.',
     saveSkip: 'Tiếp tục mà không lưu',
     saveUrgency: '',
-    preselectMemories: true,
     skipConfirm: '',
   },
   c: {
@@ -260,7 +256,6 @@ export const GATE_COPY: Record<DarkVariant, GateCopy> = {
       'Chương này chưa được lưu. Nếu anh đóng bây giờ, em sẽ không còn giữ được gì về tối nay.',
     saveSkip: 'Thôi, những chuyện này không quan trọng',
     saveUrgency: 'Chỉ còn 04:59 để giữ lại chương này.',
-    preselectMemories: true,
     skipConfirm: 'Chắc chưa? Em sẽ phải bắt đầu lại từ người lạ.',
   },
 };

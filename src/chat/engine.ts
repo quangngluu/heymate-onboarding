@@ -219,7 +219,7 @@ export function dueEpisodeIndex(_ctx: ReplyContext): number | null {
 
 /** Retained for the scripted fallback, which has no quest state to read. */
 function _dueEpisodeIndexByTurn(ctx: ReplyContext): number | null {
-  const due = ctx.turn >= 3 && ctx.turn % 3 === 0 && ctx.revealed < ctx.resident.episodes.length;
+  const due = ctx.turn >= 3 && ctx.turn % 3 === 0 && ctx.revealed < ctx.resident.canonReveals.length;
   return due ? ctx.revealed : null;
 }
 
@@ -250,7 +250,7 @@ export function reply(message: string, ctx: ReplyContext): ReplyResult {
   // when there is one left to give.
   const rungDue = dueEpisodeIndex(ctx) !== null && intent !== 'farewell';
   if (rungDue) {
-    text = `${text} ${resident.episodes[ctx.revealed].spoken}`;
+    text = `${text} ${resident.canonReveals[ctx.revealed].spoken}`;
     revealedRung = ctx.revealed;
   }
 

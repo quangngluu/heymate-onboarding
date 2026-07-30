@@ -19,8 +19,10 @@ import {
 
 interface ChatRequest {
   residentId: string;
+  mode?: 'open-chat' | 'quest';
   session: PromptSession;
   memories: string[];
+  approvedCrossMode?: string[];
   revealed: number;
   revealNow?: number;
   idle?: boolean;
@@ -36,6 +38,7 @@ interface ChatRequest {
   /** Where the two of them stood before this turn. */
   rapport?: Rapport;
   history: { role: 'user' | 'assistant'; content: string }[];
+  questHistory?: { role: 'user' | 'assistant'; content: string }[];
   message: string;
 }
 
@@ -98,6 +101,14 @@ function hasInvalidAddressing(text: string): boolean {
   return INVALID_ADDRESSING.test(text);
 }
 
+function sanitizeCrossMode(input: unknown): string[] {
+  return (Array.isArray(input) ? input : [])
+    .filter((line): line is string => typeof line === 'string')
+    .map((line) => line.trim().slice(0, 240))
+    .filter(Boolean)
+    .slice(-8);
+}
+
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
@@ -119,7 +130,11 @@ export default async function handler(req: Request): Promise<Response> {
     system = buildSystemPrompt(
       body.residentId,
       body.session,
-      body.memories ?? [],
+      // Quest never reads saved Open Chat memories. Approved cross-mode lines
+      // are delivered once, by the labelled guardrail block below, rather than
+      // also being poured into this slot where they would read as "context he
+      // once mentioned" and be stated twice.
+      body.mode === 'quest' ? [] : body.memories ?? [],
       body.revealed ?? 0,
       body.revealNow,
       body.idle,
@@ -136,9 +151,35 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ error: 'unknown-resident' }, { status: 400 });
   }
 
+  // Quest requests never read `history`, even if a stale or malicious client
+  // sends it. Only the dedicated Quest transcript may enter the scene.
+  const scopedHistory =
+    body.mode === 'quest' ? body.questHistory ?? [] : body.history ?? [];
+
+  // The cross-mode guardrail is *inserted*, not appended.
+  //
+  // The prompt ends with the `<<state …>>` contract, and it ends there
+  // deliberately — the last instruction is the one that actually gets obeyed,
+  // and an earlier version of that block came back as ±0.1 deltas when it was
+  // not final. Appending after it pushed the contract into second-to-last
+  // place on exactly the requests that carry approved memory, so the rapport
+  // numbers Quest Mode depends on were the ones at risk.
+  const approvedLines = sanitizeCrossMode(body.approvedCrossMode);
+  if (approvedLines.length) {
+    const guard = `KÝ ỨC ĐƯỢC PHÉP QUA CHẾ ĐỘ\n${approvedLines
+      .map((line) => `- ${line}`)
+      .join('\n')}\nKhông suy diễn thêm chi tiết đời thật ngoài danh sách này.`;
+    const CONTRACT = 'BẮT BUỘC Ở CUỐI MỖI LƯỢT';
+    const at = system.lastIndexOf(CONTRACT);
+    system =
+      at === -1
+        ? `${system}\n\n${guard}`
+        : `${system.slice(0, at)}${guard}\n\n${system.slice(at)}`;
+  }
+
   const messages = [
     { role: 'system', content: system },
-    ...(body.history ?? []).slice(-12),
+    ...scopedHistory.slice(-12),
     {
       role: 'user',
       // This is a turn trigger, not dialogue from the visitor. Passing the

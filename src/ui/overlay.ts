@@ -186,9 +186,9 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
   function paintChrome(state: AppState): void {
     walletBalance.textContent = `${state.credits} credit`;
     wallet.classList.toggle('is-low', state.credits < 20);
-    wallet.hidden = state.step !== 'stage';
+    wallet.hidden = state.step !== 'stage' || !!state.activeQuestId;
     wallet.setAttribute('aria-expanded', String(state.walletOpen));
-    questBtn.hidden = state.step !== 'stage';
+    questBtn.hidden = state.step !== 'stage' || !!state.activeQuestId;
     const waiting = !state.activeQuestId && !!store.nextQuest();
     questBtn.classList.toggle('is-active', !!state.activeQuestId);
     (questBtn.querySelector('.quest-dot') as HTMLElement).hidden = !waiting;

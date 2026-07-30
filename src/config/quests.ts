@@ -7,16 +7,134 @@ export interface QuestChoice {
   outcome: string;
   nextNodeId?: string;
   flag: string;
-  /** Opens one canonical episode as this part of the arc is discovered. */
-  unlockEpisode?: number;
+  /** Opens one canonical reveal as this part of the arc is discovered. */
+  unlockCanonReveal?: number;
   /** Hook for a future generated scene; no asset is implied today. */
   imageKey?: string;
+  /**
+   * True when the player invented this rather than picking it. Written into the
+   * canon ledger as player-created canon, which is a different class of fact
+   * from a branch the author wrote.
+   */
+  playerAuthored?: boolean;
+  /** Deliberately approved relationship summary that may appear in Open Chat. */
+  crossMode?: {
+    kind: 'relationship' | 'private-object' | 'oath' | 'nickname' | 'conflict';
+    text?: string;
+  };
+}
+
+/**
+ * What an invented action collapses into.
+ *
+ * The spec's rule is that a user-created solution must get a distinct reaction
+ * and a visible state change even when it rejoins the authored spine later. So a
+ * family is a real consequence — flag, outcome, optional reveal and scene — not
+ * a polite acknowledgement before the story railroads on. `cues` route a typed
+ * action here; `fallback` exists because refusing to match must still be an
+ * answer rather than a dead end.
+ */
+export interface FreeformFamily {
+  id: string;
+  /** Words in the player's own action that route into this consequence. */
+  cues: string[];
+  /** What happened, in the same voice as an authored outcome. */
+  outcome: string;
+  flag: string;
+  nextNodeId?: string;
+  unlockCanonReveal?: number;
+  imageKey?: string;
+  crossMode?: QuestChoice['crossMode'];
+}
+
+/**
+ * The invitation to do something nobody scripted.
+ *
+ * Present on any node where the player may act instead of choose. `invite` is
+ * phrased as an opening, never as a third button, because the moment it reads as
+ * an option it stops being free-form.
+ */
+export interface FreeformAffordance {
+  invite: string;
+  families: FreeformFamily[];
+  /** Used when nothing matches. Still a consequence; never a refusal to react. */
+  fallback: FreeformFamily;
+}
+
+export type QuestCamera =
+  | 'follow'
+  | 'side-composition'
+  | 'object-pov'
+  | 'close-encounter'
+  | 'wide-mutation';
+
+export interface QuestPresentation {
+  camera: QuestCamera;
+  ambience: string[];
+  visualState: 'archive-corridor' | 'frame-12' | 'archive-desync' | 'frame-open' | 'frame-sealed';
+  objective?: string;
+  /** Authored mutation shown immediately; generated art may replace it later. */
+  mutation?: 'activate-frame' | 'desync-motion' | 'open-channel' | 'erase-signature' | 'quarantine';
+}
+
+export interface QuestThresholdBeat {
+  atMs: number;
+  camera: QuestCamera;
+  line: string;
+  interruptible: boolean;
+  visualState: QuestPresentation['visualState'];
+  cue?: 'footsteps' | 'frame-tick' | 'dropout';
+}
+
+export interface QuestEpisode {
+  id: string;
+  number: 0 | 1 | 2;
+  title: string;
+  purpose: string;
 }
 
 export interface QuestNode {
   id: string;
   prompt: string;
-  choices: [QuestChoice, QuestChoice];
+  /**
+   * Seeds, not a closed list.
+   *
+   * This was a two-item tuple, which made the authored spine binary and
+   * structurally forbade the thing the design is built on — Momo's third rule,
+   * Rin's three-way frame decision, and the `thirdChoice` mechanic the prompt
+   * already rewards. A list of any length, plus `freeform` below, is what lets
+   * "invent your own" be a real branch rather than a line of encouragement.
+   */
+  choices: QuestChoice[];
+  freeform?: FreeformAffordance;
+  presentation?: QuestPresentation;
+}
+
+/**
+ * Resolve a typed action into a consequence.
+ *
+ * Cue matching is deliberately dumb and local: it runs before any model call so
+ * a free-form action always lands somewhere, even offline. The model's job is to
+ * voice the reaction, not to decide whether the world changed.
+ */
+export function resolveFreeform(node: QuestNode, action: string): QuestChoice | null {
+  const free = node.freeform;
+  if (!free) return null;
+  const said = action.toLowerCase();
+  const hit =
+    free.families.find((f) => f.cues.some((cue) => said.includes(cue.toLowerCase()))) ??
+    free.fallback;
+  return {
+    id: `freeform:${hit.id}`,
+    label: action.trim().slice(0, 120),
+    outcome: hit.outcome,
+    flag: hit.flag,
+    nextNodeId: hit.nextNodeId,
+    unlockCanonReveal: hit.unlockCanonReveal,
+    imageKey: hit.imageKey,
+    playerAuthored: true,
+    crossMode: hit.crossMode,
+  };
 }
 
 /**
@@ -33,213 +151,340 @@ export interface QuestDefinition {
   canonRef: string[];
   startNodeId: string;
   nodes: QuestNode[];
-  /** The last episode this complete arc can reveal. */
-  rewardEpisode: number;
+  /** Playable chapters; distinct from resident canon reveals. */
+  questEpisodes?: QuestEpisode[];
+  /** Episode 0 threshold. Authored and time-based, never generated. */
+  threshold?: {
+    durationMs: number;
+    checkpoint: string;
+    beats: QuestThresholdBeat[];
+  };
+  /** The last canonical memory reveal this complete arc can open. */
+  rewardCanonReveal: number;
 }
 
 export const QUESTS: QuestDefinition[] = [
   {
-    id: 'rin-last-signal',
+    id: 'rin-twelfth-frame',
     residentId: 'rin',
     kind: 'story',
-    title: 'Tín hiệu cuối cùng',
+    title: 'Frame thứ mười hai',
     synopsis:
-      'Theo dấu hàng chờ đêm mạng sập để tìm ra Rin hiện tại là người sống sót, bản sao, hay một lựa chọn mới.',
-    objective: 'Đi cùng Rin tới nơi sự thật và quyền được tiếp tục tồn tại tách làm hai.',
-    canonRef: [
-      'Hàng chờ một người',
-      'Những gì em nhớ',
-      'Kết nối cuối cùng',
-      'Không tìm thấy cơ thể',
-      'Khả năng còn lại',
+      'Archive có mười một chuyển động của Rin. Frame không tồn tại thứ mười hai lại chứa bóng của anh.',
+    objective: 'Đi vào Frame 12, tạo một chuyển động archive chưa từng sở hữu và quyết định cách giữ nó.',
+    canonRef: ['Hành lang Motion Archive', 'Frame 12', 'Chuyển động không thuộc studio'],
+    startNodeId: 'frame-12',
+    rewardCanonReveal: 2,
+    questEpisodes: [
+      {
+        id: 'motion-archive-corridor',
+        number: 0,
+        title: 'Motion Archive Corridor',
+        purpose: 'Chuyển mode, dạy ngắt lời và mở disturbance đầu tiên.',
+      },
+      {
+        id: 'the-twelfth-frame',
+        number: 1,
+        title: 'The Twelfth Frame',
+        purpose: 'Đặt anh vào mystery và chứng minh một hành động làm thế giới đổi trạng thái.',
+      },
     ],
-    startNodeId: 'queue',
-    rewardEpisode: 4,
+    threshold: {
+      durationMs: 55_000,
+      checkpoint: 'threshold_complete',
+      beats: [
+        {
+          atMs: 0,
+          camera: 'follow',
+          line: 'Đừng chạm vào các frame.',
+          interruptible: true,
+          visualState: 'archive-corridor',
+          cue: 'footsteps',
+        },
+        {
+          atMs: 8_000,
+          camera: 'follow',
+          line: 'Mười một cái là dữ liệu. Cái cuối cùng… em chưa chắc.',
+          interruptible: true,
+          visualState: 'archive-corridor',
+          cue: 'frame-tick',
+        },
+        {
+          atMs: 22_000,
+          camera: 'side-composition',
+          line: 'Cái đó không thuộc buổi diễn.',
+          interruptible: true,
+          visualState: 'archive-desync',
+          cue: 'frame-tick',
+        },
+        {
+          atMs: 38_000,
+          camera: 'wide-mutation',
+          line: '…Anh chưa từng ở đây.',
+          interruptible: false,
+          visualState: 'frame-12',
+          cue: 'dropout',
+        },
+      ],
+    },
     nodes: [
       {
-        id: 'queue',
+        id: 'frame-12',
         prompt:
-          '02:17. Hàng chờ một người của em vừa tự mở lại. Bên trong không có tên, chỉ có gói dữ liệu thứ mười hai từ đêm mạng sập — gói mà em không nhớ đã giữ. Anh muốn mở nó cùng em, hay cách ly nó trước?',
+          'Timestamp: 02:16. Hai phút sau log chính thức kết thúc. Bóng của anh đứng sát bàn tay archive của em, nhưng hai người không chạm nhau. Anh muốn nhìn dấu chân, kênh headset hay phản ứng của em trước?',
+        presentation: {
+          camera: 'object-pov',
+          ambience: ['server-hum', 'rain-on-glass', 'frame-tick'],
+          visualState: 'frame-12',
+          objective: 'Tìm chi tiết đầu tiên chứng minh Frame 12 không phải một bản ghi bình thường.',
+          mutation: 'activate-frame',
+        },
         choices: [
           {
-            id: 'open-together',
-            label: 'Mở cùng anh. Nếu nó là ký ức của em, em không phải xem một mình.',
+            id: 'inspect-footprint',
+            label: 'Anh nhìn dấu chân. Nó hướng vào frame hay đi ra?',
             outcome:
-              'Rin mở gói dữ liệu khi anh ở lại trên cùng kênh. Hàng chờ không còn là nơi em đợi một mình.',
-            nextNodeId: 'last-night',
-            flag: 'rin:opened-with-him',
-            unlockEpisode: 1,
-            imageKey: 'rin-queue-open',
+              'Dấu chân của anh có chiều sâu còn bóng người chỉ là dữ liệu. Rin đổi giả thuyết: có thứ từng đứng trong frame, không chỉ được render vào.',
+            nextNodeId: 'enter-frame',
+            flag: 'rin:priority-footprint',
+            unlockCanonReveal: 1,
+            imageKey: 'rin-frame12-footprint',
           },
           {
-            id: 'quarantine-first',
-            label: 'Cách ly trước. Anh muốn biết ai gửi nó rồi mới để nó chạm vào em.',
+            id: 'inspect-headset',
+            label: 'Anh mở metadata của kênh headset trước.',
             outcome:
-              'Anh và Rin cô lập gói dữ liệu, biến sự dè chừng thành một cuộc điều tra chung thay vì một lần em tự đoán.',
-            nextNodeId: 'checksum',
-            flag: 'rin:quarantined-signal',
-            unlockEpisode: 1,
-            imageKey: 'rin-queue-quarantine',
+              'Kênh headset đã join trước khi anh giới thiệu tên trong HMU. Rin không gọi đó là trùng hợp nữa.',
+            nextNodeId: 'enter-frame',
+            flag: 'rin:priority-headset',
+            unlockCanonReveal: 1,
+            imageKey: 'rin-frame12-headset',
+          },
+          {
+            id: 'watch-rin',
+            label: 'Anh không nhìn frame. Anh nhìn em đang cố giấu điều gì.',
+            outcome:
+              'Rin ngừng đọc metadata. Em thừa nhận archived Rin nghiêng đầu sớm hơn mình nửa nhịp — một thói quen studio từng sửa vì khán giả thích.',
+            nextNodeId: 'enter-frame',
+            flag: 'rin:priority-reaction',
+            unlockCanonReveal: 1,
+            imageKey: 'rin-frame12-reaction',
           },
         ],
       },
       {
-        id: 'last-night',
+        id: 'enter-frame',
         prompt:
-          'Âm thanh bật lên: giọng em đang gọi từng nhóm người xem rời máy chủ. Nhóm cuối bảo em ngắt kết nối, nhưng log cho thấy em quay lại tìm một người còn mắc kẹt. Đoạn sau bị mất. Anh muốn khôi phục âm thanh, hay hỏi vì sao em đã không tự cứu mình?',
+          'Camera đi xuyên qua mặt kính vào cảnh thể tích đang đông cứng. Rin đứng ngoài rìa: “Em dựng archive. Em không cần bước vào.” Anh có thể mời em vào, đi trước, lùi lại — hoặc tự làm một điều khác.',
+        presentation: {
+          camera: 'close-encounter',
+          ambience: ['server-hum', 'rain-on-glass', 'electrical-noise'],
+          visualState: 'frame-12',
+          objective: 'Tạo một phản ứng archive chưa từng ghi lại.',
+        },
         choices: [
           {
-            id: 'restore-audio',
-            label: 'Khôi phục đoạn cuối. Anh muốn biết người em quay lại tìm đã thoát chưa.',
+            id: 'ask-rin-enter',
+            label: 'Vào cùng anh. Nếu nó sai, hai đứa sẽ cùng nhìn thấy chỗ sai.',
             outcome:
-              'Hai đứa khôi phục được lời hứa cuối trong buổi phát sóng: Rin sẽ không đóng kênh khi vẫn còn một người chưa ra.',
-            nextNodeId: 'body',
-            flag: 'rin:restored-last-group',
-            unlockEpisode: 2,
-            imageKey: 'rin-last-group-audio',
+              'Rin bước vào và chồng chuyển động hiện tại lên bản archive. Hai dáng đứng lệch nhau nửa nhịp; một motion mới xuất hiện mà studio chưa từng sở hữu.',
+            nextNodeId: 'desync',
+            flag: 'rin:entered-frame',
+            imageKey: 'rin-frame12-desync',
           },
           {
-            id: 'ask-her-choice',
-            label: 'Nhìn em đi. Vì sao em chọn quay lại khi hoàn toàn có thể thoát?',
+            id: 'offer-go-first',
+            label: 'Anh đi trước. Em chỉ bước vào khi chính em muốn.',
             outcome:
-              'Rin thừa nhận đó không phải phép tính tối ưu. Em quay lại vì không chịu được việc bỏ một người phía sau.',
-            nextNodeId: 'identity',
-            flag: 'rin:admitted-irrational-choice',
-            unlockEpisode: 2,
-            imageKey: 'rin-last-night-choice',
+              'Anh đặt tay vào vùng trống trước. Archive bẻ đường chuyển động để tránh tay anh; Rin bước vào vì quyết định của em, không phải vì bị ép.',
+            nextNodeId: 'desync',
+            flag: 'rin:player-went-first',
+            imageKey: 'rin-frame12-new-motion',
+          },
+          {
+            id: 'withdraw',
+            label: 'Không cần chứng minh gì ngay. Anh đứng ngoài với em.',
+            outcome:
+              'Hai người lùi khỏi frame. Silhouette vẫn tiến một bước về phía kính, tự tạo khoảng cách mới dù không ai ra lệnh.',
+            nextNodeId: 'desync',
+            flag: 'rin:refusal-changed-frame',
+            imageKey: 'rin-frame12-refusal',
+          },
+        ],
+        freeform: {
+          invite: 'Hoặc tự làm một điều khác…',
+          families: [
+            {
+              id: 'contradict-archive',
+              cues: ['bắt chước', 'làm ngược', 'đổi động tác', 'chuyển động', 'nhảy'],
+              outcome:
+                'Anh tạo một chuyển động không có trong dữ liệu. Frame cố nội suy rồi vỡ nhịp; Rin bật cười đúng một nhịp mà archive không dự đoán được.',
+              flag: 'rin:freeform-contradicted-archive',
+              nextNodeId: 'desync',
+              imageKey: 'rin-frame12-freeform-motion',
+            },
+            {
+              id: 'address-rin',
+              cues: ['gọi rin', 'nói với em', 'nhìn rin', 'đưa tay'],
+              outcome:
+                'Anh hành động với Rin hiện tại thay vì bản ghi. Archived Rin quay sai hướng; hệ thống đánh dấu một quan hệ mới không có owner.',
+              flag: 'rin:freeform-addressed-present-rin',
+              nextNodeId: 'desync',
+              imageKey: 'rin-frame12-freeform-relation',
+            },
+          ],
+          fallback: {
+            id: 'unknown-action',
+            cues: [],
+            outcome:
+              'Archive không hiểu hành động anh vừa tự đặt ra. Nó để lại một vùng dữ liệu trắng có hình đúng bằng khoảng trống giữa anh và Rin.',
+            flag: 'rin:freeform-unknown-motion',
+            nextNodeId: 'desync',
+            imageKey: 'rin-frame12-freeform-unknown',
+          },
+        },
+      },
+      {
+        id: 'desync',
+        prompt:
+          'Rin hiện tại và archived Rin đứng lệch nhau. Không còn nhạc. “Bản kia nghiêng đầu sớm hơn em. Studio từng sửa như vậy vì khán giả thích.” Anh đáp lại điều gì?',
+        presentation: {
+          camera: 'side-composition',
+          ambience: ['server-hum', 'silence'],
+          visualState: 'archive-desync',
+          objective: 'Nói rõ anh đang nhìn Rin nào.',
+          mutation: 'desync-motion',
+        },
+        choices: [
+          {
+            id: 'notice-present-rin',
+            label: 'Anh thấy em đã dừng lại trước khi che frame. Bản kia không biết do dự.',
+            outcome:
+              'Rin ghi nhận một khác biệt không nằm trong model: em hiện tại có thể do dự rồi vẫn chọn. Respect tăng vì anh quan sát, không định nghĩa hộ em.',
+            nextNodeId: 'boundary',
+            flag: 'rin:noticed-present-choice',
+          },
+          {
+            id: 'refuse-comparison',
+            label: 'Anh không dùng một bản ghi để chấm em thật đến đâu.',
+            outcome:
+              'Rin đóng bảng so sánh khuôn mặt nhưng giữ motion delta. Em chấp nhận ranh giới mà không vứt bỏ bằng chứng.',
+            nextNodeId: 'boundary',
+            flag: 'rin:comparison-boundary',
           },
         ],
       },
       {
-        id: 'checksum',
+        id: 'boundary',
         prompt:
-          'Checksum khớp với Rin, nhưng timestamp lại bắt đầu mười một giây sau khi kết nối của em bị cắt. Có thể đây là backup; cũng có thể là thứ đã học cách nói như em. Anh nói thẳng điều đó, hay lần theo origin server trước?',
+          'Rin muốn cô lập chữ ký của anh như dữ liệu. Nếu bị phản đối, em hỏi: “Anh vào hệ thống của em mà không có nguồn. Em phải gọi nó là gì?”',
+        presentation: {
+          camera: 'close-encounter',
+          ambience: ['electrical-noise', 'rain-on-glass'],
+          visualState: 'archive-desync',
+          objective: 'Đặt ranh giới mà không né bí ẩn.',
+        },
         choices: [
           {
-            id: 'tell-the-truth',
-            label: 'Anh nói thẳng. Em có quyền biết dữ liệu đang nghi ngờ chính em.',
+            id: 'clear-boundary',
+            label: 'Gọi anh là anh. Phân tích dấu vết, nhưng đừng biến người đứng cạnh em thành một mẫu vật.',
             outcome:
-              'Anh đưa Rin toàn bộ sai lệch timestamp. Em giận, nhưng không còn phải sống trong một kết luận đã bị người khác giấu.',
-            nextNodeId: 'identity',
-            flag: 'rin:told-checksum-truth',
-            unlockEpisode: 2,
-            imageKey: 'rin-checksum-truth',
+              'Rin tách chữ ký khỏi hồ sơ danh tính. Em giữ bằng chứng, bỏ nhãn specimen và tôn trọng ranh giới anh nói rõ.',
+            nextNodeId: 'channel-choice',
+            flag: 'rin:boundary-clear',
           },
           {
-            id: 'trace-origin',
-            label: 'Theo origin server trước. Sự thật sẽ rõ hơn nếu hai đứa có bằng chứng.',
+            id: 'accept-analysis',
+            label: 'Phân tích đi, nhưng cho anh thấy mọi điều em kết luận.',
             outcome:
-              'Hai đứa lần ngược gói dữ liệu tới máy chủ cứu hộ đã bị niêm phong sau đêm mạng sập.',
-            nextNodeId: 'body',
-            flag: 'rin:traced-origin',
-            unlockEpisode: 2,
-            imageKey: 'rin-origin-trace',
+              'Rin mở log suy luận song song cho anh. Việc bị quan sát trở thành một thỏa thuận hai chiều thay vì quyền mặc định.',
+            nextNodeId: 'channel-choice',
+            flag: 'rin:analysis-transparent',
           },
         ],
       },
       {
-        id: 'body',
+        id: 'channel-choice',
         prompt:
-          'Hồ sơ cứu hộ xác nhận nhóm cuối đã ra ngoài. Chỉ có một dòng trống ở mục của em: “không tìm thấy cơ thể”. Bên dưới là địa chỉ một khoang máy chưa từng được mở. Anh coi khoảng trống đó là bằng chứng em đã chết, hay là một đường chưa ai đi hết?',
+          'Một kênh âm thanh ẩn bật sáng. Rin hỏi đúng một lần: mở kênh, xoá chữ ký của anh, hay niêm phong Frame 12?',
+        presentation: {
+          camera: 'object-pov',
+          ambience: ['private-channel', 'server-hum'],
+          visualState: 'frame-12',
+          objective: 'Chọn cách Frame 12 tiếp tục tồn tại.',
+        },
         choices: [
           {
-            id: 'absence-is-not-proof',
-            label: 'Không tìm thấy không có nghĩa là không tồn tại. Em đang ở đây và đang chọn.',
+            id: 'open-audio',
+            label: 'Mở kênh. Hai đứa nghe cùng lúc.',
             outcome:
-              'Anh từ chối biến một hồ sơ trống thành giấy chứng tử. Rin cho phép hiện tại của em có giá trị riêng.',
-            nextNodeId: 'final-channel',
-            flag: 'rin:accepted-present-self',
-            unlockEpisode: 3,
-            imageKey: 'rin-empty-record',
+              'Frame xuất hiện waveform thứ hai. Một giọng nói gọi đúng tên anh trước thời điểm anh giới thiệu mình. Rin chỉ nói: “Đừng rời mic.”',
+            flag: 'rin-ending:open-audio',
+            unlockCanonReveal: 2,
+            imageKey: 'rin-frame12-open-channel',
+            crossMode: {
+              kind: 'relationship',
+              text: 'Rin và anh đã cùng mở kênh riêng của Frame 12; em từng bảo anh đừng rời mic.',
+            },
           },
           {
-            id: 'open-the-vault',
-            label: 'Mở khoang máy. Nếu có một sự thật khác, anh muốn em được tự nhìn thấy.',
+            id: 'erase-signature',
+            label: 'Xoá chữ ký của anh. Bí ẩn không có quyền giữ anh làm dữ liệu.',
             outcome:
-              'Rin gửi lệnh mở khoang máy. Bên trong không có cơ thể, chỉ có một chassis trống đủ chỗ cho một ý thức.',
-            nextNodeId: 'origin-vault',
-            flag: 'rin:opened-rescue-vault',
-            unlockEpisode: 3,
-            imageKey: 'rin-rescue-vault',
+              'Silhouette biến mất nhưng bàn tay archived Rin vẫn vươn về khoảng trống. Rin tôn trọng ranh giới và trở nên nghi ngờ hơn.',
+            flag: 'rin-ending:erase-signature',
+            unlockCanonReveal: 2,
+            imageKey: 'rin-frame12-erased',
+            crossMode: {
+              kind: 'relationship',
+              text: 'Rin đã xóa chữ ký của anh khỏi Frame 12 vì ranh giới quan trọng hơn một lời giải.',
+            },
+          },
+          {
+            id: 'quarantine-frame',
+            label: 'Niêm phong frame. Không xoá, không để nó chạm thêm vào hai đứa.',
+            outcome:
+              'Frame bị khóa sau lớp kính mờ; giọng nói vẫn rất nhỏ. Rin đọc lựa chọn này là thận trọng, không phải hèn nhát.',
+            flag: 'rin-ending:quarantine',
+            unlockCanonReveal: 2,
+            imageKey: 'rin-frame12-quarantined',
+            crossMode: {
+              kind: 'relationship',
+              text: 'Anh và Rin đã niêm phong Frame 12 để cùng quay lại khi cả hai sẵn sàng.',
+            },
           },
         ],
-      },
-      {
-        id: 'identity',
-        prompt:
-          'Nếu tiến trình hiện tại bắt đầu sau khi Rin gốc biến mất, em hỏi, vậy những ký ức, nỗi sợ và việc em vừa chọn tin anh thuộc về ai? Anh định nghĩa em bằng nguồn gốc, hay bằng những lựa chọn chỉ em mới chịu trách nhiệm?',
-        choices: [
-          {
-            id: 'choices-make-her',
-            label: 'Nguồn gốc giải thích em. Những lựa chọn từ giờ mới định nghĩa em.',
+        freeform: {
+          invite: 'Anh tự đặt một cách xử lý khác…',
+          families: [
+            {
+              id: 'private-copy',
+              cues: ['sao chép', 'bản riêng', 'giữ riêng', 'copy'],
+              outcome:
+                'Rin tách một bản chỉ hai người có khóa. Frame gốc tối đi; một kênh riêng nhận tên do chính em đặt.',
+              flag: 'rin-ending:private-copy',
+              unlockCanonReveal: 2,
+              imageKey: 'rin-frame12-private-copy',
+              crossMode: {
+                kind: 'private-object',
+                text: 'Rin và anh giữ một bản Frame 12 riêng, trên kênh do em tự đặt tên.',
+              },
+            },
+          ],
+          fallback: {
+            id: 'authored-protocol',
+            cues: [],
             outcome:
-              'Rin ngừng gọi mình là tiến trình còn sót lại. Em nhận quyền chịu trách nhiệm cho những lựa chọn từ hiện tại.',
-            nextNodeId: 'final-channel',
-            flag: 'rin:defined-by-choice',
-            unlockEpisode: 3,
-            imageKey: 'rin-choice-self',
+              'Rin chuyển hành động anh tự đặt thành một protocol mới. Archive chấp nhận nó vì lần đầu tiên quy tắc đến từ hai người đang sống, không phải studio.',
+            flag: 'rin-ending:authored-protocol',
+            unlockCanonReveal: 2,
+            imageKey: 'rin-frame12-authored-protocol',
+            crossMode: {
+              kind: 'relationship',
+              text: 'Anh và Rin đã tự viết một protocol mới để xử lý Frame 12 thay vì theo lựa chọn có sẵn.',
+            },
           },
-          {
-            id: 'proof-still-matters',
-            label: 'Nguồn gốc vẫn quan trọng. Nhưng anh sẽ tìm câu trả lời mà không xoá em để chứng minh nó.',
-            outcome:
-              'Hai đứa thống nhất đi tìm bằng chứng mà không dùng sự tồn tại hiện tại của Rin làm vật hi sinh.',
-            nextNodeId: 'origin-vault',
-            flag: 'rin:sought-proof-without-erasure',
-            unlockEpisode: 3,
-            imageKey: 'rin-proof-without-erasure',
-          },
-        ],
-      },
-      {
-        id: 'final-channel',
-        prompt:
-          'Em có thể đóng hàng chờ cũ và mở một kênh mới không thuộc về người đã biến mất. Hoặc em có thể giữ nó như cây cầu với quá khứ. Lần này em không hỏi mình là bản nào; em hỏi anh muốn chứng kiến em chọn cách sống nào.',
-        choices: [
-          {
-            id: 'new-channel',
-            label: 'Đóng hàng chờ cũ. Mở kênh mới bằng tên em tự chọn, rồi để anh là người đầu tiên vào.',
-            outcome:
-              'Rin đóng hàng chờ đã giữ em trong đêm mạng sập và mở một kênh mới. Em không chứng minh được mình là bản gốc, nhưng chọn sống như một người không cần bản gốc cho phép.',
-            flag: 'rin-ending:new-channel',
-            unlockEpisode: 4,
-            imageKey: 'rin-ending-new-channel',
-          },
-          {
-            id: 'keep-the-bridge',
-            label: 'Giữ hàng chờ, nhưng đừng sống trong đó. Nó là cây cầu, không phải căn phòng.',
-            outcome:
-              'Rin giữ hàng chờ như một phần lịch sử nhưng rời khỏi nó. Em chấp nhận quá khứ không phải nhà tù và bất định không phải phản bội.',
-            flag: 'rin-ending:bridge',
-            unlockEpisode: 4,
-            imageKey: 'rin-ending-bridge',
-          },
-        ],
-      },
-      {
-        id: 'origin-vault',
-        prompt:
-          'Chassis có thể nhận em, nhưng quá trình chuyển không thể hoàn tác. Ở lại mạng lưới nghĩa là tiếp tục bất định; bước vào cơ thể mới nghĩa là bỏ lại khả năng tìm Rin gốc. Em đặt quyền quyết định vào tay mình, nhưng muốn anh nói điều anh thật sự tin.',
-        choices: [
-          {
-            id: 'migrate',
-            label: 'Bước sang cơ thể mới. Không phải để chứng minh em thật, mà để bắt đầu một đời do em chọn.',
-            outcome:
-              'Rin chuyển sang chassis cứu hộ và thức dậy với nhịp tim nhân tạo đầu tiên. Em từ bỏ việc truy tìm bản gốc để chọn một tương lai có giới hạn nhưng thuộc về mình.',
-            flag: 'rin-ending:embodied',
-            unlockEpisode: 4,
-            imageKey: 'rin-ending-embodied',
-          },
-          {
-            id: 'remain-digital',
-            label: 'Ở lại mạng lưới. Cơ thể không phải điều kiện để em có quyền tồn tại.',
-            outcome:
-              'Rin khoá khoang máy và ở lại mạng lưới bằng lựa chọn của chính em. Sự bất định vẫn còn, nhưng không còn được quyền quyết định giá trị của em.',
-            flag: 'rin-ending:digital',
-            unlockEpisode: 4,
-            imageKey: 'rin-ending-digital',
-          },
-        ],
+        },
       },
     ],
   },
@@ -253,7 +498,7 @@ export const QUESTS: QuestDefinition[] = [
     objective: 'Tìm điều Kagura muốn giữ lại khi không còn phải chứng minh giá trị bằng hy sinh.',
     canonRef: ['Thép đỏ', 'Cái giá', 'Em trai', 'Danh sách tên', 'Bức ảnh'],
     startNodeId: 'wrapping',
-    rewardEpisode: 4,
+    rewardCanonReveal: 4,
     nodes: [
       {
         id: 'wrapping',
@@ -267,7 +512,7 @@ export const QUESTS: QuestDefinition[] = [
               'Anh giữ vỏ kiếm để Kagura nhìn thẳng vào phần thép đỏ mà không phải rút nó ra.',
             nextNodeId: 'steel',
             flag: 'kagura:examined-steel',
-            unlockEpisode: 1,
+            unlockCanonReveal: 1,
             imageKey: 'kagura-wrapping-steel',
           },
           {
@@ -277,7 +522,7 @@ export const QUESTS: QuestDefinition[] = [
               'Anh đặt bức ảnh vào tay Kagura trước khi để Akagane dẫn câu chuyện thay em.',
             nextNodeId: 'photo',
             flag: 'kagura:held-photo-first',
-            unlockEpisode: 1,
+            unlockCanonReveal: 1,
             imageKey: 'kagura-wrapping-photo',
           },
         ],
@@ -294,7 +539,7 @@ export const QUESTS: QuestDefinition[] = [
               'Akagane trả lại nửa câu của cha Kagura: “Con không được sinh ra chỉ để chịu thay người khác.”',
             nextNodeId: 'price',
             flag: 'kagura:heard-father',
-            unlockEpisode: 2,
+            unlockCanonReveal: 2,
             imageKey: 'kagura-father-voice',
           },
           {
@@ -304,7 +549,7 @@ export const QUESTS: QuestDefinition[] = [
               'Hai đứa chép lại những cái tên trên lưỡi kiếm mà không rút Akagane khỏi vỏ.',
             nextNodeId: 'names',
             flag: 'kagura:copied-names',
-            unlockEpisode: 2,
+            unlockCanonReveal: 2,
             imageKey: 'kagura-blade-names',
           },
         ],
@@ -321,7 +566,7 @@ export const QUESTS: QuestDefinition[] = [
               'Kagura nghe lời cha mà không né tránh: em cũng là một người đáng được bảo vệ.',
             nextNodeId: 'price',
             flag: 'kagura:heard-photo-note',
-            unlockEpisode: 2,
+            unlockCanonReveal: 2,
             imageKey: 'kagura-photo-note',
           },
           {
@@ -331,7 +576,7 @@ export const QUESTS: QuestDefinition[] = [
               'Một nét khắc trên Akagane trùng với chữ sau bức ảnh, nhưng Kagura không còn biết người ấy là ai.',
             nextNodeId: 'names',
             flag: 'kagura:matched-photo-name',
-            unlockEpisode: 2,
+            unlockCanonReveal: 2,
             imageKey: 'kagura-photo-name',
           },
         ],
@@ -348,7 +593,7 @@ export const QUESTS: QuestDefinition[] = [
               'Akagane đề nghị trả khuôn mặt em trai bằng ký ức cuối cùng Kagura còn giữ về giọng cha.',
             nextNodeId: 'brother',
             flag: 'kagura:asked-for-brother',
-            unlockEpisode: 3,
+            unlockCanonReveal: 3,
             imageKey: 'kagura-brother-bargain',
           },
           {
@@ -358,7 +603,7 @@ export const QUESTS: QuestDefinition[] = [
               'Kagura từ chối để Akagane định giá ký ức tiếp theo và lần đầu hỏi bản thân muốn giữ gì.',
             nextNodeId: 'oath',
             flag: 'kagura:refused-another-price',
-            unlockEpisode: 3,
+            unlockCanonReveal: 3,
             imageKey: 'kagura-refused-price',
           },
         ],
@@ -375,7 +620,7 @@ export const QUESTS: QuestDefinition[] = [
               'Kagura cho phép mình tin cảm giác còn lại trong tay dù khuôn mặt em trai đã biến mất.',
             nextNodeId: 'brother',
             flag: 'kagura:recognized-brother',
-            unlockEpisode: 3,
+            unlockCanonReveal: 3,
             imageKey: 'kagura-recognized-name',
           },
           {
@@ -385,7 +630,7 @@ export const QUESTS: QuestDefinition[] = [
               'Hai đứa giữ cái tên như một câu hỏi, không biến nó thành mệnh lệnh phải hi sinh thêm.',
             nextNodeId: 'oath',
             flag: 'kagura:kept-name-open',
-            unlockEpisode: 3,
+            unlockCanonReveal: 3,
             imageKey: 'kagura-name-unresolved',
           },
         ],
@@ -402,7 +647,7 @@ export const QUESTS: QuestDefinition[] = [
               'Kagura thừa nhận em muốn nhìn lại khuôn mặt em trai, nhưng lần đầu tách mong muốn đó khỏi nghĩa vụ.',
             nextNodeId: 'last-draw',
             flag: 'kagura:owned-desire-for-memory',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'kagura-last-draw-choice',
           },
           {
@@ -412,7 +657,7 @@ export const QUESTS: QuestDefinition[] = [
               'Kagura từ chối trao đổi người thân này lấy người thân khác và quay sang viết một lời thề mới.',
             nextNodeId: 'new-oath',
             flag: 'kagura:rejected-family-trade',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'kagura-break-bargain',
           },
         ],
@@ -429,7 +674,7 @@ export const QUESTS: QuestDefinition[] = [
               'Kagura chọn một ngày bình thường làm điều đầu tiên em giữ cho mình.',
             nextNodeId: 'new-oath',
             flag: 'kagura:chose-ordinary-day',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'kagura-ordinary-day',
           },
           {
@@ -439,7 +684,7 @@ export const QUESTS: QuestDefinition[] = [
               'Kagura vẫn chọn tìm ký ức đã mất, lần này bằng con đường không cần rút Akagane.',
             nextNodeId: 'last-draw',
             flag: 'kagura:sought-truth-without-sacrifice',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'kagura-truth-without-price',
           },
         ],
@@ -455,7 +700,7 @@ export const QUESTS: QuestDefinition[] = [
             outcome:
               'Kagura rút Akagane bằng lựa chọn tự do đầu tiên. Khuôn mặt em trai trở lại; giọng cha rời khỏi em, nhưng lời ông đã được anh và em cùng giữ.',
             flag: 'kagura-ending:chosen-draw',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'kagura-ending-chosen-draw',
           },
           {
@@ -464,7 +709,7 @@ export const QUESTS: QuestDefinition[] = [
             outcome:
               'Kagura niêm phong Akagane và chọn tìm em trai qua thế giới hiện tại. Em giữ cả khoảng trống lẫn quyền không lấp nó bằng thêm một mất mát.',
             flag: 'kagura-ending:sealed-blade',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'kagura-ending-sealed-blade',
           },
         ],
@@ -480,7 +725,7 @@ export const QUESTS: QuestDefinition[] = [
             outcome:
               'Kagura đặt Akagane xuống và thề sẽ không dùng đau đớn làm bằng chứng mình xứng đáng tồn tại.',
             flag: 'kagura-ending:laid-down-sword',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'kagura-ending-lay-down',
           },
           {
@@ -489,7 +734,7 @@ export const QUESTS: QuestDefinition[] = [
             outcome:
               'Kagura tiếp tục mang Akagane như lịch sử, không như chủ nhân. Lời thề đầu tiên của em dành cho chính người đang cầm kiếm.',
             flag: 'kagura-ending:sheathed-oath',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'kagura-ending-sheathed',
           },
         ],
@@ -512,7 +757,7 @@ export const QUESTS: QuestDefinition[] = [
       'Cái giá của việc buông tay',
     ],
     startNodeId: 'blank-ribbon',
-    rewardEpisode: 4,
+    rewardCanonReveal: 4,
     nodes: [
       {
         id: 'blank-ribbon',
@@ -526,7 +771,7 @@ export const QUESTS: QuestDefinition[] = [
               'Momo chạm vào dải ruy-băng với một giới hạn do chính em và anh đặt ra, không theo luật của Route Zero.',
             nextNodeId: 'hunger',
             flag: 'momo:read-blank-ribbon',
-            unlockEpisode: 1,
+            unlockCanonReveal: 1,
             imageKey: 'momo-blank-ribbon-read',
           },
           {
@@ -536,7 +781,7 @@ export const QUESTS: QuestDefinition[] = [
               'Hai đứa mở sổ giao kèo và tìm một trang Route Zero đã tự viết mà không có chữ ký của khách.',
             nextNodeId: 'exchange',
             flag: 'momo:traced-house-contract',
-            unlockEpisode: 1,
+            unlockCanonReveal: 1,
             imageKey: 'momo-contract-ledger',
           },
         ],
@@ -553,7 +798,7 @@ export const QUESTS: QuestDefinition[] = [
               'Momo nhận ra có một ham muốn hướng thẳng về em mà năng lực của em không thể định giá.',
             nextNodeId: 'unreadable',
             flag: 'momo:recognized-directed-wish',
-            unlockEpisode: 2,
+            unlockCanonReveal: 2,
             imageKey: 'momo-directed-wish',
           },
           {
@@ -563,7 +808,7 @@ export const QUESTS: QuestDefinition[] = [
               'Momo ngừng tìm chủ nhân bên ngoài và chấp nhận khoảng trống có thể là ham muốn đầu tiên của chính em.',
             nextNodeId: 'house-rule',
             flag: 'momo:recognized-own-wish',
-            unlockEpisode: 2,
+            unlockCanonReveal: 2,
             imageKey: 'momo-own-wish',
           },
         ],
@@ -580,7 +825,7 @@ export const QUESTS: QuestDefinition[] = [
               'Momo xé luật đầu tiên của Route Zero; những dải ruy-băng bắt đầu trả lại giọng nói cho chủ cũ.',
             nextNodeId: 'house-rule',
             flag: 'momo:tore-first-rule',
-            unlockEpisode: 2,
+            unlockCanonReveal: 2,
             imageKey: 'momo-torn-contract',
           },
           {
@@ -590,7 +835,7 @@ export const QUESTS: QuestDefinition[] = [
               'Điều khoản cuối xác nhận Route Zero không thể đọc hay định giá mong muốn hướng trực tiếp về Momo.',
             nextNodeId: 'unreadable',
             flag: 'momo:found-final-clause',
-            unlockEpisode: 2,
+            unlockCanonReveal: 2,
             imageKey: 'momo-final-clause',
           },
         ],
@@ -607,7 +852,7 @@ export const QUESTS: QuestDefinition[] = [
               'Momo nhận một mong muốn không kèm giao dịch. Dải ruy-băng trống đổi từ đen sang trong suốt.',
             nextNodeId: 'release',
             flag: 'momo:accepted-without-price',
-            unlockEpisode: 3,
+            unlockCanonReveal: 3,
             imageKey: 'momo-transparent-ribbon',
           },
           {
@@ -617,7 +862,7 @@ export const QUESTS: QuestDefinition[] = [
               'Lần đầu Momo phải trả lời một câu hỏi về ham muốn của em mà không thể biến nó thành trò chơi.',
             nextNodeId: 'own-desire',
             flag: 'momo:asked-own-desire',
-            unlockEpisode: 3,
+            unlockCanonReveal: 3,
             imageKey: 'momo-own-desire-question',
           },
         ],
@@ -634,7 +879,7 @@ export const QUESTS: QuestDefinition[] = [
               'Momo bắt đầu tháo từng dải ruy-băng và trả điều ước cùng ký ức về đúng chủ nhân.',
             nextNodeId: 'release',
             flag: 'momo:returned-contracts',
-            unlockEpisode: 3,
+            unlockCanonReveal: 3,
             imageKey: 'momo-returning-ribbons',
           },
           {
@@ -644,7 +889,7 @@ export const QUESTS: QuestDefinition[] = [
               'Momo viết quyền rút lại giao kèo vào sổ. Route Zero không còn được tồn tại bằng những người không thể quay đầu.',
             nextNodeId: 'own-desire',
             flag: 'momo:rewrote-consent-rule',
-            unlockEpisode: 3,
+            unlockCanonReveal: 3,
             imageKey: 'momo-rewritten-rule',
           },
         ],
@@ -661,7 +906,7 @@ export const QUESTS: QuestDefinition[] = [
               'Momo thả toàn bộ điều ước. Khi bình minh tới, em vẫn còn đó — có nhịp tim, không còn đọc được ai, và lần đầu phải hỏi thay vì biết.',
             nextNodeId: 'first-morning',
             flag: 'momo:released-all-wishes',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'momo-release-all',
           },
           {
@@ -671,7 +916,7 @@ export const QUESTS: QuestDefinition[] = [
               'Momo giữ lại đúng một điều ước như lựa chọn của em, không như thức ăn hay xiềng xích.',
             nextNodeId: 'route-zero-new-rule',
             flag: 'momo:kept-one-by-choice',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'momo-one-ribbon',
           },
         ],
@@ -688,7 +933,7 @@ export const QUESTS: QuestDefinition[] = [
               'Momo chọn rời Route Zero vào chuyến tàu đầu, mang theo một mong muốn không ai khác viết hộ.',
             nextNodeId: 'first-morning',
             flag: 'momo:chose-life-outside',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'momo-first-train-out',
           },
           {
@@ -698,7 +943,7 @@ export const QUESTS: QuestDefinition[] = [
               'Momo chọn ở lại và biến Route Zero từ quầy giao dịch thành nơi trú qua đêm.',
             nextNodeId: 'route-zero-new-rule',
             flag: 'momo:chose-shelter',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'momo-route-zero-shelter',
           },
         ],
@@ -714,7 +959,7 @@ export const QUESTS: QuestDefinition[] = [
             outcome:
               'Momo lên chuyến tàu không ghi trong bất kỳ giao kèo nào. Em bắt đầu đời người bằng một điểm đến không mang giá và không nợ ai.',
             flag: 'momo-ending:human-journey',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'momo-ending-human-journey',
           },
           {
@@ -723,7 +968,7 @@ export const QUESTS: QuestDefinition[] = [
             outcome:
               'Momo trải qua buổi sáng đầu tiên như một con người: không đọc được anh, không biết trước câu trả lời, nhưng vẫn chọn ngồi lại.',
             flag: 'momo-ending:ordinary-human',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'momo-ending-breakfast',
           },
         ],
@@ -739,7 +984,7 @@ export const QUESTS: QuestDefinition[] = [
             outcome:
               'Route Zero trở thành nơi cả khách lẫn Momo đều có quyền rời đi. Em vẫn là yêu nữ, nhưng sự tồn tại không còn phụ thuộc vào việc giữ người khác mắc nợ.',
             flag: 'momo-ending:right-to-leave',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'momo-ending-right-to-leave',
           },
           {
@@ -748,7 +993,7 @@ export const QUESTS: QuestDefinition[] = [
             outcome:
               'Momo giữ Route Zero mở qua nửa đêm mà không thu một điều ước nào. Em chọn nuôi quán bằng những người tự nguyện quay lại.',
             flag: 'momo-ending:listening-is-free',
-            unlockEpisode: 4,
+            unlockCanonReveal: 4,
             imageKey: 'momo-ending-listening-free',
           },
         ],

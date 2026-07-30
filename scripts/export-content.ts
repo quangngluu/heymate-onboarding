@@ -1,6 +1,6 @@
 // Dump every authored word about the residents into one reviewable document.
 //
-// The canon is spread across residents.ts (identity, card, profile, episodes,
+// The canon is spread across residents.ts (identity, card, profile, canonReveals,
 // curiosity, conversation fingerprint) and quests.ts (scenes and their
 // options). Reading it in the source means reading it in fragments, which is
 // how content ends up shallower than anyone intended. This writes the whole
@@ -220,7 +220,7 @@ for (const r of RESIDENTS) {
   p();
   p('### Ký ức (mở dần theo nhiệm vụ)');
   p();
-  r.episodes.forEach((e, i) => {
+  r.canonReveals.forEach((e, i) => {
     p(`**${i + 1}. ${e.title}**`);
     p();
     p(`- *Kể trên thẻ:* ${e.body}`);
@@ -230,7 +230,7 @@ for (const r of RESIDENTS) {
   p('### Nhiệm vụ');
   p();
   for (const q of QUESTS.filter((x) => x.residentId === r.id)) {
-    p(`**${q.title}** — mở tới ký ức "${r.episodes[q.rewardEpisode]?.title ?? '(không rõ)'}"`);
+    p(`**${q.title}** — mở tới ký ức "${r.canonReveals[q.rewardCanonReveal]?.title ?? '(không rõ)'}"`);
     p();
     p(`- *Tóm tắt:* ${q.synopsis}`);
     p(`- *Mục tiêu hiện trên UI:* ${q.objective}`);
@@ -243,8 +243,8 @@ for (const r of RESIDENTS) {
         p(`  - *Anh chọn:* ${c.label}`);
         p(`    - *Kết quả:* ${c.outcome}`);
         if (c.nextNodeId) p(`    - *Đi tiếp tới:* \`${c.nextNodeId}\``);
-        if (c.unlockEpisode !== undefined) {
-          p(`    - *Mở ký ức:* ${r.episodes[c.unlockEpisode]?.title ?? c.unlockEpisode}`);
+        if (c.unlockCanonReveal !== undefined) {
+          p(`    - *Mở ký ức:* ${r.canonReveals[c.unlockCanonReveal]?.title ?? c.unlockCanonReveal}`);
         }
       }
       p();

@@ -557,6 +557,18 @@ html, body {
   border-bottom: 1px solid var(--line);
 }
 .quest-strip[hidden] { display: none; }
+.quest-mode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.quest-episode-label {
+  color: var(--ivory-dim);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
 .quest-line {
   font-size: 12px;
   letter-spacing: 0.08em;
@@ -564,6 +576,25 @@ html, body {
   color: var(--accent);
 }
 .quest-options { display: flex; flex-wrap: wrap; gap: 7px; }
+.quest-options[hidden] { display: none; }
+.quest-freeform {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+}
+.quest-freeform[hidden] { display: none; }
+.quest-action-input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: 10px;
+  background: rgba(6, 10, 16, 0.5);
+  color: var(--ivory);
+  font: 13px/1.4 var(--font);
+  padding: 10px 12px;
+}
+.quest-action-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .quest-option {
   flex: 1 1 auto;
   text-align: left;
@@ -584,6 +615,33 @@ html, body {
 }
 .quest-option:focus-visible { outline: 2px solid var(--ivory); outline-offset: 2px; }
 .stage-dock.is-quest { border-color: color-mix(in srgb, var(--accent) 40%, rgba(239, 230, 212, 0.2)); }
+
+/* Quest is a mode change, not a card competing with Open Chat. */
+.step-stage.is-quest-mode .roster,
+.step-stage.is-quest-mode .stage-info,
+.step-stage.is-quest-mode .stage-top {
+  display: none;
+  pointer-events: none;
+}
+.step-stage.is-quest-mode .stage-dock {
+  width: min(760px, calc(100vw - 32px));
+  background:
+    linear-gradient(180deg, rgba(10, 18, 27, 0.72), rgba(7, 10, 16, 0.9));
+}
+.step-stage.is-quest-mode .dock-top,
+.step-stage.is-quest-mode .dock-bar,
+.step-stage.is-quest-mode .dock-hint {
+  display: none;
+}
+.step-stage.is-quest-mode .quest-strip {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.step-stage.is-quest-mode .stage-rail {
+  right: 50%;
+  transform: translateX(50%);
+  width: min(600px, calc(100vw - 32px));
+}
 
 .dock-top {
   display: flex;
@@ -1423,6 +1481,7 @@ html, body {
   .name-input,
   .persona-input,
   .describe-input,
+  .quest-action-input,
   select { font-size: 16px; }
 
   /* Touch targets. Everything a finger has to hit clears 44px, which several
@@ -1759,6 +1818,42 @@ html, body {
   }
   .stage-dock .quest-strip { gap: 6px; padding-bottom: 8px; }
   .stage-dock .quest-option { font-size: 12px; padding: 8px 11px; }
+  .step-stage.is-quest-mode .stage-dock {
+    width: calc(100vw - 20px);
+    max-height: min(46vh, 430px);
+    max-height: min(46dvh, 430px);
+    overflow-y: auto;
+    border-radius: 16px;
+  }
+  .step-stage.is-quest-mode .quest-strip { padding: 2px; }
+  .step-stage.is-quest-mode .quest-options { display: grid; grid-template-columns: 1fr; }
+  .step-stage.is-quest-mode .quest-options[hidden] { display: none; }
+  .step-stage.is-quest-mode .quest-option {
+    min-height: 42px;
+    border-radius: 9px;
+  }
+  .step-stage.is-quest-mode .stage-rail {
+    display: block;
+    left: 10px;
+    right: 10px;
+    top: calc(72px + var(--safe-t));
+    bottom: calc(var(--dock-b) + var(--dock-h, 180px) + 8px);
+    width: auto;
+    transform: none;
+  }
+  .step-stage.is-quest-mode .speech-log {
+    left: 0;
+    right: auto;
+    width: min(72vw, 286px);
+    max-width: none;
+    bottom: 0;
+    max-height: min(34dvh, 300px);
+  }
+  .quest-mode-head .row { gap: 4px; }
+  .quest-mode-head .btn { min-height: 38px; padding: 0 10px; }
+  .quest-episode-label { max-width: 48%; line-height: 1.35; }
+  .quest-freeform { align-items: stretch; }
+  .quest-freeform .btn { min-height: 44px; }
   .credit-error-scrim {
     place-items: end center;
     padding: 10px;

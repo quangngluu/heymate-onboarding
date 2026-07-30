@@ -396,8 +396,8 @@ function memorySection(
 ): string {
   const m = darkMechanics(variant);
   const hook = DARK_HOOKS[r.id as ResidentId];
-  const unlocked = r.episodes.slice(0, revealed);
-  const locked = r.episodes.slice(revealed);
+  const unlocked = r.canonReveals.slice(0, revealed);
+  const locked = r.canonReveals.slice(revealed);
   const lines = ['KÝ ỨC VÀ VÒNG CHƯA ĐÓNG'];
 
   if (!m.openLoop) {
@@ -609,8 +609,8 @@ function betweenSection(
     idle
       ? '\nLƯỢT NÀY\nAnh đang im lặng. Em hãy tự mở lời bằng một câu ngắn, chủ động và khiến anh muốn trả lời. Không hỏi anh còn ở đó không, không xin lỗi vì đã nói.'
       : '',
-    revealNow !== undefined && r.episodes[revealNow]
-      ? `\nLƯỢT NÀY\nĐưa điều này vào phản hồi bằng lời của em, như thể nó vừa tự nhiên xuất hiện: "${r.episodes[revealNow].spoken}"`
+    revealNow !== undefined && r.canonReveals[revealNow]
+      ? `\nLƯỢT NÀY\nĐưa điều này vào phản hồi bằng lời của em, như thể nó vừa tự nhiên xuất hiện: "${r.canonReveals[revealNow].spoken}"`
       : '',
     // Dead last, because the last instruction is the one that actually gets
     // followed. Absolute values, not deltas — the first version of this said

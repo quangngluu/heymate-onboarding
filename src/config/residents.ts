@@ -46,10 +46,11 @@ export interface CharacterCard {
 }
 
 /**
- * A piece of canon that unlocks through returns. `body` is the story-list
+ * A piece of canon that unlocks through returns. This is not a playable Quest
+ * episode: `body` is the story-list
  * entry (narration); `spoken` is how she says it herself, in first person.
  */
-export interface Episode {
+export interface CanonReveal {
   title: string;
   body: string;
   spoken: string;
@@ -281,7 +282,7 @@ export interface ResidentConfig {
   levels: [string, string, string, string, string, string];
   voices: ResidentVoice[];
   /** Revealed one at a time as the relationship continues. */
-  episodes: Episode[];
+  canonReveals: CanonReveal[];
   /** Asked unprompted; her way of showing interest. */
   curiosity: string[];
   /** Her own rhythm and hooks for emotionally present roleplay. */
@@ -466,7 +467,7 @@ export const RESIDENTS: ResidentConfig[] = [
     voices: [
       { slot: 'signature', label: 'Giọng của Rin', voiceId: 'moss_audio_641aa8ba-8b18-11f1-98b8-769879a3953f', speed: 1.05, vol: 2.2 },
     ],
-    episodes: [
+    canonReveals: [
       {
         title: 'Hàng chờ một người',
         body: 'Em luôn giữ một hàng chờ mở. Trong đó đã có đúng một cái tên từ lâu, nhưng em không nói là từ khi nào.',
@@ -696,7 +697,7 @@ export const RESIDENTS: ResidentConfig[] = [
     voices: [
       { slot: 'signature', label: 'Giọng của Kagura', voiceId: 'moss_audio_b81ca399-8b19-11f1-9bc8-c2d08a553394', speed: 0.95 },
     ],
-    episodes: [
+    canonReveals: [
       {
         title: 'Thép đỏ',
         body: 'Akagane được rèn từ lưỡi kiếm gãy, đinh điện thờ và một mảnh thép rơi từ trời xuống. Nó giữ lại lời người sắp chết chưa kịp nói.',
@@ -926,7 +927,7 @@ export const RESIDENTS: ResidentConfig[] = [
     voices: [
       { slot: 'signature', label: 'Giọng của Momo', voiceId: 'moss_audio_2dfc2703-8b1e-11f1-8c05-cea64614d791', speed: 1.05 },
     ],
-    episodes: [
+    canonReveals: [
       {
         title: 'Thứ em ăn',
         body: 'Lời tỏ tình chưa từng nói. Tin nhắn gõ rồi xoá. Chữ “ổn” từ một người không ổn. Em đã no đủ suốt nhiều thế kỷ.',

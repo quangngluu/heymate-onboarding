@@ -25,12 +25,16 @@ import { cancelSpeech, renderSpeech, resetSpeechEmotion, streamSpeech } from './
 import { spoken } from './chat/dialogue';
 import { residentById, type ResidentId } from './config/residents';
 import { drawScene } from './chat/scene';
-import { questNode } from './config/quests';
+import {
+  questNode,
+  type QuestDefinition,
+  type QuestPresentation,
+} from './config/quests';
 import { Ambience } from './audio/ambience';
 import { COST, store, type ChatTurn, type SessionSetup, type Step } from './state/store';
 import { mountUI } from './ui/overlay';
 import type { UIActions } from './ui/actions';
-import { CAMERA_PRESETS, stagePreset } from './config/cameras';
+import { CAMERA_PRESETS, QUEST_CAMERA_PRESETS, stagePreset } from './config/cameras';
 import { COPY } from './config/copy';
 import { factionById } from './config/factions';
 import { CHARACTERS, characterById, characterIndex } from './config/characters';
@@ -66,8 +70,18 @@ const MAX_WORD_MS = 220;
  */
 const MAX_UNANSWERED = 5;
 
-function storyContext(residentId: ResidentId): { flags: string[]; outcomes: string[] } {
+function storyContext(
+  residentId: ResidentId,
+  mode: 'open-chat' | 'quest'
+): { flags: string[]; outcomes: string[] } {
   const state = store.get();
+  if (mode === 'open-chat') {
+    const approved = store.approvedForChat(residentId);
+    return {
+      flags: approved.map((memory) => `${memory.kind}:${memory.id}`),
+      outcomes: approved.map((memory) => memory.text),
+    };
+  }
   const questTitles = new Map(store.questsFor(residentId).map((quest) => [quest.id, quest.title]));
   return {
     flags: state.storyFlags[residentId] ?? [],
@@ -108,6 +122,9 @@ class App implements UIActions {
   private speechToken = 0;
   /** She breaks a silence at most twice per encounter. */
   private idleSpoken = 0;
+  private questTimers: number[] = [];
+  private questSequenceToken = 0;
+  private thresholdInterruptible = false;
 
   private photoSeed = 0;
   private genTimer = 0;
@@ -187,7 +204,8 @@ class App implements UIActions {
     store.subscribe((s, prev) => {
       if (s.characterId !== prev.characterId || s.step !== prev.step) this.updateLiftTargets();
       this.picker.enabled =
-        !s.transitioning && (s.step === 'studio' || s.step === 'stage');
+        !s.transitioning &&
+        (s.step === 'studio' || (s.step === 'stage' && !s.activeQuestId));
     });
 
     mountUI(document.getElementById('ui')!, store, this);
@@ -568,6 +586,9 @@ class App implements UIActions {
    */
   private armIdleNudge(): void {
     window.clearTimeout(this.idleTimer);
+    // Quest scenes own their authored silences. Open Chat's 30-second nudge
+    // must not speak over a clue, choice or interruption window.
+    if (store.get().activeQuestId) return;
     if (store.unansweredLines >= MAX_UNANSWERED) return;
     this.idleTimer = window.setTimeout(() => this.speakIntoSilence(), 30000);
   }
@@ -578,7 +599,7 @@ class App implements UIActions {
 
   private speakIntoSilence(): void {
     const s = store.get();
-    if (s.step !== 'stage' || store.unansweredLines >= MAX_UNANSWERED) return;
+    if (s.step !== 'stage' || s.activeQuestId || store.unansweredLines >= MAX_UNANSWERED) return;
     if (s.thinking || s.voicing || s.speaking || s.reveal) {
       this.armIdleNudge();
       return;
@@ -599,7 +620,7 @@ class App implements UIActions {
     void getReply(idleLine(r, spokenIndex), ctx, s.chat, {
       idle: true,
       level: store.level,
-      story: storyContext(s.residentId),
+      story: storyContext(s.residentId, 'open-chat'),
       bond: s.bond,
       rapport: s.rapport,
     }).then(async (result) => {
@@ -878,8 +899,10 @@ class App implements UIActions {
     if (s.thinking) return;
     if (!store.spend('turn')) return;
     const r = residentById(s.residentId);
+    const mode = s.activeQuestId ? 'quest' : 'open-chat';
     this.cancelIdleNudge();
-    store.pushTurn({ from: 'user', text });
+    if (mode === 'quest') store.pushQuestTurn({ from: 'user', text });
+    else store.pushTurn({ from: 'user', text });
     store.completeOnboarding('first-message');
     store.set({ thinking: true });
 
@@ -888,20 +911,28 @@ class App implements UIActions {
       resident: r,
       session: after.session,
       revealed: after.revealed,
-      memories: store.progressFor(s.residentId).memories,
+      memories:
+        mode === 'quest'
+          ? store.approvedForQuest(s.residentId).map((memory) => memory.text)
+          : store.progressFor(s.residentId).memories,
       turn: after.turns,
     };
     // History excludes the turn we just pushed; the message is sent separately.
-    const history = after.chat.slice(0, -1);
+    const history = (mode === 'quest' ? after.questChat : after.chat).slice(0, -1);
     const openQuest = s.activeQuestId ? store.questById2(s.activeQuestId) : undefined;
     const openNode = openQuest
       ? questNode(openQuest, s.activeQuestNodeId ?? openQuest.startNodeId)
       : undefined;
 
     void getReply(text, ctx, history, {
+      mode,
       level: store.level,
       quest: openQuest && openNode && { prompt: openNode.prompt, objective: openQuest.objective },
-      story: storyContext(s.residentId),
+      story: storyContext(s.residentId, mode),
+      approvedCrossMode:
+        mode === 'quest'
+          ? store.approvedForQuest(s.residentId).map((memory) => memory.text)
+          : store.approvedForChat(s.residentId).map((memory) => memory.text),
       bond: s.bond,
       rapport: s.rapport,
     }).then(async (result) => {
@@ -913,16 +944,18 @@ class App implements UIActions {
       // rendered alongside and joins in when it is ready.
       store.set({ thinking: false, voicing: true });
       const prepared = this.speakReply(result.text, s.residentId);
-      store.pushTurn({ from: 'resident', text: result.text });
+      if (mode === 'quest') store.pushQuestTurn({ from: 'resident', text: result.text });
+      else store.pushTurn({ from: 'resident', text: result.text });
       if (result.revealedRung !== undefined) {
         store.set({ revealed: result.revealedRung + 1 });
       }
-      this.streamIn(store.get().chat.length - 1, result.text, prepared);
+      const visibleChat = mode === 'quest' ? store.get().questChat : store.get().chat;
+      this.streamIn(visibleChat.length - 1, result.text, prepared);
       // The free encounter ends by offering to keep what was said, not by
       // blocking the conversation mid-sentence.
       // Offer to keep the chapter once there is one worth keeping, rather
       // than at a turn count.
-      if (store.get().turns === 5) {
+      if (mode === 'open-chat' && store.get().turns === 5) {
         window.setTimeout(() => store.set({ saveGateOpen: true }), 1200);
       }
     });
@@ -988,21 +1021,192 @@ class App implements UIActions {
     });
   }
 
+  private clearQuestSequence(): void {
+    this.questSequenceToken++;
+    this.thresholdInterruptible = false;
+    for (const timer of this.questTimers) window.clearTimeout(timer);
+    this.questTimers = [];
+  }
+
+  private applyQuestPresentation(presentation?: QuestPresentation): void {
+    if (!presentation) return;
+    this.controls.enabled = false;
+    this.residentStage?.setQuestVisual(
+      presentation.visualState,
+      presentation.mutation
+    );
+    void this.rig.flyTo(
+      QUEST_CAMERA_PRESETS[presentation.camera],
+      this.engine.reducedMotion ? 0 : 1
+    );
+  }
+
+  private enterQuestPresentation(): void {
+    this.controls.enabled = false;
+    this.picker.enabled = false;
+    this.residentStage?.setQuestMode(true);
+    this.ambience.startQuestSoundscape();
+  }
+
+  private exitQuestPresentation(): void {
+    this.clearQuestSequence();
+    this.picker.enabled = false;
+    this.ambience.stopQuestSoundscape();
+    this.residentStage?.setQuestMode(false);
+    this.residentStage?.setHero(store.get().residentId);
+    void this.rig.flyTo(stagePreset(), this.engine.reducedMotion ? 0 : 1.1).then((done) => {
+      if (done && store.get().step === 'stage' && !store.get().activeQuestId) {
+        this.enableStageOrbit();
+        this.picker.enabled = true;
+        this.picker.setPickSet(this.residentStage?.pickTargets() ?? []);
+      }
+    });
+  }
+
+  private playThreshold(quest: QuestDefinition): void {
+    const threshold = quest.threshold;
+    if (!threshold) return;
+    this.clearQuestSequence();
+    const token = this.questSequenceToken;
+    for (const beat of threshold.beats) {
+      const timer = window.setTimeout(() => {
+        const current = store.get();
+        if (
+          token !== this.questSequenceToken ||
+          current.activeQuestId !== quest.id ||
+          current.questPhase !== 'threshold'
+        ) {
+          return;
+        }
+        this.thresholdInterruptible = beat.interruptible;
+        store.set({ questInterruptible: beat.interruptible });
+        this.residentStage?.setQuestVisual(beat.visualState);
+        void this.rig.flyTo(
+          QUEST_CAMERA_PRESETS[beat.camera],
+          this.engine.reducedMotion ? 0 : 0.9
+        );
+        if (beat.cue) this.ambience.questCue(beat.cue);
+        store.pushQuestTurn({ from: 'resident', text: beat.line });
+        this.speak(beat.line);
+        this.streamIn(
+          store.get().questChat.length - 1,
+          beat.line,
+          Promise.resolve(null),
+          false
+        );
+      }, beat.atMs);
+      this.questTimers.push(timer);
+    }
+    const finish = window.setTimeout(() => {
+      const current = store.get();
+      if (
+        token !== this.questSequenceToken ||
+        current.activeQuestId !== quest.id ||
+        current.questPhase !== 'threshold'
+      ) {
+        return;
+      }
+      this.thresholdInterruptible = false;
+      store.set({ questInterruptible: false });
+      store.completeQuestThreshold();
+      const node = questNode(quest, quest.startNodeId);
+      this.applyQuestPresentation(node.presentation);
+      store.pushQuestTurn({ from: 'resident', text: node.prompt });
+      this.speak(node.prompt);
+      this.streamIn(
+        store.get().questChat.length - 1,
+        node.prompt,
+        Promise.resolve(null),
+        false
+      );
+    }, threshold.durationMs);
+    this.questTimers.push(finish);
+  }
+
+  private showQuestOutcome(choiceId: string): void {
+    if (choiceId.includes('open-audio') || choiceId.includes('private-copy')) {
+      this.residentStage?.setQuestVisual('frame-open', 'open-channel');
+      void this.rig.flyTo(
+        QUEST_CAMERA_PRESETS['wide-mutation'],
+        this.engine.reducedMotion ? 0 : 1
+      );
+      return;
+    }
+    if (choiceId.includes('erase')) {
+      this.residentStage?.setQuestVisual('frame-12', 'erase-signature');
+      return;
+    }
+    if (choiceId.includes('quarantine')) {
+      this.residentStage?.setQuestVisual('frame-sealed', 'quarantine');
+      return;
+    }
+    if (choiceId.startsWith('freeform:')) {
+      this.residentStage?.setQuestVisual('archive-desync', 'desync-motion');
+    }
+  }
+
+  interruptQuest(): void {
+    const s = store.get();
+    if (!s.activeQuestId || s.questPhase !== 'threshold' || !this.thresholdInterruptible) return;
+    this.thresholdInterruptible = false;
+    store.set({ questInterruptible: false });
+    this.speechToken++;
+    cancelSpeech();
+    this.ambience.stopClip();
+    window.clearTimeout(this.speakTimer);
+    store.set({ speaking: false, voicing: false });
+    this.residentStage?.setSpeaking(false);
+    const response = 'Em nghe đây. Đi sát em, nhưng đừng để archive chọn thay anh.';
+    store.pushQuestTurn({ from: 'resident', text: response });
+    this.speak(response);
+    this.streamIn(
+      store.get().questChat.length - 1,
+      response,
+      Promise.resolve(null),
+      false
+    );
+  }
+
+  leaveQuest(): void {
+    if (!store.get().activeQuestId) return;
+    this.speechToken++;
+    cancelSpeech();
+    this.ambience.stopClip();
+    store.leaveQuest();
+    this.exitQuestPresentation();
+  }
+
   startQuest(id: string): void {
     if (!store.startQuest(id)) return;
     // A story scene only enters the conversation after the visitor explicitly
     // starts it from Quest Hub. Close the hub so chat and quest never compete
     // as two simultaneous primary surfaces.
     store.set({ questHubOpen: false });
+    this.enterQuestPresentation();
     this.ambience.chime(760);
     // She sets the scene herself. A quest that only changes a badge is a task
     // list; a quest she says out loud is a turn in the conversation.
     const quest = store.questById2(id);
     if (!quest) return;
-    const opening = questNode(quest, quest.startNodeId).prompt;
-    store.pushTurn({ from: 'resident', text: opening });
+    const active = store.get();
+    if (active.questPhase === 'threshold' && quest.threshold) {
+      this.playThreshold(quest);
+      return;
+    }
+    const opening = questNode(
+      quest,
+      active.activeQuestNodeId ?? quest.startNodeId
+    ).prompt;
+    // A checkpoint already owns its transcript; do not duplicate the opening
+    // when the visitor resumes it.
+    if (!active.questChat.length) store.pushQuestTurn({ from: 'resident', text: opening });
     this.speak(opening);
-    this.streamIn(store.get().chat.length - 1, opening, Promise.resolve(null), false);
+    if (!active.questChat.length) {
+      this.streamIn(store.get().questChat.length - 1, opening, Promise.resolve(null), false);
+    }
+    this.applyQuestPresentation(
+      questNode(quest, active.activeQuestNodeId ?? quest.startNodeId).presentation
+    );
   }
 
   chooseQuest(choiceId: string): void {
@@ -1013,14 +1217,19 @@ class App implements UIActions {
     const choice = node.choices.find((item) => item.id === choiceId);
     if (!choice || !store.spend('turn')) return;
     this.cancelIdleNudge();
-    store.pushTurn({ from: 'user', text: choice.label });
+    store.pushQuestTurn({ from: 'user', text: choice.label });
     store.completeOnboarding('first-message');
     const result = store.chooseActiveQuest(choiceId);
     if (!result) return;
     const reply = result.nextPrompt ?? result.choice.outcome;
-    store.pushTurn({ from: 'resident', text: reply });
+    store.pushQuestTurn({ from: 'resident', text: reply });
+    this.showQuestOutcome(result.choice.id);
+    if (!result.completed) {
+      const next = questNode(quest, store.get().activeQuestNodeId ?? quest.startNodeId);
+      this.applyQuestPresentation(next.presentation);
+    }
     this.speak(reply);
-    const turn = store.get().chat.length - 1;
+    const turn = store.get().questChat.length - 1;
     this.streamIn(turn, reply, Promise.resolve(null), false);
     if (choice.imageKey) {
       const scene = `${quest.title}. ${quest.synopsis} Vừa hỏi: ${node.prompt}`;
@@ -1028,8 +1237,56 @@ class App implements UIActions {
     }
     if (result.completed) {
       this.ambience.chime(980);
+      const timer = window.setTimeout(() => {
+        if (store.get().activeQuestId === quest.id && store.get().questPhase === 'ending') {
+          store.leaveQuest();
+          this.exitQuestPresentation();
+        }
+      }, 4200);
+      this.questTimers.push(timer);
     } else {
       this.ambience.chime(680);
+    }
+  }
+
+  submitQuestAction(action: string): void {
+    const text = action.trim();
+    const s = store.get();
+    const quest = s.activeQuestId ? store.questById2(s.activeQuestId) : undefined;
+    if (!text || !quest || s.thinking || s.voicing || !store.canAfford('turn')) {
+      if (text && quest && !store.canAfford('turn')) store.set({ broke: 'turn' });
+      return;
+    }
+    const node = questNode(quest, s.activeQuestNodeId ?? quest.startNodeId);
+    if (!node.freeform || !store.spend('turn')) return;
+    this.cancelIdleNudge();
+    store.pushQuestTurn({ from: 'user', text });
+    store.completeOnboarding('first-message');
+    const result = store.submitQuestAction(text);
+    if (!result) return;
+    const reply = result.nextPrompt ?? result.choice.outcome;
+    store.pushQuestTurn({ from: 'resident', text: reply });
+    this.showQuestOutcome(result.choice.id);
+    if (!result.completed) {
+      const next = questNode(quest, store.get().activeQuestNodeId ?? quest.startNodeId);
+      this.applyQuestPresentation(next.presentation);
+    }
+    this.speak(reply);
+    const turn = store.get().questChat.length - 1;
+    this.streamIn(turn, reply, Promise.resolve(null), false);
+    if (result.choice.imageKey) {
+      const scene = `${quest.title}. ${quest.synopsis} Anh tự hành động: ${text}`;
+      this.illustrate(turn, result.choice.imageKey, result.choice.outcome, scene);
+    }
+    this.ambience.chime(result.completed ? 980 : 720);
+    if (result.completed) {
+      const timer = window.setTimeout(() => {
+        if (store.get().activeQuestId === quest.id && store.get().questPhase === 'ending') {
+          store.leaveQuest();
+          this.exitQuestPresentation();
+        }
+      }, 4200);
+      this.questTimers.push(timer);
     }
   }
 

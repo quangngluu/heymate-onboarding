@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { loadNormalized } from './champions';
 import { RESIDENTS, type VisualIdentity } from '../config/residents';
+import type { QuestPresentation } from '../config/quests';
 
 type MoteMotif = VisualIdentity['moteMotif'];
 
@@ -50,6 +51,12 @@ export class WaifuStage {
   private upLight: THREE.SpotLight;
   private motes: THREE.Points;
   private moteMotif: MoteMotif = 'data';
+  private questMode = false;
+  private archive = new THREE.Group();
+  private archiveFrames: THREE.Mesh[] = [];
+  private frame12: THREE.Mesh;
+  private frame12Material: THREE.MeshBasicMaterial;
+  private archiveSilhouette: THREE.Mesh;
 
   constructor(
     private scene: THREE.Scene,
@@ -96,9 +103,68 @@ export class WaifuStage {
       })
     );
     scene.add(this.motes);
+
+    // Prototype 1 uses authored geometry as the guaranteed scene. A generated
+    // image may later replace a camera cut, but the mystery and its mutations
+    // never wait on an image endpoint.
+    const frameGeometry = new THREE.PlaneGeometry(0.58, 0.9);
+    for (let i = 0; i < 11; i++) {
+      const material = new THREE.MeshBasicMaterial({
+        color: 0x76d9ff,
+        transparent: true,
+        opacity: 0.08 + (i % 3) * 0.025,
+        wireframe: true,
+        depthWrite: false,
+      });
+      const frame = new THREE.Mesh(frameGeometry.clone(), material);
+      const side = i % 2 === 0 ? -1 : 1;
+      frame.position.set(side * (1.05 + (i % 3) * 0.12), baseTopY + 0.95, -0.35 - i * 0.42);
+      frame.rotation.y = side * -0.32;
+      this.archive.add(frame);
+      this.archiveFrames.push(frame);
+    }
+    this.frame12Material = new THREE.MeshBasicMaterial({
+      color: 0xeafaff,
+      transparent: true,
+      opacity: 0.18,
+      wireframe: true,
+      depthWrite: false,
+    });
+    this.frame12 = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 1.45), this.frame12Material);
+    this.frame12.position.set(0, baseTopY + 1.05, -4.9);
+    this.archive.add(this.frame12);
+
+    this.archiveSilhouette = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.34, 1.05),
+      new THREE.MeshBasicMaterial({
+        color: 0x0d1724,
+        transparent: true,
+        opacity: 0.72,
+        depthWrite: false,
+      })
+    );
+    this.archiveSilhouette.position.set(0.16, baseTopY + 0.98, -4.86);
+    this.archive.add(this.archiveSilhouette);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.6, 11),
+      new THREE.MeshBasicMaterial({
+        color: 0x102f45,
+        transparent: true,
+        opacity: 0.12,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(0, baseTopY - 0.01, -2.2);
+    this.archive.add(floor);
+    this.archive.visible = false;
+    scene.add(this.archive);
   }
 
   setBaseTop(y: number): void {
+    const delta = y - this.heroY;
     this.heroY = y;
     this.ring.position.y = y + 0.01;
     this.glow.position.y = y + 0.35;
@@ -106,6 +172,7 @@ export class WaifuStage {
     this.upLight.target.position.y = y + 1.15;
     const hero = this.heroId && this.entries.get(this.heroId);
     if (hero) hero.group.position.y = y;
+    this.archive.position.y += delta;
   }
 
   /** Load every resident; the hero is fetched first. */
@@ -165,6 +232,7 @@ export class WaifuStage {
   private place(id: string, isHero: boolean, ghostIdx = 0): void {
     const e = this.entries.get(id);
     if (!e) return;
+    e.group.visible = !this.questMode || isHero;
     // Models arrive normalized to 1.45 tall by the shared character loader.
     const scale = (isHero ? HERO_HEIGHT : GHOST_HEIGHT) / 1.45;
     e.group.scale.setScalar(scale);
@@ -228,6 +296,46 @@ export class WaifuStage {
     this.speakingTarget = on ? 1 : 0;
   }
 
+  /** Quest Mode owns the whole stage: only the selected resident remains. */
+  setQuestMode(on: boolean): void {
+    this.questMode = on;
+    this.archive.visible = on;
+    for (const [id, entry] of this.entries) {
+      entry.group.visible = !on || id === this.heroId;
+    }
+    this.ring.visible = !on;
+    this.setQuestVisual(on ? 'archive-corridor' : 'archive-corridor');
+  }
+
+  setQuestVisual(
+    state: QuestPresentation['visualState'],
+    mutation?: QuestPresentation['mutation']
+  ): void {
+    if (!this.questMode) return;
+    const frameActive = state !== 'archive-corridor';
+    this.frame12Material.opacity = frameActive ? 0.72 : 0.18;
+    this.frame12Material.color.setHex(
+      state === 'frame-sealed' ? 0x778a99 : state === 'frame-open' ? 0xeaf6ff : 0x9ee9ff
+    );
+    this.archiveSilhouette.visible = frameActive;
+    this.archiveSilhouette.scale.setScalar(state === 'archive-desync' ? 1.12 : 1);
+    this.archiveSilhouette.position.x =
+      mutation === 'erase-signature' ? 8 : state === 'archive-desync' ? 0.29 : 0.16;
+    if (mutation === 'quarantine') {
+      this.frame12Material.opacity = 0.28;
+      this.frame12Material.color.setHex(0x8d9aa6);
+    }
+    if (mutation === 'open-channel') {
+      this.frame12Material.color.setHex(0xffffff);
+      this.frame12Material.opacity = 0.92;
+    }
+    if (mutation === 'desync-motion') {
+      this.archiveSilhouette.rotation.z = 0.055;
+    } else {
+      this.archiveSilhouette.rotation.z = 0;
+    }
+  }
+
   update(t: number, dt: number): void {
     this.speakingLevel += (this.speakingTarget - this.speakingLevel) * Math.min(1, dt * 5);
 
@@ -261,6 +369,16 @@ export class WaifuStage {
         e.group.position.y = this.heroY + Math.sin(t * 1.15) * amp;
         e.group.rotation.z = Math.sin(t * 0.7) * 0.004;
       }
+    }
+
+    if (this.questMode) {
+      this.archiveFrames.forEach((frame, i) => {
+        const material = frame.material as THREE.MeshBasicMaterial;
+        material.opacity = 0.07 + (0.5 + 0.5 * Math.sin(t * 1.8 + i)) * 0.08;
+      });
+      this.frame12Material.opacity +=
+        (0.58 + Math.sin(t * 3.2) * 0.12 - this.frame12Material.opacity) *
+        Math.min(1, dt * 2);
     }
   }
 
@@ -335,5 +453,16 @@ export class WaifuStage {
     this.glow.parent?.remove(this.glow);
     this.upLight.parent?.remove(this.upLight);
     this.upLight.target.parent?.remove(this.upLight.target);
+    this.archive.parent?.remove(this.archive);
+    this.archive.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      mesh.geometry?.dispose();
+      const materials = mesh.material
+        ? Array.isArray(mesh.material)
+          ? mesh.material
+          : [mesh.material]
+        : [];
+      for (const material of materials) material.dispose();
+    });
   }
 }

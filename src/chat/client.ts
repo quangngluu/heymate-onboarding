@@ -30,8 +30,10 @@ export async function getReply(
   history: ChatTurn[],
   opts: {
     idle?: boolean;
+    mode?: 'open-chat' | 'quest';
     level?: number;
     quest?: { prompt: string; objective: string };
+    approvedCrossMode?: string[];
     story?: PromptStoryState;
     bond?: unknown;
     rapport?: unknown;
@@ -45,6 +47,11 @@ export async function getReply(
   if (!endpointAvailable) return { ...scripted, source: 'scripted' };
 
   try {
+    const mode = opts.mode ?? 'open-chat';
+    const mappedHistory = history.map((t) => ({
+      role: t.from === 'user' ? ('user' as const) : ('assistant' as const),
+      content: t.text,
+    }));
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -52,6 +59,8 @@ export async function getReply(
         residentId: ctx.resident.id,
         session: ctx.session,
         memories: ctx.memories,
+        mode,
+        approvedCrossMode: opts.approvedCrossMode ?? [],
         revealed: ctx.revealed,
         revealNow: opts.idle ? undefined : (dueEpisodeIndex(ctx) ?? undefined),
         idle: opts.idle,
@@ -62,10 +71,10 @@ export async function getReply(
         maturity: resolveMaturity(),
         bond: opts.bond,
         rapport: opts.rapport,
-        history: history.map((t) => ({
-          role: t.from === 'user' ? 'user' : 'assistant',
-          content: t.text,
-        })),
+        // Separate request fields make it impossible for the server to
+        // accidentally consume Open Chat turns while operating in Quest Mode.
+        history: mode === 'open-chat' ? mappedHistory : [],
+        questHistory: mode === 'quest' ? mappedHistory : [],
         message,
       }),
       signal: AbortSignal.timeout(20000),
