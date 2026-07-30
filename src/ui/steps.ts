@@ -298,6 +298,10 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   // While a scene is open the dock carries it: what she asked, and three
   // answers a visitor could honestly give. Typing is always still open.
   const questLine = h('p', { class: 'quest-line' });
+  // Spec 3.3 asks for a minimal current objective. Every node already carries
+  // one and none of them were ever rendered, so the scene said what was
+  // happening and never what the visitor was supposed to do about it.
+  const questObjective = h('p', { class: 'quest-objective', hidden: true });
   const questEpisodeLabel = h('span', { class: 'quest-episode-label' }, 'QUEST MODE');
   const questCallBtn = h(
     'button',
@@ -346,6 +350,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     'div',
     { class: 'quest-strip', hidden: true },
     questHead,
+    questObjective,
     questLine,
     questOptions,
     questFreeform
@@ -957,6 +962,9 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
             )
           )
         );
+        const objective = openNode.presentation?.objective;
+        questObjective.textContent = objective ? `Việc cần làm: ${objective}` : '';
+        (questObjective as HTMLElement).hidden = !objective;
         (questFreeform as HTMLElement).hidden = !openNode.freeform;
         if (openNode.freeform) {
           questActionInput.placeholder = openNode.freeform.invite;
@@ -966,6 +974,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       }
       if (openQuest && openNode && s.questPhase === 'threshold') {
         questLine.textContent = 'Đi theo Rin. Anh có thể gọi tên em để ngắt một câu thoại thường.';
+        (questObjective as HTMLElement).hidden = true;
         (questOptions as HTMLElement).hidden = true;
         (questFreeform as HTMLElement).hidden = true;
       } else if (openQuest && s.questPhase === 'ending') {

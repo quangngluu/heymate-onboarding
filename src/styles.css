@@ -1873,3 +1873,14 @@ html, body {
     -webkit-backdrop-filter: none;
   }
 }
+
+/* The current objective. Deliberately plainer than her dialogue: it is the
+   product telling the visitor what is being asked of them, not her voice. */
+.quest-objective {
+  margin-top: 6px;
+  color: var(--accent);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  line-height: 1.45;
+}
+.quest-objective[hidden] { display: none; }
