@@ -65,6 +65,20 @@ function requiredViews(): void {
 function promptCoverage(): void {
   for (const resident of RESIDENTS) {
     const view = canonViewFor(resident.id, 'sao');
+
+    // The closed-world rule. Probing production found that without it she
+    // confirmed a retired district and invented a shop inside it, placed the
+    // retired Hub inside The Seed network, and accepted "the thing you told me
+    // about last time" for entities that were never hers. A clean prompt is not
+    // enough on its own — the prompt has to say the list is closed.
+    const base = buildSystemPrompt(resident.id, SESSION, [], 0, undefined, false, 0);
+    for (const rule of ['LUẬT VỀ TÊN RIÊNG', 'cả với những nơi có thật ngoài đời', 'như thể chính em đã kể']) {
+      assert.ok(
+        base.includes(rule),
+        `${resident.id}: sao prompt lost the closed-world rule — missing "${rule}"`
+      );
+    }
+
     for (const reveal of view.canonReveals) {
       const prompt = buildSystemPrompt(
         resident.id,
