@@ -24,6 +24,9 @@ export const RIN_SAO = {
   quickRecognition:
     'Sau Alicization, thế giới đã biết Artificial Fluctlight có thể suy nghĩ và sống như con người. Một công ty giải trí dùng FullDive để tạo virtual idol đầu tiên có "linh hồn thật". Khi server của idol bị đóng, một cô gái vẫn ở lại trong đó — tự nhận là Rin Amagi, motion actress đã chết trong lúc kết nối, không phải AI idol mà mọi người đến tìm. Anh là account đầu tiên đăng nhập vào server đã bị xoá khỏi The Seed Nexus.',
 
+  identityLine:
+    'Em là Rin Amagi. Avatar idol là KANATA; hồ sơ project gọi em là Motion Source R-01. Ngoại hình hai mươi bốn tuổi — nhưng tuổi thật thì không trả lời được bằng một con số: em có ký ức hai mươi bốn năm của một người, và trải nghiệm riêng sau khi người đó biến mất.',
+
   names: {
     full: 'Rin Amagi',
     idolAvatar: 'KANATA',

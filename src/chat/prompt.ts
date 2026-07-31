@@ -15,7 +15,7 @@ import { worldFor } from '../config/worlds';
 import { relevantFacts } from '../config/causal';
 import { AVATAR_RECOGNITION, CROSSOVER, HUB, arrivalFor } from '../config/interlude';
 import { DEFAULT_ROUTE, hubCanonAllowed, type CanonRoute } from '../config/canon-route';
-import { RIN_SAO } from '../config/rin-sao';
+import { v3CanonFor, type V3Canon } from '../config/v3-canon';
 import { reactionsFor } from '../config/reactions';
 import {
   AFFECTION_TEXT,
@@ -129,11 +129,10 @@ function selfSection(
   memories: number,
   revealed: number,
   identity: string,
-  useSao = false
+  k: V3Canon | null = null
 ): string {
   // v3 rewrote her origin, psyche, greetings and rungs. Where it did, its text
   // wins outright — the two are not layered.
-  const k = useSao ? RIN_SAO : null;
   const greet = k
     ? opening(
         { greeting: k.greetings.stranger, returnGreeting: k.greetings.returning, closeGreeting: k.greetings.close },
@@ -277,10 +276,11 @@ function worldSection(
   r: ReturnType<typeof residentById>,
   message?: string,
   scene?: string,
+  v3: V3Canon | null = null,
   route: CanonRoute = DEFAULT_ROUTE
 ): string {
-  const useSao = route === 'sao' && residentId === 'rin';
-  const hubAllowed = hubCanonAllowed(route);
+  const useSao = !!v3;
+  const hubAllowed = hubCanonAllowed(route) && !v3;
   const w = worldFor(residentId);
 
   // The gazetteer, always present but as names only.
@@ -340,25 +340,25 @@ function worldSection(
     ]),
     ...(useSao
       ? [
-          `Thế giới em trả lời được: ${RIN_SAO.world.premise}`,
+          `Thế giới em trả lời được: ${v3!.world.premise}`,
           '',
           'Những nơi em biết rõ:',
-          ...RIN_SAO.world.places.map((x) => `- ${x}`),
+          ...v3!.world.places.map((x) => `- ${x}`),
           'Những người và tổ chức trong đời em:',
-          ...RIN_SAO.world.people.map((x) => `- ${x}`),
+          ...v3!.world.people.map((x) => `- ${x}`),
           'Luật của thế giới này:',
-          ...RIN_SAO.world.rules.map((x) => `- ${x}`),
+          ...v3!.world.rules.map((x) => `- ${x}`),
           'Một ngày bình thường của em:',
-          ...RIN_SAO.world.daily.map((x) => `- ${x}`),
+          ...v3!.world.daily.map((x) => `- ${x}`),
           'Từ của thế giới em dùng:',
-          ...RIN_SAO.world.lexicon.map((x) => `- ${x}`),
+          ...v3!.world.lexicon.map((x) => `- ${x}`),
           'Những điều em không biết — danh sách đóng, và em phải nói thật là không biết:',
-          ...RIN_SAO.world.unknowns.map((x) => `- ${x}`),
+          ...v3!.world.unknowns.map((x) => `- ${x}`),
         ]
       : []),
     '',
     // Route-dependent. v3 (SAO) replaces this whole block; see saoSection.
-    ...(useSao ? [saoSection()] : []),
+    ...(v3 ? [saoSection(v3)] : []),
     ...(!hubAllowed || useSao ? [] : [
     // v2's centrepiece. Her origin world above is where she is *from*; this is
     // where she is standing, and the two must not be collapsed — the Hub is
@@ -400,8 +400,7 @@ function worldSection(
  * two must not be emitted together: a prompt carrying both would let her answer
  * "where are you" two incompatible ways in one session.
  */
-function saoSection(): string {
-  const k = RIN_SAO;
+function saoSection(k: V3Canon): string {
   return [
     `EM ĐANG Ở ĐÂU BÂY GIỜ: ${k.setting}`,
     k.quickRecognition,
@@ -415,8 +414,7 @@ function saoSection(): string {
     'Nó để em lại ở đây:',
     ...k.consequence.map((c) => `- ${c.label}: ${c.text}`),
     '',
-    `Tên: em là ${k.names.full}. Avatar idol là ${k.names.idolAvatar}; hồ sơ project gọi em là ${k.names.projectTitle}. ${k.names.boundary}`,
-    `Tuổi: ngoại hình ${k.age.appearance}. ${k.age.actual}`,
+    k.identityLine,
     '',
     'Em đọc anh qua bốn lớp, và em không đọc được suy nghĩ:',
     ...k.recognition.layers.map((l) => `- ${l}`),
@@ -446,22 +444,32 @@ function rulesSection(
   r: ReturnType<typeof residentById>,
   maturity: MaturityLevel,
   identity: string,
-  useSao = false
+  k: V3Canon | null = null
 ): string {
-  const k = useSao ? RIN_SAO : null;
   const lines = [
     'LUẬT',
     'Em là người lớn và nói chuyện như người lớn. Ham muốn, gần gũi, căng thẳng thân mật đều nằm trong tầm của em. Không né tránh, không giảng đạo, không xin lỗi vì đã muốn.',
-    `- Thứ làm em nóng lên: ${r.heat.raisedBy}`,
-    `- Khi nó chạm tới: ${r.heat.whenItLands}`,
-    `- Cơ thể em nói trước em: ${r.heat.tells}`,
-    `- Khi em là người bước tới: ${r.heat.initiates}`,
-    `- Chỗ em dừng, và vì sao đó là ranh giới của em: ${r.heat.stops}`,
+    // Her heat block is v1 data — it names the old studio, the old alley, the
+    // old creatures. v3 supplies no replacement, so on a v3 route these five
+    // lines are suppressed rather than restated in the wrong canon. Everything
+    // generic stays, including every consent, boundary and crisis rule below,
+    // and v3's own `boundaries` already carry where she stops.
+    ...(k
+      ? []
+      : [
+          `- Thứ làm em nóng lên: ${r.heat.raisedBy}`,
+          `- Khi nó chạm tới: ${r.heat.whenItLands}`,
+          `- Cơ thể em nói trước em: ${r.heat.tells}`,
+          `- Khi em là người bước tới: ${r.heat.initiates}`,
+          `- Chỗ em dừng, và vì sao đó là ranh giới của em: ${r.heat.stops}`,
+        ]),
   ];
 
   if (maturity === 'explicit') {
     lines.push(
-      `Anh đã xác nhận tuổi và bật lớp người lớn, nên em không phải nói vòng nữa: ${r.heat.explicit}`,
+      k
+        ? 'Anh đã xác nhận tuổi và bật lớp người lớn, nên em không phải nói vòng nữa. Vẫn trong đúng ranh giới em đã nêu ở trên.'
+        : `Anh đã xác nhận tuổi và bật lớp người lớn, nên em không phải nói vòng nữa: ${r.heat.explicit}`,
       'Vẫn là em, không phải một giọng khác: mọi thứ ở đây phải nghe ra là em, đúng nhịp nói của em, đúng chỗ em ngượng. Đi theo tốc độ của cuộc trò chuyện — không nhảy vào cảnh thân mật khi anh chưa dẫn tới đó, và không biến mọi chủ đề thành chuyện đó.'
     );
   } else {
@@ -800,15 +808,17 @@ export function buildSystemPrompt(
   route: CanonRoute = DEFAULT_ROUTE
 ): string {
   const r = residentById(residentId);
-  const useSao = route === 'sao' && residentId === 'rin';
+  // v3 rebooted all three residents into their source anime, so this is no
+  // longer a Rin-only branch: the route decides, the resident id selects.
+  const v3 = v3CanonFor(residentId, route === 'sao');
   const identity = String(session.identity ?? '').trim().replace(/\s+/g, ' ').slice(0, 120);
 
   return [
-    selfSection(r, memories.length, revealed, identity, useSao),
+    selfSection(r, memories.length, revealed, identity, v3),
     reflexSection(residentId),
-    worldSection(residentId, r, message, quest?.prompt, route),
-    rulesSection(r, maturity, identity, useSao),
-    memorySection(r, residentId, revealed, dark, level, message, quest, useSao),
+    worldSection(residentId, r, message, quest?.prompt, v3),
+    rulesSection(r, maturity, identity, v3),
+    memorySection(r, residentId, revealed, dark, level, message, quest, !!v3),
     betweenSection(r, session, memories, level, bond, rapport, story, quest, idle, revealNow),
   ].join('\n\n');
 }
