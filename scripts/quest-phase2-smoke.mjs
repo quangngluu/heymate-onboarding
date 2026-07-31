@@ -10,7 +10,8 @@ const VIEWPORTS = [
 ];
 const HOST = '127.0.0.1';
 const PORT = 5198;
-const ROUTE = '/?canon=sao&questPrototype=rin';
+// Production path: v3 and Rin Quest must work without an internal query flag.
+const ROUTE = '/';
 const captureArg = process.argv.find((arg) => arg.startsWith('--capture-dir='));
 const captureDir = captureArg ? resolve(captureArg.slice('--capture-dir='.length)) : null;
 const externalUrl = process.env.QUEST_SMOKE_URL?.replace(/\/$/, '');
@@ -113,6 +114,29 @@ async function runViewport(browser, viewport) {
   await page.waitForSelector('.universe-tile', { visible: true });
   await clickByText(page, '.universe-tile', 'Vũ trụ Waifu');
   await page.waitForSelector('.step-stage', { visible: true });
+  await page.waitForFunction(
+    () => document.documentElement.dataset.questRig === 'ready',
+    { timeout: 30_000 }
+  );
+  await page.click('.mobile-gear');
+  await page.waitForSelector('.session-scrim:not([hidden])', { visible: true });
+  const settingsShape = await page.evaluate(() => ({
+    primaryRows: document.querySelectorAll('.session-primary .session-setting-row').length,
+    advancedOpen: document.querySelector('.session-advanced')?.hasAttribute('open') ?? null,
+    composerFontPx: Number.parseFloat(
+      getComputedStyle(document.querySelector('.dock-bar .chat-input')).fontSize
+    ),
+    selectFontPx: Number.parseFloat(
+      getComputedStyle(document.querySelector('.session-select')).fontSize
+    ),
+  }));
+  await page.select('select[aria-label="Bối cảnh"]', 'latenight');
+  await page.select('select[aria-label="Em chủ động"]', 'lead');
+  const settingsSummary = await page.$eval(
+    '.mobile-gear',
+    (gear) => gear.parentElement?.getAttribute('aria-label') ?? ''
+  );
+  await page.click('button[aria-label="Đóng thiết lập"]');
   await page.waitForSelector('.quest-btn', { visible: true });
   await page.click('.quest-btn');
   await page.waitForSelector('.quest-hub:not([hidden])', { visible: true });
@@ -132,7 +156,7 @@ async function runViewport(browser, viewport) {
   });
   const firstBeatMs = Math.round(performance.now() - start);
 
-  const state = await page.evaluate(() => {
+  const state = await page.evaluate((settingsShape_, settingsSummary_) => {
     const visible = (element) => {
       if (!(element instanceof HTMLElement)) return false;
       const rect = element.getBoundingClientRect();
@@ -152,10 +176,13 @@ async function runViewport(browser, viewport) {
     const label = document.querySelector('.quest-episode-label');
     const bubble = document.querySelector('.speech-log .bubble-resident');
     const navigation = performance.getEntriesByType('navigation')[0];
+    const series = document.querySelector('.card-series');
 
     return {
       route: localStorage.getItem('heymate.canonRoute'),
       prototype: localStorage.getItem('heymate.questPrototype'),
+      rig: document.documentElement.dataset.questRig ?? null,
+      series: series?.textContent?.trim() ?? '',
       questPhase: stage?.getAttribute('data-quest-phase') ?? null,
       episodeLabel: label?.textContent?.trim() ?? '',
       firstLine: bubble?.textContent?.trim() ?? '',
@@ -169,8 +196,10 @@ async function runViewport(browser, viewport) {
         navigation instanceof PerformanceNavigationTiming
           ? Math.round(navigation.loadEventEnd)
           : null,
+      settingsShape: settingsShape_,
+      settingsSummary: settingsSummary_,
     };
-  });
+  }, settingsShape, settingsSummary);
 
   if (captureDir) {
     mkdirSync(captureDir, { recursive: true });
@@ -187,7 +216,25 @@ async function runViewport(browser, viewport) {
 
   const failures = [];
   if (state.route !== 'sao') failures.push(`route=${state.route}`);
-  if (state.prototype !== 'rin') failures.push(`prototype=${state.prototype}`);
+  if (state.prototype) failures.push(`unexpected prototype=${state.prototype}`);
+  if (state.rig !== 'ready') failures.push(`rig=${state.rig}`);
+  if (!state.series.includes('SWORD ART ONLINE')) {
+    failures.push(`series=${JSON.stringify(state.series)}`);
+  }
+  if (state.settingsShape.primaryRows !== 3) {
+    failures.push(`settings primary rows=${state.settingsShape.primaryRows}`);
+  }
+  if (state.settingsShape.advancedOpen !== false) {
+    failures.push(`settings advancedOpen=${state.settingsShape.advancedOpen}`);
+  }
+  if (state.settingsShape.composerFontPx < 16 || state.settingsShape.selectFontPx < 16) {
+    failures.push(
+      `mobile form fonts=${state.settingsShape.composerFontPx}/${state.settingsShape.selectFontPx}px`
+    );
+  }
+  if (!state.settingsSummary.includes('Đêm riêng tư · Em dẫn')) {
+    failures.push(`settings summary=${JSON.stringify(state.settingsSummary)}`);
+  }
   if (state.questPhase !== 'threshold') {
     failures.push(`questPhase=${state.questPhase}`);
   }

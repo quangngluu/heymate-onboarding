@@ -6,7 +6,6 @@ import { h } from './dom';
 import type { UIActions } from './actions';
 import type { AppState } from '../state/store';
 import { COPY } from '../config/copy';
-import { questPrototypeActive, questPrototypeEnabled } from '../config/prototype-flag';
 import { factionById } from '../config/factions';
 import { CHARACTERS, characterById, characterIndex } from '../config/characters';
 import { characterThumb, monogramThumb } from '../three/thumbs';
@@ -456,10 +455,102 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     };
   }
 
-  const scen = segment(COPY.stage.scenario, SCENARIOS, (id) => actions.updateSession({ scenario: id }));
-  const mood = segment(COPY.stage.mood, MOODS, (id) => actions.updateSession({ mood: id }));
-  const style = segment(COPY.stage.style, STYLES, (id) => actions.updateSession({ style: id }));
-  const len = segment(COPY.stage.length, LENGTHS, (id) => actions.updateSession({ length: id }));
+  function selectField<T extends string>(
+    label: string,
+    options: readonly { id: T; label: string }[],
+    onPick: (id: T) => void,
+    className = ''
+  ): { el: HTMLElement; select: HTMLSelectElement } {
+    const select = h(
+      'select',
+      {
+        class: `session-select${className ? ` ${className}` : ''}`,
+        'aria-label': label,
+        onChange: () => onPick(select.value as T),
+      },
+      ...options.map((option) => h('option', { value: option.id }, option.label))
+    ) as HTMLSelectElement;
+    return {
+      el: h(
+        'label',
+        { class: 'session-setting-row' },
+        h('span', { class: 'session-setting-label' }, label),
+        h(
+          'span',
+          { class: 'session-select-wrap' },
+          select,
+          h('span', { class: 'session-select-chevron', 'aria-hidden': 'true' }, '›')
+        )
+      ),
+      select,
+    };
+  }
+
+  let identityCustomActive = false;
+  const identityMode = selectField(
+    'Vai của anh',
+    [
+      { id: 'self', label: 'Chính anh' },
+      { id: 'character', label: 'Nhân vật khác…' },
+    ] as const,
+    (id) => {
+      identityCustomActive = id === 'character';
+      if (id === 'self') {
+        identityInput.value = '';
+        actions.updateSession({ identity: '' });
+      }
+      identityCustom.hidden = id !== 'character';
+      if (id === 'character') requestAnimationFrame(() => identityInput.focus());
+    }
+  );
+  const identityCustom = h(
+    'div',
+    { class: 'session-inline-custom', hidden: true },
+    identityInput,
+    h('p', { class: 'hint faint' }, COPY.stage.identityNote)
+  );
+  const scen = selectField(
+    'Bối cảnh',
+    SCENARIOS.map((option) => ({
+      ...option,
+      label:
+        option.id === 'casual'
+          ? 'Thường ngày'
+          : option.id === 'latenight'
+            ? 'Đêm riêng tư'
+            : option.id === 'study'
+              ? 'Học / làm cùng nhau'
+              : option.id === 'yourday'
+                ? 'Ngày của anh'
+                : option.id === 'challenge'
+                  ? 'Thử thách'
+                  : option.id === 'together'
+                    ? 'Ở bên nhau'
+                    : option.id === 'watch'
+                      ? 'Cùng xem / đọc'
+                      : 'Chúc ngủ ngon',
+    })),
+    (id) => actions.updateSession({ scenario: id })
+  );
+  const style = selectField(
+    'Em chủ động',
+    STYLES.map((option) => ({
+      ...option,
+      label:
+        option.id === 'listen'
+          ? 'Lắng nghe'
+          : option.id === 'lead'
+            ? 'Dẫn dắt'
+            : 'Cân bằng',
+    })),
+    (id) => actions.updateSession({ style: id })
+  );
+  const mood = selectField(COPY.stage.mood, MOODS, (id) =>
+    actions.updateSession({ mood: id })
+  );
+  const len = selectField(COPY.stage.length, LENGTHS, (id) =>
+    actions.updateSession({ length: id })
+  );
 
   // --- the bond: how she is with him, not who she is ---
   //
@@ -499,27 +590,16 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   }
   const bondCardBox = h('div', { class: 'bond-card' });
 
-  const sessionCard = h(
-    'aside',
-    { class: 'panel session-sheet' },
+  const sessionAdvanced = h(
+    'details',
+    { class: 'session-advanced' },
+    h('summary', {}, h('span', {}, 'Nâng cao')),
     h(
       'div',
-      { class: 'row sheet-head' },
-      h('h2', { class: 'panel-title' }, COPY.stage.setSession),
-      h('button', { class: 'chrome-btn', 'aria-label': 'Đóng thiết lập', onClick: () => actions.closeSessionPanel() }, '×')
-    ),
-    h(
-      'div',
-      { class: 'sheet-body' },
-      h('p', { class: 'hint faint' }, COPY.stage.sessionNote),
+      { class: 'session-advanced-body' },
+      mood.el,
+      len.el,
       h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, COPY.stage.nickname), nickInput),
-      h(
-        'div',
-        { class: 'custom-group' },
-        h('h3', { class: 'group-label' }, COPY.stage.identity),
-        identityInput,
-        h('p', { class: 'hint faint' }, COPY.stage.identityNote)
-      ),
       h(
         'div',
         { class: 'custom-group' },
@@ -527,12 +607,12 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         personaInput,
         h('p', { class: 'hint faint' }, COPY.stage.personaNote)
       ),
-      scen.el,
-      mood.el,
-      style.el,
-      len.el,
       h('div', { class: 'bond-divider' }),
-      h('p', { class: 'hint faint' }, 'Phần dưới không phải thiết lập cho một lần gặp. Nó định hình cách em ở bên anh, và nó được giữ lại. Con người em thì không đổi.'),
+      h(
+        'p',
+        { class: 'hint faint' },
+        'Các mục dưới đây được giữ theo từng nhân vật và định hình mối quan hệ lâu dài.'
+      ),
       h(
         'div',
         { class: 'custom-group' },
@@ -545,33 +625,68 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         { class: 'custom-group' },
         h('h3', { class: 'group-label' }, 'Em gọi anh là'),
         bondAddress,
-        h('p', { class: 'hint faint' }, 'Cách gọi của riêng em với anh. Để trống thì em tự đặt khi tới lúc.')
+        h('p', { class: 'hint faint' }, 'Để trống thì em tự đặt khi tới lúc.')
       ),
       h(
         'div',
         { class: 'custom-group' },
         h('h3', { class: 'group-label' }, 'Điều em không được làm'),
         forbidBox,
-        h('p', { class: 'hint faint' }, 'Ranh giới của anh. Em tôn trọng những cái này, và chúng chỉ bớt đi hành vi chứ không làm em dễ tính hơn.')
+        h('p', { class: 'hint faint' }, 'Ranh giới của anh luôn được ưu tiên.')
       ),
       h(
         'div',
         { class: 'custom-group' },
-        h('h3', { class: 'group-label bond-card-title' }, 'Đây là em, của riêng anh'),
+        h('h3', { class: 'group-label bond-card-title' }, 'Mối quan hệ hiện tại'),
         bondCardBox
       )
+    )
+  );
+
+  const sessionCard = h(
+    'aside',
+    { class: 'panel session-sheet' },
+    h(
+      'div',
+      { class: 'row sheet-head' },
+      h('h2', { class: 'panel-title' }, COPY.stage.setSession),
+      h('button', { class: 'chrome-btn', 'aria-label': 'Đóng thiết lập', onClick: () => actions.closeSessionPanel() }, '×')
+    ),
+    h(
+      'div',
+      { class: 'sheet-body' },
+      h('p', { class: 'session-impact-note' }, 'Ba lựa chọn này thay đổi cách em phản hồi rõ nhất.'),
+      h(
+        'div',
+        { class: 'session-primary' },
+        identityMode.el,
+        identityCustom,
+        scen.el,
+        style.el
+      ),
+      sessionAdvanced
     ),
     h(
       'div',
       { class: 'sheet-foot' },
-      h('button', { class: 'btn btn-ghost xs', onClick: () => actions.resetSession() }, COPY.stage.resetSession),
+      h(
+        'button',
+        {
+          class: 'btn btn-ghost xs',
+          onClick: () => {
+            identityCustomActive = false;
+            actions.resetSession();
+          },
+        },
+        COPY.stage.resetSession
+      ),
       h('button', { class: 'btn btn-primary', onClick: () => actions.closeSessionPanel() }, COPY.stage.applySession)
     )
   );
   const sessionSheet = h(
     'div',
     {
-      class: 'modal-scrim',
+      class: 'modal-scrim session-scrim',
       hidden: true,
       role: 'dialog',
       'aria-modal': 'true',
@@ -814,7 +929,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       watchDock.disconnect();
       stopGateCountdown();
     },
-    update(s) {
+    update(s, prev) {
       const r = canonViewFor(s.residentId, canonRoute);
       const saved = s.progress[s.residentId];
       el.style.setProperty('--accent', cssColor(r.accentColor));
@@ -853,6 +968,29 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       if (document.activeElement !== nickInput) nickInput.value = s.session.nickname;
       if (document.activeElement !== identityInput) identityInput.value = s.session.identity;
       if (document.activeElement !== personaInput) personaInput.value = s.session.persona;
+      if (s.session.identity) identityCustomActive = true;
+      if (s.sessionPanelOpen && !prev.sessionPanelOpen) {
+        identityCustomActive = Boolean(s.session.identity);
+      }
+      identityMode.select.value = identityCustomActive ? 'character' : 'self';
+      identityCustom.hidden = !identityCustomActive;
+      scen.select.value = s.session.scenario;
+      mood.select.value = s.session.mood;
+      style.select.value = s.session.style;
+      len.select.value = s.session.length;
+      const scenarioLabel = scen.select.selectedOptions[0]?.text ?? 'Thường ngày';
+      const styleLabel =
+        s.session.style === 'lead'
+          ? 'Em dẫn'
+          : s.session.style === 'listen'
+            ? 'Em lắng nghe'
+            : 'Cân bằng';
+      const identityLabel = s.session.identity || 'Chính anh';
+      const sessionSummary = `${identityLabel} · ${scenarioLabel} · ${styleLabel}`;
+      setChip.textContent = sessionSummary;
+      setChip.title = sessionSummary;
+      mobileSettingsBtn.setAttribute('aria-label', `Cấu hình: ${sessionSummary}`);
+      mobileSettingsBtn.title = sessionSummary;
 
       // Unlocked canon reveals read as her story opening up, locked ones as the
       // reason to keep going.
@@ -920,11 +1058,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       bondCardBox.replaceChildren(
         ...bondCard(s.residentId, s.bond).map((line) => h('p', { class: 'hint' }, line))
       );
-      scen.btns.forEach((b, i) => b.setAttribute('aria-checked', String(SCENARIOS[i].id === s.session.scenario)));
-      mood.btns.forEach((b, i) => b.setAttribute('aria-checked', String(MOODS[i].id === s.session.mood)));
-      style.btns.forEach((b, i) => b.setAttribute('aria-checked', String(STYLES[i].id === s.session.style)));
-      len.btns.forEach((b, i) => b.setAttribute('aria-checked', String(LENGTHS[i].id === s.session.length)));
-
       (sessionSheet as HTMLElement).hidden = !s.sessionPanelOpen;
       (questHub as HTMLElement).hidden = !s.questHubOpen;
       mobileQuestLabel.textContent = s.activeQuestId ? COPY.stage.questActive : COPY.stage.quest;
@@ -1140,12 +1273,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           );
         })
       );
-      if (
-        canonRoute === 'sao' &&
-        r.id !== 'rin' &&
-        quests.length === 0 &&
-        questPrototypeEnabled(s.residentId)
-      ) {
+      if (canonRoute === 'sao' && r.id !== 'rin' && quests.length === 0) {
         storyQuestList.replaceChildren(
           h(
             'article',
@@ -1168,9 +1296,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           )
         );
       }
-      // Nothing about the prototype is offered without the internal flag, so a
-      // public visitor sees Quest Hub with only its onboarding tab populated.
-      if (!questPrototypeEnabled(s.residentId)) storyQuestList.replaceChildren();
       onboardingQuestList.replaceChildren(
         ...ONBOARDING_QUESTS.map((quest) => {
           const done = s.onboardingCompleted.includes(quest.id);

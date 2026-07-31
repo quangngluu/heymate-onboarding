@@ -33,16 +33,15 @@ function devChatApi(key: string): Plugin {
           const chunks: Buffer[] = [];
           for await (const c of req) chunks.push(c as Buffer);
           const body = JSON.parse(Buffer.concat(chunks).toString());
-          if (
-            body.route !== undefined &&
-            body.route !== 'origin' &&
-            body.route !== 'hub' &&
-            body.route !== 'sao'
-          ) {
+          if (body.route !== undefined && body.route !== 'sao') {
             res.statusCode = 400;
-            return res.end(JSON.stringify({ error: 'unknown-route' }));
+            const error =
+              body.route === 'origin' || body.route === 'hub'
+                ? 'retired-route'
+                : 'unknown-route';
+            return res.end(JSON.stringify({ error }));
           }
-          const route = body.route ?? 'hub';
+          const route = body.route ?? 'sao';
           const { buildSystemPrompt } = await server.ssrLoadModule('/src/chat/prompt.ts');
           let system = buildSystemPrompt(
             body.residentId,

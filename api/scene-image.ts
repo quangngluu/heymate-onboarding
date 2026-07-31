@@ -91,8 +91,9 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ error: 'bad-request' }, { status: 400 });
   }
   const route = body.route ?? DEFAULT_ROUTE;
-  if (route !== 'origin' && route !== 'hub' && route !== 'sao') {
-    return Response.json({ error: 'unknown-route' }, { status: 400 });
+  if (route !== 'sao') {
+    const error = route === 'origin' || route === 'hub' ? 'retired-route' : 'unknown-route';
+    return Response.json({ error }, { status: 400 });
   }
 
   const text = String(body.text ?? '').trim().slice(0, 600);

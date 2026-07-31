@@ -39,8 +39,6 @@ const SHAPE = `Trả về DUY NHẤT một object JSON, không kèm giải thíc
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
-  const key = process.env.DEEPSEEK_API_KEY;
-  if (!key) return Response.json({ error: 'not-configured' }, { status: 503 });
 
   let body: QuestRequest;
   try {
@@ -49,13 +47,16 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ error: 'bad-request' }, { status: 400 });
   }
 
+  const route = body.route ?? DEFAULT_ROUTE;
+  if (route !== 'sao') {
+    const error = route === 'origin' || route === 'hub' ? 'retired-route' : 'unknown-route';
+    return Response.json({ error }, { status: 400 });
+  }
   if (!RESIDENTS.some((resident) => resident.id === body.residentId)) {
     return Response.json({ error: 'unknown-resident' }, { status: 400 });
   }
-  const route = body.route ?? DEFAULT_ROUTE;
-  if (route !== 'origin' && route !== 'hub' && route !== 'sao') {
-    return Response.json({ error: 'unknown-route' }, { status: 400 });
-  }
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) return Response.json({ error: 'not-configured' }, { status: 503 });
 
   // Her canon and her voice, so the scene sounds like her and not like a form.
   const system = buildSystemPrompt(

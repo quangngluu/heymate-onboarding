@@ -124,8 +124,9 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ error: 'bad-request' }, { status: 400 });
   }
   const route = body.route ?? DEFAULT_ROUTE;
-  if (route !== 'sao' && route !== 'origin' && route !== 'hub') {
-    return Response.json({ error: 'unknown-route' }, { status: 400 });
+  if (route !== 'sao') {
+    const error = route === 'origin' || route === 'hub' ? 'retired-route' : 'unknown-route';
+    return Response.json({ error }, { status: 400 });
   }
   const key = process.env.DEEPSEEK_API_KEY;
   if (!key) {

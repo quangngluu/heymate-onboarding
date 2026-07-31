@@ -1,6 +1,5 @@
 import { CHARACTERS } from '../config/characters';
 import { segments } from '../chat/dialogue';
-import { questPrototypeEnabled } from '../config/prototype-flag';
 import {
   PERSONAL_OUTPUTS,
   defaultBond,
@@ -322,7 +321,9 @@ const initialState: AppState = {
 
 type Listener = (state: AppState, prev: AppState) => void;
 
-const STORAGE_KEY = 'heymate.progress.v1';
+// v1 contains Hub/origin test conversations and numeric reveal progress. K
+// explicitly chose a clean v3 cutover, so no legacy story state is migrated.
+const STORAGE_KEY = 'heymate.progress.sao.v1';
 
 export class Store {
   private state: AppState = initialState;
@@ -810,9 +811,6 @@ export class Store {
   startQuest(id: string): boolean {
     const quest = this.questById2(id);
     if (!quest || quest.residentId !== this.state.residentId) return false;
-    // Quest Mode is internal-only. Checked here as well as in the UI so a
-    // console call or a stale DOM handler cannot open it either.
-    if (!questPrototypeEnabled(quest.residentId)) return false;
     if (this.nextQuest()?.id !== id) return false;
     const prev = this.progressFor(quest.residentId);
     const revealed = Math.max(prev.revealed, 1);

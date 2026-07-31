@@ -2,9 +2,19 @@
 
 Branch: `feat/quest-mode-prototype-1`
 
-This change completes Part 1 (E1–E8) of the Quest Mode execution plan. It does
-not switch the production default and does not deploy. `DEFAULT_ROUTE` remains
-`hub`.
+Part 1 (E1–E8) completed the route-isolated content migration. The public
+cutover on 2026-07-31 then made `sao` the only browser and API runtime:
+
+- `DEFAULT_ROUTE` is `sao`.
+- Query strings and sticky storage can no longer select Hub/origin.
+- Chat, generated Quest and scene-image endpoints reject Hub/origin as retired
+  routes rather than assembling legacy content.
+- The storage namespace moved from `heymate.progress.v1` to
+  `heymate.progress.sao.v1`; the former data was test-only and is intentionally
+  not migrated.
+- Rin Quest is public without `questPrototype`; Kagari and Momo show an
+  explicit unavailable state instead of a blank or a Hub fallback.
+- Hub/origin remain offline baselines for exporters and isolation probes only.
 
 ## Spec-to-code gap closure
 
@@ -44,5 +54,6 @@ git diff --check
 probes, then both Hub and v3 exporters in read-only mode.
 
 Physical iPhone voice playback with the silent switch enabled remains a separate
-device gate. Production deployment and changing `DEFAULT_ROUTE` are deliberately
-outside this commit.
+device gate; it is not a canon-cutover blocker. The browser smoke now exercises
+the production root at 360×800, 390×844 and 430×932, including the public Rin
+Quest transition and the real skinned placeholder rig.

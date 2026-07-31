@@ -2,12 +2,17 @@
 // base, the others wait behind-left as dimmed "shelf" copies. Selecting a
 // resident swaps who holds the base.
 //
-// The models are static sculpts (no rig, no morph targets), so "alive" is
-// carried by light and motion: a breathing sway, a turn toward the camera,
-// and a base ring that pulses while she speaks.
+// Open Chat uses static sculpts, so "alive" is carried by light and motion.
+// Quest Mode swaps the selected sculpt for a real skinned placeholder. Meshy
+// owns the first skin only; production motion remains a Mixamo retargeting job.
 
 import * as THREE from 'three';
 import { loadNormalized } from './champions';
+import {
+  disposeQuestRig,
+  loadQuestRig,
+  setQuestRigStatus,
+} from './quest-rig';
 import { RESIDENTS, type VisualIdentity } from '../config/residents';
 import type { QuestPresentation } from '../config/quests';
 
@@ -63,6 +68,7 @@ export class WaifuStage {
   private motes: THREE.Points;
   private moteMotif: MoteMotif = 'data';
   private questMode = false;
+  private questRig: THREE.Group | null = null;
   private archive = new THREE.Group();
   private archiveFrames: THREE.Mesh[] = [];
   private frame12: THREE.Mesh;
@@ -182,6 +188,21 @@ export class WaifuStage {
     this.archive.add(floor);
     this.archive.visible = false;
     scene.add(this.archive);
+
+    setQuestRigStatus('loading');
+    void loadQuestRig(maxAnisotropy)
+      .then((rig) => {
+        this.questRig = rig;
+        rig.position.set(0, this.heroY, 0);
+        rig.visible = false;
+        this.scene.add(rig);
+        setQuestRigStatus('ready');
+        this.applyQuestCharacterVisibility();
+      })
+      .catch((error) => {
+        setQuestRigStatus('fallback');
+        console.warn('Quest rig failed to load; keeping the static resident fallback.', error);
+      });
   }
 
   setBaseTop(y: number): void {
@@ -193,6 +214,7 @@ export class WaifuStage {
     this.upLight.target.position.y = y + 1.15;
     const hero = this.heroId && this.entries.get(this.heroId);
     if (hero) hero.group.position.y = y;
+    if (this.questRig) this.questRig.position.y = y;
     this.archive.position.y += delta;
   }
 
@@ -253,7 +275,7 @@ export class WaifuStage {
   private place(id: string, isHero: boolean, ghostIdx = 0): void {
     const e = this.entries.get(id);
     if (!e) return;
-    e.group.visible = !this.questMode || isHero;
+    e.group.visible = !this.questMode || (isHero && !this.questRig);
     // Models arrive normalized to 1.45 tall by the shared character loader.
     const scale = (isHero ? HERO_HEIGHT : GHOST_HEIGHT) / 1.45;
     e.group.scale.setScalar(scale);
@@ -321,11 +343,18 @@ export class WaifuStage {
   setQuestMode(on: boolean): void {
     this.questMode = on;
     this.archive.visible = on;
-    for (const [id, entry] of this.entries) {
-      entry.group.visible = !on || id === this.heroId;
-    }
+    this.applyQuestCharacterVisibility();
     this.ring.visible = !on;
     this.setQuestVisual(on ? 'archive-corridor' : 'archive-corridor');
+  }
+
+  private applyQuestCharacterVisibility(): void {
+    const hasRig = this.questRig !== null;
+    for (const [id, entry] of this.entries) {
+      entry.group.visible =
+        !this.questMode || (!hasRig && id === this.heroId);
+    }
+    if (this.questRig) this.questRig.visible = this.questMode;
   }
 
   setQuestVisual(
@@ -394,7 +423,7 @@ export class WaifuStage {
     for (const [id, e] of this.entries) {
       const isHero = id === this.heroId;
       e.group.rotation.y += (e.targetYaw - e.group.rotation.y) * Math.min(1, dt * 4);
-      if (isHero) {
+      if (isHero && !(this.questMode && this.questRig)) {
         // Breathing sway, slightly stronger while talking.
         const amp = 0.006 + this.speakingLevel * 0.006;
         e.group.position.y = this.heroY + Math.sin(t * 1.15) * amp;
@@ -496,5 +525,7 @@ export class WaifuStage {
         : [];
       for (const material of materials) material.dispose();
     });
+    if (this.questRig) disposeQuestRig(this.questRig);
+    this.questRig = null;
   }
 }

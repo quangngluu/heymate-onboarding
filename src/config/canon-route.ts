@@ -13,46 +13,30 @@
 // the default canon for *anyone*. It stays in the tree as a selectable legacy
 // experiment, outside the default runtime path.
 //
-// `DEFAULT_ROUTE` is deliberately still `hub` for one more step: the live demo
-// serves it, and the agreed rollout is ingest → flag → probe → switch alias →
-// only then drop Hub from the default path. Flipping this constant is that last
-// step, and it is one line on purpose.
+// The source-anime reboot is now the only public runtime. Hub/origin remain in
+// the repository as offline baselines for exporters and verification, but the
+// browser can no longer select them through a query string or sticky storage.
 
 export type CanonRoute = 'origin' | 'hub' | 'sao';
 
-/**
- * Temporary. Production currently serves the Hub demo; this becomes 'sao' (or
- * per-resident) at rollout step 5, once the v3 route passes regression.
- */
-export const DEFAULT_ROUTE: CanonRoute = 'hub';
+export const DEFAULT_ROUTE: CanonRoute = 'sao';
 
 const KEY = 'heymate.canonRoute';
 
-function isRoute(v: string | null): v is CanonRoute {
-  return v === 'origin' || v === 'hub' || v === 'sao';
-}
-
 /**
- * Resolve the route. URL wins so a tester can be handed a link; the choice then
- * sticks for the session. `?canon=off` clears it back to the default.
+ * Resolve the public route.
+ *
+ * Before the v3 cutover this accepted `?canon=hub` and persisted the choice.
+ * Test users would therefore stay on the retired canon even after changing the
+ * default. The old datasets still have explicit route parameters in build-time
+ * tools; the product runtime is intentionally one-way.
  */
 export function resolveCanonRoute(): CanonRoute {
   if (typeof window === 'undefined') return DEFAULT_ROUTE;
   try {
-    const fromUrl = new URLSearchParams(window.location.search).get('canon');
-    if (fromUrl !== null) {
-      const v = fromUrl.trim().toLowerCase();
-      if (isRoute(v)) {
-        window.localStorage.setItem(KEY, v);
-        return v;
-      }
-      window.localStorage.removeItem(KEY);
-      return DEFAULT_ROUTE;
-    }
-    const stored = window.localStorage.getItem(KEY);
-    if (isRoute(stored)) return stored;
+    window.localStorage.setItem(KEY, DEFAULT_ROUTE);
   } catch {
-    /* private mode: default */
+    /* private mode: the in-memory default is enough */
   }
   return DEFAULT_ROUTE;
 }
