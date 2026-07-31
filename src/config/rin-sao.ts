@@ -18,6 +18,7 @@
 export const RIN_SAO = {
   route: 'sword-art-online',
   series: 'RIN//REPLAY — Sword Art Online',
+  displayName: 'Rin Amagi',
   tagline: 'Em không phải idol đó. Em là người từng đứng bên trong cô ấy.',
 
   /** Twenty seconds. If this does not land, nothing after it will. */

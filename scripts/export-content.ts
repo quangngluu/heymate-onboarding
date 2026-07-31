@@ -19,7 +19,20 @@ import { reactionsFor } from '../src/config/reactions';
 import { FANTASIES, PERSONAL_OUTPUTS, STABLE_SOUL, TOGETHER } from '../src/config/bond';
 import { AVATAR_RECOGNITION, CROSSOVER, HUB, arrivalFor } from '../src/config/interlude';
 
-const out = resolve(process.argv[2] ?? 'docs/waifu-content-review.md');
+// This exporter still reads v1/v2 resident data only. Rather than emit that
+// under a filename that looks current, it refuses a v3 route outright and points
+// at the dataset exporter, which is route-aware. Tracked as `v3-markdown-export`.
+const routeArg =
+  process.argv.find((a) => a.startsWith('--route='))?.slice('--route='.length) ?? 'hub';
+if (routeArg !== 'hub') {
+  console.error(
+    `export-content.ts is hub-only. For route '${routeArg}' use:\n` +
+      `  npx tsx scripts/export-character-data.ts --route=${routeArg}`
+  );
+  process.exit(1);
+}
+const positional = process.argv.slice(2).find((a) => !a.startsWith('--'));
+const out = resolve(positional ?? 'docs/waifu-content-review.hub.md');
 const L: string[] = [];
 const p = (s = '') => L.push(s);
 
