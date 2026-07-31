@@ -1,19 +1,21 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { resolveSemanticBones, type SemanticSkeleton } from './bone-map';
 
 export const QUEST_RIG_URL = '/assets/quest/rigs/meshy-biped-placeholder.glb';
 
-const REQUIRED_BONES = [
-  'Hips',
-  'Spine',
-  'Spine01',
-  'Spine02',
-  'neck',
-  'Head',
-  'LeftHand',
-  'RightHand',
-] as const;
+/**
+ * The semantic skeleton this rig resolved to, once loaded.
+ *
+ * Kept module-level so the animation runtime can ask "which bone is
+ * `spine_upper` on the asset actually in the scene?" without re-walking it.
+ */
+let resolved: SemanticSkeleton | null = null;
+
+export function questRigBones(): SemanticSkeleton | null {
+  return resolved;
+}
 
 const QUEST_RIG_HEIGHT = 1.52;
 
@@ -66,10 +68,21 @@ export async function loadQuestRig(maxAnisotropy = 8): Promise<THREE.Group> {
     }
   });
 
-  const missing = REQUIRED_BONES.filter((name) => !bones.has(name));
-  if (skinnedMeshes < 1 || materials < 1 || missing.length > 0) {
+  if (skinnedMeshes < 1 || materials < 1) {
     throw new Error(
-      `Quest rig asset gate failed: skin=${skinnedMeshes}, materials=${materials}, missing=${missing.join(',') || 'none'}`
+      `Quest rig asset gate failed: skin=${skinnedMeshes}, materials=${materials}`
+    );
+  }
+
+  // Resolve by walking the parent chain, not by matching bone names. The two
+  // rigs in play number their spine in opposite directions, so a name check
+  // would pass on a skeleton that animates inside-out. See bone-map.ts.
+  try {
+    resolved = resolveSemanticBones(source);
+  } catch (error) {
+    throw new Error(
+      `Quest rig asset gate failed: skeleton did not resolve to the semantic ` +
+        `contract — ${(error as Error).message}. Bones present: ${[...bones].join(', ')}`
     );
   }
 

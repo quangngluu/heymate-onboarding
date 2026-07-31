@@ -13,6 +13,7 @@ import { questById, questsForResident } from '../src/config/quests';
 import { reactionsFor } from '../src/config/reactions';
 import { RESIDENTS, residentById, type ResidentId } from '../src/config/residents';
 import { idleLine, openingLine, reply } from '../src/chat/engine';
+import { resolveSemanticBones, type BoneLike } from '../src/three/bone-map';
 
 const SESSION: PromptSession = {
   nickname: '',
@@ -349,11 +350,94 @@ async function handlerCoverage(): Promise<void> {
   }
 }
 
+/**
+ * The rig gate must reject an inside-out skeleton, not just a missing bone.
+ *
+ * Meshy numbers its spine Hips→Spine02→Spine01→Spine; Mixamo numbers it
+ * Hips→Spine→Spine1→Spine2. A name-based map would send lower-torso rotation to
+ * the upper chest on one of them, silently. So the check that matters is whether
+ * the resolver refuses a skeleton whose chain is wrong — a gate that cannot fail
+ * is not a gate.
+ */
+function boneMapCoverage(): void {
+  const bone = (name: string, ...children: BoneLike[]): BoneLike => ({ name, children });
+
+  // The real placeholder's chain, lowest spine segment first off Hips.
+  const meshy = bone(
+    'Armature',
+    bone(
+      'Hips',
+      bone('LeftUpLeg', bone('LeftLeg')),
+      bone(
+        'Spine02',
+        bone(
+          'Spine01',
+          bone(
+            'Spine',
+            bone('LeftShoulder', bone('LeftArm', bone('LeftForeArm', bone('LeftHand')))),
+            bone('RightShoulder', bone('RightArm', bone('RightForeArm', bone('RightHand')))),
+            bone('neck', bone('Head', bone('head_end')))
+          )
+        )
+      )
+    )
+  );
+
+  const map = resolveSemanticBones(meshy);
+  assert.equal(map.spine_lower, 'Spine02', 'lowest spine segment is the one on Hips');
+  assert.equal(map.spine_mid, 'Spine01');
+  assert.equal(map.spine_upper, 'Spine', 'topmost spine segment carries neck and shoulders');
+  assert.equal(map.neck, 'neck');
+  assert.equal(map.head, 'Head');
+  assert.equal(map.hand_l, 'LeftHand');
+  assert.equal(map.hand_r, 'RightHand');
+
+  // A Mixamo-style chain must resolve to the same roles with different names —
+  // that equivalence is the whole point of the semantic layer.
+  const mixamo = bone(
+    'Armature',
+    bone(
+      'Hips',
+      bone(
+        'Spine',
+        bone(
+          'Spine1',
+          bone(
+            'Spine2',
+            bone('LeftShoulder', bone('LeftArm', bone('LeftForeArm', bone('LeftHand')))),
+            bone('RightShoulder', bone('RightArm', bone('RightForeArm', bone('RightHand')))),
+            bone('Neck', bone('Head'))
+          )
+        )
+      )
+    )
+  );
+  const mixamoMap = resolveSemanticBones(mixamo);
+  assert.equal(mixamoMap.spine_lower, 'Spine');
+  assert.equal(mixamoMap.spine_upper, 'Spine2');
+  assert.equal(mixamoMap.head, 'Head');
+
+  // Now prove it fails: a two-segment spine, and a skeleton with no Hips.
+  assert.throws(
+    () =>
+      resolveSemanticBones(
+        bone('Armature', bone('Hips', bone('Spine01', bone('Spine', bone('neck', bone('Head'))))))
+      ),
+    /expected 3 spine segments/,
+    'a short spine must be rejected rather than half-mapped'
+  );
+  assert.throws(
+    () => resolveSemanticBones(bone('Armature', bone('Root', bone('Spine')))),
+    /no bone named Hips/
+  );
+}
+
 requiredViews();
 promptCoverage();
 scriptedCoverage();
 questConfigCoverage();
 briefAndOverrideCoverage();
+boneMapCoverage();
 await storeQuestCoverage();
 await handlerCoverage();
 
@@ -362,4 +446,5 @@ console.log('  route views: 3 residents, 33 reveals, 27 truths, 16 causal memori
 console.log('  prompts: every reveal + every enabled route quest + safety');
 console.log('  scripted fallback: 12 turns per resident');
 console.log('  quests: route lookup + checkpoint resume + stable reveal ids');
+console.log('  rig: semantic bones resolved by hierarchy; inverted spine rejected');
 console.log('  HTTP: chat memory isolation + scene route propagation');
