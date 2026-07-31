@@ -244,9 +244,9 @@ const DEFAULT_PERFORMANCE: Performance = {
  * no beat fell back to neutral, so a conversation came out as happy → neutral →
  * sad → neutral: a feeling arriving and being dropped every second turn. Now a
  * beat *changes* how she feels and silence *sustains* it, which is how a mood
- * actually behaves. `mood` is the session setting, used only to open.
+ * actually behaves.
  */
-export function delivery(raw: string, mood?: string, prev?: DeliveryEmotion): Delivery {
+export function delivery(raw: string, prev?: DeliveryEmotion): Delivery {
   const parsed = segments(raw);
   const parts: string[] = [];
   const emotion =
@@ -254,8 +254,13 @@ export function delivery(raw: string, mood?: string, prev?: DeliveryEmotion): De
       .filter((seg) => seg.kind === 'beat')
       .map((seg) => match(FEELINGS, seg.text))
       .find((value): value is DeliveryEmotion => value !== undefined) ??
-    prev ??
-    MOOD_FEELING[mood ?? ''];
+    prev;
+  // No third fallback. This used to end in a mood the visitor had picked from a
+  // list, but two of those five moods already mapped to nothing on the argument
+  // — correct — that a line's own Vietnamese is a better read than a label
+  // chosen before the line existed. With the mood axis gone, beats carry intent
+  // and `prev` carries continuity; a cold start with neither is exactly the case
+  // where the model should read the text rather than be told how to feel.
   const performance = emotion ? PERFORMANCE[emotion] : DEFAULT_PERFORMANCE;
 
   for (let index = 0; index < parsed.length; index++) {
@@ -288,12 +293,3 @@ export function delivery(raw: string, mood?: string, prev?: DeliveryEmotion): De
   };
 }
 
-const MOOD_FEELING: Record<string, DeliveryEmotion | undefined> = {
-  calm: 'calm',
-  playful: 'happy',
-  // Caring and serious describe intent, not a fixed acoustic emotion. Let the
-  // 2.8 model read the actual Vietnamese line when no physical beat overrides.
-  caring: undefined,
-  energetic: 'happy',
-  serious: undefined,
-};

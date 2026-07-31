@@ -6,16 +6,15 @@ import { h } from './dom';
 import type { UIActions } from './actions';
 import type { AppState } from '../state/store';
 import { COPY } from '../config/copy';
+import { FACES } from '../config/face';
 import { factionById } from '../config/factions';
 import { CHARACTERS, characterById, characterIndex } from '../config/characters';
 import { characterThumb, monogramThumb } from '../three/thumbs';
 import { UNIVERSES } from '../config/universes';
 import {
   LENGTHS,
-  MOODS,
   RESIDENTS,
   SCENARIOS,
-  STYLES,
 } from '../config/residents';
 import { canonViewFor } from '../config/canon-view';
 import { resolveCanonRoute } from '../config/canon-route';
@@ -509,44 +508,15 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     identityInput,
     h('p', { class: 'hint faint' }, COPY.stage.identityNote)
   );
-  const scen = selectField(
-    'Bối cảnh',
-    SCENARIOS.map((option) => ({
-      ...option,
-      label:
-        option.id === 'casual'
-          ? 'Thường ngày'
-          : option.id === 'latenight'
-            ? 'Đêm riêng tư'
-            : option.id === 'study'
-              ? 'Học / làm cùng nhau'
-              : option.id === 'yourday'
-                ? 'Ngày của anh'
-                : option.id === 'challenge'
-                  ? 'Thử thách'
-                  : option.id === 'together'
-                    ? 'Ở bên nhau'
-                    : option.id === 'watch'
-                      ? 'Cùng xem / đọc'
-                      : 'Chúc ngủ ngon',
-    })),
-    (id) => actions.updateSession({ scenario: id })
+  // The primary choice. Everything else in this sheet refines it.
+  const face = selectField(
+    'Em ở đây để',
+    FACES.map((f) => ({ id: f.id, label: f.label })),
+    (id) => actions.updateSession({ face: id })
   );
-  const style = selectField(
-    'Em chủ động',
-    STYLES.map((option) => ({
-      ...option,
-      label:
-        option.id === 'listen'
-          ? 'Lắng nghe'
-          : option.id === 'lead'
-            ? 'Dẫn dắt'
-            : 'Cân bằng',
-    })),
-    (id) => actions.updateSession({ style: id })
-  );
-  const mood = selectField(COPY.stage.mood, MOODS, (id) =>
-    actions.updateSession({ mood: id })
+  const faceHint = h('p', { class: 'hint faint' }, '');
+  const scen = selectField('Bối cảnh', SCENARIOS, (id) =>
+    actions.updateSession({ scenario: id })
   );
   const len = selectField(COPY.stage.length, LENGTHS, (id) =>
     actions.updateSession({ length: id })
@@ -597,7 +567,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h(
       'div',
       { class: 'session-advanced-body' },
-      mood.el,
       len.el,
       h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, COPY.stage.nickname), nickInput),
       h(
@@ -659,10 +628,11 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       h(
         'div',
         { class: 'session-primary' },
+        face.el,
+        faceHint,
         identityMode.el,
         identityCustom,
-        scen.el,
-        style.el
+        scen.el
       ),
       sessionAdvanced
     ),
@@ -975,18 +945,19 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       identityMode.select.value = identityCustomActive ? 'character' : 'self';
       identityCustom.hidden = !identityCustomActive;
       scen.select.value = s.session.scenario;
-      mood.select.value = s.session.mood;
-      style.select.value = s.session.style;
+      face.select.value = s.session.face;
       len.select.value = s.session.length;
+      const activeFace = FACES.find((f) => f.id === s.session.face) ?? FACES[0];
+      faceHint.textContent = activeFace.hint;
+      // Bối cảnh only means anything in the companion face; the story face takes
+      // its scene from the quest, so offering it there would be a dead control.
+      scen.el.hidden = s.session.face !== 'companion';
       const scenarioLabel = scen.select.selectedOptions[0]?.text ?? 'Thường ngày';
-      const styleLabel =
-        s.session.style === 'lead'
-          ? 'Em dẫn'
-          : s.session.style === 'listen'
-            ? 'Em lắng nghe'
-            : 'Cân bằng';
       const identityLabel = s.session.identity || 'Chính anh';
-      const sessionSummary = `${identityLabel} · ${scenarioLabel} · ${styleLabel}`;
+      const sessionSummary =
+        s.session.face === 'companion'
+          ? `${identityLabel} · ${activeFace.label} · ${scenarioLabel}`
+          : `${identityLabel} · ${activeFace.label}`;
       setChip.textContent = sessionSummary;
       setChip.title = sessionSummary;
       mobileSettingsBtn.setAttribute('aria-label', `Cấu hình: ${sessionSummary}`);

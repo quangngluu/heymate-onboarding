@@ -8,20 +8,15 @@
 
 export type ResidentId = 'rin' | 'kagura' | 'momo';
 
-export type MoodId = 'calm' | 'playful' | 'caring' | 'energetic' | 'serious';
-export type ScenarioId =
-  | 'casual'
-  | 'latenight'
-  | 'study'
-  | 'yourday'
-  | 'challenge'
-  // Together Mode. Without these three every scene is a crisis or a quest, and a
-  // character you can only rescue is a visual-novel heroine rather than someone
-  // you live alongside.
-  | 'together'
-  | 'goodnight'
-  | 'watch';
-export type StyleId = 'listen' | 'balanced' | 'lead';
+// Four contexts, not eight. `study`, `yourday`, `challenge` and `watch` were
+// moods and activities wearing a context's clothes — they described how she
+// should act, which is now hers to decide, rather than where the two of them
+// are. What is left is the axis that genuinely changes the scene, and it lives
+// inside the companion face; the story face gets its scene from the quest.
+//
+// Without these, every scene is a crisis or a quest, and a character you can
+// only rescue is a visual-novel heroine rather than someone you live alongside.
+export type ScenarioId = 'casual' | 'latenight' | 'together' | 'goodnight';
 export type LengthId = 'short' | 'natural' | 'expressive';
 export type VoiceSlot = 'signature' | 'alternate';
 
@@ -294,30 +289,14 @@ export interface ResidentConfig {
   conversation: ConversationGuide;
 }
 
-export const MOODS: { id: MoodId; label: string }[] = [
-  { id: 'calm', label: 'Điềm tĩnh' },
-  { id: 'playful', label: 'Tinh nghịch' },
-  { id: 'caring', label: 'Quan tâm' },
-  { id: 'energetic', label: 'Năng lượng' },
-  { id: 'serious', label: 'Nghiêm túc' },
-];
 
 export const SCENARIOS: { id: ScenarioId; label: string }[] = [
-  { id: 'casual', label: 'Nói chuyện thường ngày' },
-  { id: 'latenight', label: 'Tâm sự đêm khuya' },
-  { id: 'study', label: 'Học hoặc làm việc cùng nhau' },
-  { id: 'yourday', label: 'Kể em nghe ngày của anh' },
-  { id: 'challenge', label: 'Thử thách tinh nghịch' },
-  { id: 'together', label: 'Ở cùng nhau, không có việc gì' },
-  { id: 'watch', label: 'Cùng đọc hoặc cùng xem' },
-  { id: 'goodnight', label: 'Chúc nhau ngủ ngon' },
+  { id: 'casual', label: 'Thường ngày' },
+  { id: 'latenight', label: 'Đêm riêng tư' },
+  { id: 'together', label: 'Ở bên nhau' },
+  { id: 'goodnight', label: 'Chúc ngủ ngon' },
 ];
 
-export const STYLES: { id: StyleId; label: string }[] = [
-  { id: 'listen', label: 'Lắng nghe nhiều hơn' },
-  { id: 'balanced', label: 'Cân bằng' },
-  { id: 'lead', label: 'Chủ động dẫn dắt' },
-];
 
 export const LENGTHS: { id: LengthId; label: string }[] = [
   { id: 'short', label: 'Ngắn' },

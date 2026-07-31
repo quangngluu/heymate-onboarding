@@ -21,12 +21,11 @@ interface TtsRequest {
   voiceId?: string;
   speed?: number;
   /**
-   * The written line with its *beats* intact, and the session mood. Only
+   * The written line with its *beats* intact. Only
    * MiniMax can use them, so the markup is composed here rather than in the
    * browser: a provider that cannot read a pause tag would say it out loud.
    */
   raw?: string;
-  mood?: string;
   /** Ask for raw PCM as it renders rather than a finished file. */
   stream?: boolean;
   /** Per-voice loudness trim; clips from different clones do not match. */
@@ -99,7 +98,7 @@ async function minimax(body: TtsRequest, text: string): Promise<Response> {
   const defaultVoice = process.env.MINIMAX_VOICE_ID;
   if (!key) return Response.json({ error: 'not-configured' }, { status: 503 });
 
-  const performed = delivery(body.raw || text, body.mood, body.prev);
+  const performed = delivery(body.raw || text, body.prev);
   if (body.stream) return minimaxStream(key, body, performed, defaultVoice);
   const upstream = await fetch(MINIMAX_ENDPOINT, {
     method: 'POST',

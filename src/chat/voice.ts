@@ -54,13 +54,12 @@ export function renderSpeech(
   speed?: number,
   /** The written line, beats and all, so the server can shape delivery. */
   raw?: string,
-  mood?: string,
   vol?: number
 ): Promise<string | null> {
   cancelSpeech();
   const handle: SpeakHandle = { cancelled: false };
   current = handle;
-  const run = chain.then(() => request(text, handle, voiceId, speed, raw, mood, vol));
+  const run = chain.then(() => request(text, handle, voiceId, speed, raw, vol));
   chain = run.catch(() => undefined);
   return run;
 }
@@ -71,7 +70,6 @@ async function request(
   voiceId?: string,
   speed?: number,
   raw?: string,
-  mood?: string,
   vol?: number
 ): Promise<string | null> {
   // Superseded while queued: never spend a render on a line nobody waits for.
@@ -80,7 +78,7 @@ async function request(
     const res = await fetch('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, voiceId, speed, raw, mood, vol, prev: lastEmotion }),
+      body: JSON.stringify({ text, voiceId, speed, raw, vol, prev: lastEmotion }),
       signal: AbortSignal.timeout(30000),
     });
     if (handle.cancelled || !res.ok) return null;
@@ -108,7 +106,6 @@ export async function streamSpeech(
   opts: {
     text: string;
     raw?: string;
-    mood?: string;
     voiceId?: string;
     speed?: number;
     vol?: number;

@@ -12,7 +12,7 @@
 import { fnv1a } from '../util/hash';
 import { DEFAULT_ROUTE, type CanonRoute } from '../config/canon-route';
 import { canonViewFor } from '../config/canon-view';
-import type { LengthId, MoodId, ResidentConfig, ResidentId, StyleId } from '../config/residents';
+import type { LengthId, ResidentConfig, ResidentId } from '../config/residents';
 
 type Intent =
   | 'greeting'
@@ -143,24 +143,6 @@ const LINES: Record<ResidentId, Record<Intent, [string, string]>> = {
   },
 };
 
-/** A short mood colour, in her own register. */
-const MOOD_TAG: Record<ResidentId, Partial<Record<MoodId, string>>> = {
-  rin: {
-    caring: 'Anh uống thứ gì không phải cà phê đi.',
-    playful: 'Anh đang câu giờ. Về mặt thống kê.',
-    serious: 'Em tập trung hoàn toàn rồi. Nói đi.',
-  },
-  kagura: {
-    caring: 'Anh ăn trước đã. Rồi nói.',
-    playful: 'Anh đang thích chuyện này hơn mức đứng đắn đấy.',
-    energetic: 'Vậy thì đi đi. Ngay bây giờ.',
-  },
-  momo: {
-    caring: 'Anh ngồi gần hơn đi, đoạn này yên lặng hơn.',
-    playful: 'Vậy thì encore nào, anh.',
-    serious: 'Đoạn này em không diễn đâu.',
-  },
-};
 
 /** What she says into a silence when the model is unavailable. */
 const IDLE_LINES: Record<ResidentId, string[]> = {
@@ -194,8 +176,6 @@ export function idleLine(
 
 export interface SessionSetup {
   nickname: string;
-  mood: MoodId;
-  style: StyleId;
   length: LengthId;
 }
 
@@ -254,7 +234,7 @@ export function reply(message: string, ctx: ReplyContext): ReplyResult {
   const resident = canonViewFor(ctx.resident.id, route);
   const { session } = ctx;
   const intent = detectIntent(message);
-  const seed = fnv1a(message.trim().toLowerCase() + resident.id + session.mood);
+  const seed = fnv1a(message.trim().toLowerCase() + resident.id + session.length);
   const pair = resident.fallback
     ? intent === 'greeting'
       ? ctx.memories.length
@@ -271,22 +251,6 @@ export function reply(message: string, ctx: ReplyContext): ReplyResult {
   if (rungDue) {
     text = `${text} ${resident.canonReveals[ctx.revealed].spoken}`;
     revealedRung = ctx.revealed;
-  }
-
-  // Mood colours the line without changing who is speaking.
-  const tag = resident.canonVersion === 'v3' ? undefined : MOOD_TAG[resident.id][session.mood];
-  if (tag && !revealedRung && seed % 3 === 0) text = `${text} ${tag}`;
-
-  // Who drives: she asks her own question, or she stays out of the way.
-  if (
-    resident.canonVersion !== 'v3' &&
-    session.style === 'lead' &&
-    !revealedRung &&
-    intent !== 'farewell'
-  ) {
-    text = `${text} ${resident.curiosity[seed % resident.curiosity.length]}`;
-  } else if (session.style === 'listen') {
-    text = text.replace(/\s*[^.!?]*\?$/, '').trim() || text;
   }
 
   // A saved memory surfaces as a callback rather than a status line.

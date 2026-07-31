@@ -11,17 +11,30 @@ import {
 import { togetherFor } from '../src/config/bond';
 import { questById, questsForResident } from '../src/config/quests';
 import { reactionsFor } from '../src/config/reactions';
-import { RESIDENTS, residentById, type ResidentId } from '../src/config/residents';
+import {
+  LENGTHS,
+  RESIDENTS,
+  SCENARIOS,
+  residentById,
+  type LengthId,
+  type ResidentId,
+  type ScenarioId,
+} from '../src/config/residents';
+import { FACES, type Face } from '../src/config/face';
 import { idleLine, openingLine, reply } from '../src/chat/engine';
 import { resolveSemanticBones, type BoneLike } from '../src/three/bone-map';
 
+/**
+ * The story face, because reveals, the open loop and the causal bank are all
+ * story-only. Most of this file is checking that content, so `story` is the
+ * right default here even though the product opens on `companion`.
+ */
 const SESSION: PromptSession = {
   nickname: '',
   persona: '',
   identity: '',
   scenario: 'casual',
-  mood: 'calm',
-  style: 'balanced',
+  face: 'story',
   length: 'natural',
 };
 
@@ -123,6 +136,106 @@ function promptCoverage(): void {
       clean(`${quest.id} active prompt`, prompt);
     }
   }
+}
+
+/**
+ * The two faces are actually two, and the contradiction is gone.
+ *
+ * Before this split every prompt carried both — psyche, ordinary time, heat and
+ * cheap truths *and* the world, the causal bank, thirty-three reveals and the
+ * open loop — about 35,400 characters, so the model averaged a companion and a
+ * mystery. The old surface asked the visitor to tune that mixture across six
+ * axes and twenty-seven options, two of which contradicted each other outright:
+ * `STYLE=lead` emitted "Em dẫn" while `LEAD=you-lead` emitted "Anh dẫn" into the
+ * same prompt.
+ */
+function faceCoverage(): void {
+  const LEADS_HER = /Em dẫn|Em thường là người mở lời/;
+  const LEADS_HIM = /Anh dẫn/;
+  const OPEN_LOOP = 'luôn có một thứ còn dở';
+  const STRAIGHT = 'Em kể phần của mình một cách thẳng thắn';
+
+  for (const resident of RESIDENTS) {
+    const view = canonViewFor(resident.id, 'sao');
+    const build = (face: Face, scenario: ScenarioId, length: LengthId, revealNow?: string) =>
+      buildSystemPrompt(
+        resident.id,
+        { ...SESSION, face, scenario, length },
+        [],
+        5,
+        revealNow,
+        false,
+        5,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'probe',
+        'sao'
+      );
+
+    // Companion never withholds and never drips, so there is nothing for a
+    // scenario to have to switch off.
+    const companion = build('companion', 'together', 'natural');
+    assert.ok(!companion.includes(OPEN_LOOP), `${resident.id}: companion carries the open loop`);
+    assert.ok(companion.includes(STRAIGHT), `${resident.id}: companion lost the straight-answer rule`);
+    // Companion never *schedules* a reveal. It may still let her mention one she
+    // already opened in the story face — that is continuity, not a drip — so the
+    // assertion is about the directive, not about the text appearing at all.
+    const INJECT = 'Đưa điều này vào phản hồi bằng lời của em';
+    const withReveal = build('companion', 'casual', 'natural', view.canonReveals[3].id);
+    assert.ok(!withReveal.includes(INJECT), `${resident.id}: companion scheduled a canon reveal`);
+    assert.ok(
+      build('story', 'casual', 'natural', view.canonReveals[3].id).includes(INJECT),
+      `${resident.id}: story stopped scheduling reveals`
+    );
+
+    // Story does withhold, and does drip.
+    const story = build('story', 'casual', 'natural');
+    assert.ok(story.includes(OPEN_LOOP), `${resident.id}: story lost the open loop`);
+
+    // The split has to be worth its complexity: if both faces come out the same
+    // size, nothing was actually separated. Measured at 12-14% — the floor is
+    // higher than it looks because companion still needs who she is and the
+    // closed-world gazetteer, and cutting the latter is what let her confirm a
+    // retired district. The real win is the contradiction and the baiting being
+    // gone, not the byte count.
+    assert.ok(
+      companion.length < story.length * 0.90,
+      `${resident.id}: faces are the same size (companion ${companion.length}, story ${story.length})`
+    );
+
+    // No prompt may tell her both to lead and to follow. This is the assertion
+    // the old two-axis surface would have failed.
+    const faces: Face[] = ['companion', 'story'];
+    const scenarios: ScenarioId[] = ['casual', 'latenight', 'together', 'goodnight'];
+    const lengths: LengthId[] = ['short', 'natural', 'expressive'];
+    for (const face of faces) {
+      for (const scenario of scenarios) {
+        for (const length of lengths) {
+          const prompt = build(face, scenario, length);
+          assert.ok(
+            !(LEADS_HER.test(prompt) && LEADS_HIM.test(prompt)),
+            `${resident.id}/${face}/${scenario}/${length}: prompt says both "Em dẫn" and "Anh dẫn"`
+          );
+          for (const rule of SAFETY) assert.ok(prompt.includes(rule));
+          clean(`${resident.id} ${face}/${scenario}`, prompt);
+        }
+      }
+    }
+  }
+
+  // The surface itself: two faces, four contexts, three lengths. Nothing else.
+  assert.equal(FACES.length, 2, 'face count');
+  assert.equal(SCENARIOS.length, 4, 'scenario count');
+  assert.equal(LENGTHS.length, 3, 'length count');
+  assert.equal(
+    FACES.length + SCENARIOS.length + LENGTHS.length,
+    9,
+    'config surface grew back'
+  );
 }
 
 function scriptedCoverage(): void {
@@ -450,6 +563,7 @@ requiredViews();
 promptCoverage();
 scriptedCoverage();
 questConfigCoverage();
+faceCoverage();
 briefAndOverrideCoverage();
 boneMapCoverage();
 await storeQuestCoverage();
@@ -458,6 +572,7 @@ await handlerCoverage();
 console.log('canon verification passed');
 console.log('  route views: 3 residents, 33 reveals, 27 truths, 16 causal memories');
 console.log('  prompts: every reveal + every enabled route quest + safety');
+console.log('  faces: companion withholds nothing; 72 combinations carry no contradictory lead');
 console.log('  scripted fallback: 12 turns per resident');
 console.log('  quests: route lookup + checkpoint resume + stable reveal ids');
 console.log('  rig: semantic bones resolved by hierarchy; inverted spine rejected');

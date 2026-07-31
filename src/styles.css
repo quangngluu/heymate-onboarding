@@ -999,6 +999,10 @@ html[data-quest-rig='ready'] .step-stage.is-quest-mode::after {
   border-radius: 13px;
   background: rgba(239, 230, 212, 0.035);
 }
+/* `display: grid` outranks the browser default for [hidden], so a row hidden
+   from script stayed on screen. Any rule that sets display on an element the
+   code also toggles needs this pair. */
+.session-setting-row[hidden] { display: none; }
 .session-setting-row {
   min-height: 50px;
   display: grid;
