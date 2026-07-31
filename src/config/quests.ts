@@ -12,6 +12,16 @@ export interface QuestChoice {
   unlockCanonReveal?: number;
   /** Stable route-owned reveal. Required on v3 quests; numeric stays for Hub saves. */
   unlockCanonRevealId?: string;
+  /**
+   * Names the ending this branch lands on, for a choice that ends the quest.
+   *
+   * Required on every terminal choice of a v3 quest — `verify-canon` enforces it,
+   * and that the id resolves against the resident's authored endings. Before
+   * this, a quest simply stopped: the arc's landing existed as authored content
+   * nothing could reach, and the "kết cục" count on the card was derived from the
+   * shape of the graph rather than from what was written.
+   */
+  endingId?: string;
   /** Hook for a future generated scene; no asset is implied today. */
   imageKey?: string;
   /**
@@ -47,6 +57,8 @@ export interface FreeformFamily {
   nextNodeId?: string;
   unlockCanonReveal?: number;
   unlockCanonRevealId?: string;
+  /** As on QuestChoice: required when this family ends the quest. */
+  endingId?: string;
   imageKey?: string;
   crossMode?: QuestChoice['crossMode'];
 }
@@ -432,6 +444,7 @@ export const QUESTS: QuestDefinition[] = [
             outcome:
               'Frame xuất hiện waveform thứ hai. Một giọng nói gọi đúng tên anh trước thời điểm anh giới thiệu mình. Rin chỉ nói: “Đừng rời mic.”',
             flag: 'rin-ending:open-audio',
+            endingId: 'open-audio',
             unlockCanonReveal: 2,
             unlockCanonRevealId: 'rin-v3-fluctlight-clause',
             imageKey: 'rin-frame12-open-channel',
@@ -446,6 +459,7 @@ export const QUESTS: QuestDefinition[] = [
             outcome:
               'Silhouette biến mất nhưng bàn tay archived Rin vẫn vươn về khoảng trống. Rin tôn trọng ranh giới và trở nên nghi ngờ hơn.',
             flag: 'rin-ending:erase-signature',
+            endingId: 'erase-signature',
             unlockCanonReveal: 2,
             unlockCanonRevealId: 'rin-v3-fluctlight-clause',
             imageKey: 'rin-frame12-erased',
@@ -460,6 +474,7 @@ export const QUESTS: QuestDefinition[] = [
             outcome:
               'Frame bị khóa sau lớp kính mờ; giọng nói vẫn rất nhỏ. Rin đọc lựa chọn này là thận trọng, không phải hèn nhát.',
             flag: 'rin-ending:quarantine',
+            endingId: 'quarantine-frame',
             unlockCanonReveal: 2,
             unlockCanonRevealId: 'rin-v3-fluctlight-clause',
             imageKey: 'rin-frame12-quarantined',
@@ -478,6 +493,7 @@ export const QUESTS: QuestDefinition[] = [
               outcome:
                 'Rin tách một bản chỉ hai người có khóa. Frame gốc tối đi; một kênh riêng nhận tên do chính em đặt.',
               flag: 'rin-ending:private-copy',
+              endingId: 'private-copy',
               unlockCanonReveal: 2,
               unlockCanonRevealId: 'rin-v3-fluctlight-clause',
               imageKey: 'rin-frame12-private-copy',
@@ -493,6 +509,7 @@ export const QUESTS: QuestDefinition[] = [
             outcome:
               'Rin chuyển hành động anh tự đặt thành một protocol mới. Archive chấp nhận nó vì lần đầu tiên quy tắc đến từ hai người đang sống, không phải studio.',
             flag: 'rin-ending:authored-protocol',
+              endingId: 'authored-protocol',
             unlockCanonReveal: 2,
             unlockCanonRevealId: 'rin-v3-fluctlight-clause',
             imageKey: 'rin-frame12-authored-protocol',

@@ -97,8 +97,36 @@ export interface V3Canon extends V3AuthoredContent {
   /** Age shape differs per route; only the display value is read. */
   readonly age: { readonly appearance: number | string };
   readonly names: { readonly boundary: string };
+  /**
+   * Where her arc is allowed to land.
+   *
+   * Required, and required for a reason: this field existed on two of the three
+   * route files and nothing in the runtime read it, because it was never part of
+   * the contract — the exporter reached it through a cast. So eight authored
+   * endings sat in the tree as fine-tune material while the product had no way to
+   * reach any of them, and the third resident had none at all without that being
+   * visible anywhere. Making it required turns each of those into a type error
+   * instead of a silence.
+   *
+   * A quest terminal names one of these by `id`. `what` is neutral description;
+   * an entry still being specified carries the literal string `MISSING INPUT` and
+   * `ready: false`, and no consumer may show it to a player.
+   */
+  readonly endings: readonly V3Ending[];
   /** Only where v3 renames her. Resident ids never change. */
   readonly displayName?: string;
+}
+
+export interface V3Ending {
+  readonly id: string;
+  readonly label: string;
+  readonly what: string;
+  /**
+   * Absent means ready. Only an ending still being written sets this to false,
+   * so the eight already-authored entries needed no edit. The mechanism is wired
+   * and verified against an unready ending; only the rendering is gated.
+   */
+  readonly ready?: boolean;
 }
 
 const V3: Record<ResidentId, V3Canon> = {

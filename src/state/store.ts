@@ -243,6 +243,14 @@ export interface AppState {
   broke: Spend | null;
   storyFlags: Record<string, string[]>;
   questOutcomes: Record<string, string>;
+  /**
+   * Which authored ending each finished quest landed on, by ending id.
+   *
+   * Separate from `questOutcomes`, which holds the last branch's prose. This is
+   * the arc's landing, and it exists because the endings were authored and
+   * nothing recorded reaching one.
+   */
+  questEndings: Record<string, string>;
   /** Every authored consequence in order, not only the final ending. */
   questHistory: Record<string, string[]>;
   /** Permanent Quest facts, classified independently from relationship memory. */
@@ -307,6 +315,7 @@ const initialState: AppState = {
   broke: null,
   storyFlags: {},
   questOutcomes: {},
+  questEndings: {},
   questHistory: {},
   canonLedger: [],
   crossModeMemory: [],
@@ -348,6 +357,7 @@ export class Store {
           storyFlags?: Record<string, string[]>;
           sceneShots?: Record<string, string>;
           questOutcomes?: Record<string, string>;
+          questEndings?: Record<string, string>;
           questHistory?: Record<string, string[]>;
           transcripts?: Record<string, ChatTurn[]>;
           questTranscripts?: Record<string, ChatTurn[]>;
@@ -367,6 +377,7 @@ export class Store {
           storyFlags: saved.storyFlags ?? {},
           sceneShots: saved.sceneShots ?? {},
           questOutcomes: saved.questOutcomes ?? {},
+          questEndings: saved.questEndings ?? {},
           questHistory: saved.questHistory ?? {},
           canonLedger: saved.canonLedger ?? [],
           crossModeMemory: saved.crossModeMemory ?? [],
@@ -410,6 +421,7 @@ export class Store {
           storyFlags: this.state.storyFlags,
           sceneShots: this.state.sceneShots,
           questOutcomes: this.state.questOutcomes,
+          questEndings: this.state.questEndings,
           questHistory: this.state.questHistory,
           transcripts: this.state.transcripts,
           questTranscripts: this.state.questTranscripts,
@@ -1029,6 +1041,9 @@ export class Store {
       transactions: [...this.state.transactions, transaction].slice(-30),
       storyFlags,
       questOutcomes: { ...this.state.questOutcomes, [quest.id]: choice.outcome },
+      questEndings: choice.endingId
+        ? { ...this.state.questEndings, [quest.id]: choice.endingId }
+        : this.state.questEndings,
       questHistory,
       canonLedger,
       questCheckpoints,

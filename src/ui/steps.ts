@@ -1220,17 +1220,27 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
                   ? 'Tiếp tục checkpoint'
                   : COPY.stage.questStart
                 : COPY.stage.questLocked;
-          const endings = quest.nodes.reduce(
-            (count, node) => count + node.choices.filter((choice) => !choice.nextNodeId).length,
-            0
+          // Count the endings the quest can actually land on, not the shape of
+          // the graph. The old version counted terminal entries in
+          // `node.choices`, which silently excluded freeform families — so the
+          // two endings a player can author for themselves were exactly the ones
+          // it did not count, and Rin's card advertised three of five.
+          const endings = new Set(
+            quest.nodes.flatMap((node) => [
+              ...node.choices.filter((choice) => !choice.nextNodeId).map((choice) => choice.endingId),
+              ...[...(node.freeform?.families ?? []), ...(node.freeform ? [node.freeform.fallback] : [])]
+                .filter((family) => !family.nextNodeId)
+                .map((family) => family.endingId),
+            ])
           );
+          endings.delete(undefined);
           return h(
             'article',
             { class: `quest-card${done ? ' is-done' : ''}${active ? ' is-active' : ''}` },
             h('span', { class: 'quest-kind' }, 'Cốt truyện chính'),
             h('h3', { class: 'quest-title' }, quest.title),
             h('p', { class: 'hint' }, quest.synopsis),
-            h('p', { class: 'hint faint' }, `${quest.nodes.length} cảnh · ${endings} kết cục`),
+            h('p', { class: 'hint faint' }, `${quest.nodes.length} cảnh · ${endings.size} kết cục`),
             h(
               'p',
               { class: 'hint faint' },

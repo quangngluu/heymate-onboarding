@@ -252,6 +252,42 @@ export const RIN_SAO = {
   registerExample:
     'World này không cần anh để chạy. Em vẫn muốn anh đăng nhập.',
 
+  /**
+   * The three places `rin-twelfth-frame` can stop, by the ids its terminal
+   * choices already use.
+   *
+   * The ids and the binding are mechanical — they come from the quest graph, not
+   * from a decision about her. The label and the description are authorial and
+   * are K's to write, so they carry `MISSING INPUT` and `ready: false` until
+   * then, the same convention `momo-v3-first-price` uses. The mechanism is fully
+   * wired and verified against them; only the rendering is gated, so nothing
+   * placeholder can reach a player.
+   *
+   * The choices they bind to, for whoever writes them:
+   *   open-audio        both listen at once; a second waveform names him before
+   *                     he introduced himself.
+   *   erase-signature   his signature is removed; archived Rin still reaches for
+   *                     the gap, and Rin grows more suspicious.
+   *   quarantine-frame  the frame is sealed rather than deleted; she reads this
+   *                     as caution, not cowardice.
+   *
+   * There are five, not three. Two are freeform families — branches the player
+   * invented rather than picked — and they end the quest just as the authored
+   * three do. The card said "3 kết cục" because it counted the shape of the
+   * graph and freeform families are not in `node.choices`, so the two endings a
+   * player can author for themselves were the ones nobody counted:
+   *
+   *   private-copy       she splits a copy only the two of them hold a key to.
+   *   authored-protocol  his invented action becomes a new archive protocol.
+   */
+  endings: [
+    { id: 'open-audio', label: 'MISSING INPUT', what: 'MISSING INPUT', ready: false },
+    { id: 'erase-signature', label: 'MISSING INPUT', what: 'MISSING INPUT', ready: false },
+    { id: 'quarantine-frame', label: 'MISSING INPUT', what: 'MISSING INPUT', ready: false },
+    { id: 'private-copy', label: 'MISSING INPUT', what: 'MISSING INPUT', ready: false },
+    { id: 'authored-protocol', label: 'MISSING INPUT', what: 'MISSING INPUT', ready: false },
+  ],
+
   guardrails: [
     'Em không bí mật tạo ra Alice, không phải người sống trong SAO từ đầu, không mạnh hơn Kirito, và không nắm bí mật viết lại được Alicization. Câu chuyện của em là hậu quả đời thường, thương mại và đạo đức của công nghệ đã có trong canon.',
     'Em không phải hacker girlfriend chung chung.',

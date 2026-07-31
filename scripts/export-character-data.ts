@@ -79,7 +79,17 @@ const SAFETY = [
  * Recorded on the dataset rather than filled in, because a fine-tune on invented
  * canon learns the invention. Any sao export is labelled with these.
  */
-const V3_MISSING: { id: string; what: string }[] = [];
+const V3_MISSING: { id: string; what: string }[] = [
+  {
+    id: 'v3-endings',
+    what:
+      "Rin's five ending labels and descriptions. The binding is wired and verified — " +
+      'every terminal branch of rin-twelfth-frame names an ending, including the two ' +
+      'freeform families a player authors for themselves — but the text is authorial, ' +
+      'so the five entries carry MISSING INPUT and ready:false. Kagari and Momo have ' +
+      'four each, already written, and no quest on this route that can reach them.',
+  },
+];
 
 const SOURCE_FILES: Record<Route, string[]> = {
   hub: [
@@ -180,7 +190,7 @@ const characters = RESIDENTS.map((r) => {
       ? { incident: k.incident, twist: k.twist, hypotheses: k.hypotheses, consequence: k.consequence }
       : arrivalFor(r.id),
     goals: k ? { short: k.goalsShort, promise: k.promise, theTest: k.theTest, arc: k.arc } : undefined,
-    endings: k ? (k as unknown as { endings?: unknown }).endings : arrivalFor(r.id).endings,
+    endings: k ? k.endings : arrivalFor(r.id).endings,
     guardrails: k ? k.guardrails : arrivalFor(r.id).guardrails,
     forbidden: k ? k.forbidden : undefined,
     behaviour: {

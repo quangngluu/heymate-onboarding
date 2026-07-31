@@ -7,7 +7,7 @@ import {
   normalizedKeyVisual,
   type V3FallbackCopy,
 } from './v3-authored';
-import { v3CanonFor, type V3Canon } from './v3-canon';
+import { v3CanonFor, type V3Canon, type V3Ending } from './v3-canon';
 
 export interface CanonResidentView extends ResidentConfig {
   route: CanonRoute;
@@ -15,6 +15,30 @@ export interface CanonResidentView extends ResidentConfig {
   v3: V3Canon | null;
   causalFacts: CausalFact[];
   fallback: V3FallbackCopy | null;
+  /**
+   * Where her arc may land. Empty on Hub, whose endings live in interlude.ts and
+   * are reached through the retired flow.
+   */
+  endings: readonly V3Ending[];
+}
+
+/**
+ * The ending a quest terminal names, or null when the id does not resolve.
+ *
+ * Null rather than a throw because a quest may legitimately be authored before
+ * its endings are; `verify-canon` is where an unresolved id becomes an error.
+ */
+export function endingFor(
+  residentId: string,
+  route: CanonRoute,
+  endingId: string
+): V3Ending | null {
+  return canonViewFor(residentId as ResidentId, route).endings.find((e) => e.id === endingId) ?? null;
+}
+
+/** Whether this ending may be shown to a player yet. */
+export function endingReady(ending: V3Ending | null): boolean {
+  return !!ending && ending.ready !== false;
 }
 
 function v3Levels(k: V3Canon): ResidentConfig['levels'] {
@@ -42,6 +66,9 @@ export function canonViewFor(
       ...base,
       route,
       canonVersion: 'v1+v2',
+      // Hub's endings live in interlude.ts and are reached through the retired
+      // flow, so there is nothing for the v3 mechanism to bind here.
+      endings: [],
       v3: null,
       causalFacts: factsFor(residentId),
       fallback: null,
@@ -97,6 +124,7 @@ export function canonViewFor(
       closingImage: k.promise,
     },
     levels: v3Levels(k),
+    endings: k.endings,
     canonReveals: k.canonReveals.map((item) => ({ ...item })),
     causalFacts,
     fallback: k.fallback,

@@ -5,6 +5,8 @@ import { buildSystemPrompt, type PromptSession } from '../src/chat/prompt';
 import {
   canonRevealIndexFor,
   canonViewFor,
+  endingFor,
+  endingReady,
   sceneBriefFor,
   subjectBriefFor,
 } from '../src/config/canon-view';
@@ -292,6 +294,69 @@ function questConfigCoverage(): void {
   }
 }
 
+/**
+ * Every terminal branch names an authored ending, and every authored ending is
+ * either reachable or visibly unfinished.
+ *
+ * `endings` sat on two of the three route files and nothing in the runtime read
+ * it — it was not in the contract, so the exporter reached it through a cast.
+ * Eight authored endings were unreachable, the third resident had none at all,
+ * and the "kết cục" count on the quest card was derived from the shape of the
+ * graph rather than from anything written. A quest simply stopped.
+ */
+function endingCoverage(): void {
+  for (const resident of RESIDENTS) {
+    const view = canonViewFor(resident.id, 'sao');
+    assert.ok(view.endings.length > 0, `${resident.id}: no authored endings on sao`);
+    assert.equal(
+      new Set(view.endings.map((e) => e.id)).size,
+      view.endings.length,
+      `${resident.id}: duplicate ending id`
+    );
+
+    for (const quest of questsForResident(resident.id, 'sao')) {
+      const terminals: { where: string; endingId?: string }[] = [];
+      for (const node of quest.nodes) {
+        for (const choice of node.choices) {
+          if (!choice.nextNodeId) terminals.push({ where: `${node.id}/${choice.id}`, endingId: choice.endingId });
+        }
+        for (const family of [
+          ...(node.freeform?.families ?? []),
+          ...(node.freeform ? [node.freeform.fallback] : []),
+        ]) {
+          if (!family.nextNodeId) terminals.push({ where: `${node.id}/${family.id}`, endingId: family.endingId });
+        }
+      }
+      assert.ok(terminals.length > 0, `${quest.id}: no terminal branch`);
+      for (const terminal of terminals) {
+        assert.ok(terminal.endingId, `${quest.id} ${terminal.where}: terminal branch names no ending`);
+        const ending = endingFor(resident.id, 'sao', terminal.endingId!);
+        assert.ok(ending, `${quest.id} ${terminal.where}: ending '${terminal.endingId}' does not resolve`);
+      }
+    }
+  }
+
+  // An unfinished ending must be unfinished loudly: the marker present, and the
+  // gate that stops it reaching a player working.
+  const rinEndings = canonViewFor('rin', 'sao').endings;
+  const unfinished = rinEndings.filter((e) => !endingReady(e));
+  assert.equal(unfinished.length, 5, "rin's five endings should still be unwritten");
+  for (const ending of unfinished) {
+    assert.equal(ending.label, 'MISSING INPUT');
+    assert.ok(!endingReady(ending), `${ending.id}: unwritten ending must not be marked ready`);
+  }
+  // Kagari and Momo's are written, and must not be gated by accident.
+  for (const id of ['kagura', 'momo'] as const) {
+    const endings = canonViewFor(id, 'sao').endings;
+    assert.equal(endings.length, 4, `${id}: ending count`);
+    for (const ending of endings) {
+      assert.ok(endingReady(ending), `${id}/${ending.id}: authored ending marked unready`);
+      assert.ok(!/MISSING INPUT/.test(ending.label + ending.what));
+      clean(`${id} ending ${ending.id}`, `${ending.label} ${ending.what}`);
+    }
+  }
+}
+
 function briefAndOverrideCoverage(): void {
   for (const resident of RESIDENTS) {
     clean(
@@ -564,6 +629,7 @@ promptCoverage();
 scriptedCoverage();
 questConfigCoverage();
 faceCoverage();
+endingCoverage();
 briefAndOverrideCoverage();
 boneMapCoverage();
 await storeQuestCoverage();
@@ -575,5 +641,6 @@ console.log('  prompts: every reveal + every enabled route quest + safety');
 console.log('  faces: companion withholds nothing; 72 combinations carry no contradictory lead');
 console.log('  scripted fallback: 12 turns per resident');
 console.log('  quests: route lookup + checkpoint resume + stable reveal ids');
+console.log('  endings: every terminal branch resolves; rin x5 unwritten and gated');
 console.log('  rig: semantic bones resolved by hierarchy; inverted spine rejected');
 console.log('  HTTP: chat memory isolation + scene route propagation');
