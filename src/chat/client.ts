@@ -40,10 +40,12 @@ export async function getReply(
     rapport?: unknown;
   } = {}
 ): Promise<ChatOutcome> {
+  const route = resolveCanonRoute();
+  const routedContext: ReplyContext = { ...ctx, route };
   // An idle nudge is already-authored dialogue, not a user message that the
   // scripted engine should try to answer. The model may vary it, but offline
   // and unavailable deployments must still let her speak first.
-  const scripted = opts.idle ? { text: message } : scriptedReply(message, ctx);
+  const scripted = opts.idle ? { text: message } : scriptedReply(message, routedContext);
 
   if (!endpointAvailable) return { ...scripted, source: 'scripted' };
 
@@ -70,7 +72,7 @@ export async function getReply(
         story: opts.story,
         dark: resolveDarkVariant(),
         maturity: resolveMaturity(),
-        route: resolveCanonRoute(),
+        route,
         bond: opts.bond,
         rapport: opts.rapport,
         // Separate request fields make it impossible for the server to

@@ -18,23 +18,146 @@ import { factsFor } from '../src/config/causal';
 import { reactionsFor } from '../src/config/reactions';
 import { FANTASIES, PERSONAL_OUTPUTS, STABLE_SOUL, TOGETHER } from '../src/config/bond';
 import { AVATAR_RECOGNITION, CROSSOVER, HUB, arrivalFor } from '../src/config/interlude';
+import { canonViewFor } from '../src/config/canon-view';
 
-// This exporter still reads v1/v2 resident data only. Rather than emit that
-// under a filename that looks current, it refuses a v3 route outright and points
-// at the dataset exporter, which is route-aware. Tracked as `v3-markdown-export`.
 const routeArg =
   process.argv.find((a) => a.startsWith('--route='))?.slice('--route='.length) ?? 'hub';
-if (routeArg !== 'hub') {
-  console.error(
-    `export-content.ts is hub-only. For route '${routeArg}' use:\n` +
-      `  npx tsx scripts/export-character-data.ts --route=${routeArg}`
-  );
+if (routeArg !== 'hub' && routeArg !== 'sao') {
+  console.error(`Unknown --route=${routeArg}. Expected 'hub' or 'sao'.`);
   process.exit(1);
 }
 const positional = process.argv.slice(2).find((a) => !a.startsWith('--'));
-const out = resolve(positional ?? 'docs/waifu-content-review.hub.md');
+const out = resolve(positional ?? `docs/waifu-content-review.${routeArg}.md`);
 const L: string[] = [];
 const p = (s = '') => L.push(s);
+
+if (routeArg === 'sao') {
+  p('# HeyMates V3 — toàn bộ nội dung runtime');
+  p();
+  p('Xuất tự động từ route `sao` bằng `npx tsx scripts/export-content.ts --route=sao`.');
+  p('Không chứa fallback Hub/v1.');
+  p();
+  for (const base of RESIDENTS) {
+    const r = canonViewFor(base.id, 'sao');
+    const k = r.v3!;
+    const rx = reactionsFor(r.id, 'sao');
+    p('---');
+    p();
+    p(`## ${r.name}`);
+    p();
+    p(`- **Series:** ${r.series}`);
+    p(`- **Hình mẫu:** ${r.archetype}`);
+    p(`- **Bối cảnh:** ${r.setting}`);
+    p(`- **Câu móc:** ${r.card.hook}`);
+    p(`- **Lời hứa:** ${r.card.promise}`);
+    p();
+    p('### Nhận diện nhanh');
+    p();
+    p(k.quickRecognition);
+    p();
+    p('### Hồ sơ');
+    p();
+    p(r.profile);
+    p();
+    p('### Động cơ');
+    p();
+    p(`- **Mâu thuẫn:** ${r.psyche.contradiction}`);
+    p(`- **Muốn:** ${r.psyche.wants}`);
+    p(`- **Sợ:** ${r.psyche.fears}`);
+    p(`- **Niềm tin sai:** ${r.psyche.falseBelief}`);
+    p(`- **Cần học:** ${r.psyche.needsToLearn}`);
+    p();
+    p('### Visual identity');
+    p();
+    p(`- **Silhouette:** ${r.keyVisual.silhouette}`);
+    p(`- **Wardrobe:** ${r.keyVisual.wardrobe}`);
+    p(`- **Features:** ${r.keyVisual.features}`);
+    p(`- **Aura:** ${r.keyVisual.aura}`);
+    p(`- **Palette:** ${r.keyVisual.palette}`);
+    p(`- **Staging:** ${r.keyVisual.staging}`);
+    p(`- **Places:** ${r.imagery.places}`);
+    p(`- **Props:** ${r.imagery.props}`);
+    p(`- **Air:** ${r.imagery.air}`);
+    p();
+    p('### Thế giới');
+    p();
+    p(k.world.premise);
+    for (const [label, values] of [
+      ['Nơi chốn', k.world.places],
+      ['Con người', k.world.people],
+      ['Luật', k.world.rules],
+      ['Đời thường', k.world.daily],
+      ['Từ vựng', k.world.lexicon],
+      ['Điều chưa biết', k.world.unknowns],
+    ] as const) {
+      p();
+      p(`**${label}**`);
+      for (const value of values) p(`- ${value}`);
+    }
+    p();
+    p('### Canon reveals');
+    p();
+    r.canonReveals.forEach((item, index) => {
+      p(`**${index + 1}. ${item.title}** (\`${item.id}\`)`);
+      p(`- ${item.body}`);
+      p(`- *Em nói:* “${item.spoken}”`);
+      p();
+    });
+    p('### Sự thật đem đổi');
+    p();
+    for (const [tier, values] of [
+      ['Cho không', r.truths.cheap],
+      ['Có giá', r.truths.costly],
+      ['Đắt', r.truths.expensive],
+    ] as const) {
+      p(`**${tier}**`);
+      for (const value of values) p(`- ${value}`);
+      p();
+    }
+    p('### Ký ức nhân quả');
+    p();
+    for (const fact of r.causalFacts) {
+      p(`**${fact.id}** — mức ${fact.revealLevel}`);
+      p(`- *Fact:* ${fact.fact}`);
+      p(`- *Ý nghĩa riêng:* ${fact.privateMeaning}`);
+      p(`- *Niềm tin sai:* ${fact.falseBelief}`);
+      p(`- *Phản xạ:* ${fact.behaviors.join(' ')}`);
+      p(`- *Trigger:* ${fact.triggers.join(' ')}`);
+      p(`- *Giọng:* ${fact.evidence.map((line) => `“${line}”`).join(' ')}`);
+      p();
+    }
+    p('### Heat register');
+    p();
+    p(`- **Raised by:** ${r.heat.raisedBy}`);
+    p(`- **When it lands:** ${r.heat.whenItLands}`);
+    p(`- **Tells:** ${r.heat.tells}`);
+    p(`- **Initiates:** ${r.heat.initiates}`);
+    p(`- **Stops:** ${r.heat.stops}`);
+    p(`- **Explicit:** ${r.heat.explicit}`);
+    p();
+    p('### Phản ứng và ranh giới');
+    p();
+    for (const reaction of rx.reactions) p(`- **${reaction.when}:** ${reaction.she}`);
+    for (const refusal of rx.resists) {
+      p(`- **${refusal.when}:** ${refusal.she} *Cửa còn mở:* ${refusal.stillWants}`);
+    }
+    p();
+    p('### Quest theo route');
+    p();
+    const quests = QUESTS.filter((quest) => quest.residentId === r.id && quest.route === 'sao');
+    if (!quests.length) {
+      p('Chưa có Episode 0 được duyệt. Runtime hiển thị unavailable và không fallback Hub.');
+    }
+    for (const quest of quests) {
+      p(`- **${quest.title}:** ${quest.synopsis}`);
+      p(`  - ${quest.nodes.length} cảnh · reveal cuối \`${quest.rewardCanonRevealId}\``);
+    }
+    p();
+  }
+  writeFileSync(out, L.join('\n'));
+  console.log(`${out} — ${RESIDENTS.length} nhân vật, route sao, ${L.length} dòng`);
+  process.exit(0);
+}
 
 p('# Waifu Universe — toàn bộ nội dung đã viết');
 p();

@@ -3,8 +3,8 @@
 // v3 rebooted all three residents into the anime they came from:
 //
 //   rin    → Sword Art Online / Alicization   (RIN//REPLAY)
-//   kagura → Inuyasha                          (THE CRIMSON NAME, as "Kagari")
-//   momo   → xxxHOLiC                          (ROUTE ZERO)
+//   kagura → Inuyasha                          (AKAGANE, as "Kagari")
+//   momo   → xxxHOLiC                          (CỬA PHỤ)
 //
 // The three route files are shaped alike on purpose, so the prompt asks one
 // question — "is there a v3 canon for this resident?" — instead of branching per
@@ -19,11 +19,14 @@
 import { RIN_SAO } from './rin-sao';
 import { KAGARI_INUYASHA } from './kagari-inuyasha';
 import { MOMO_HOLIC } from './momo-holic';
+import type { CanonRoute } from './canon-route';
+import type { V3AuthoredContent } from './v3-authored';
 import type { ResidentId } from './residents';
 
-export interface V3Canon {
+export interface V3Canon extends V3AuthoredContent {
   readonly route: string;
   readonly series: string;
+  readonly tagline: string;
   /** Twenty seconds of orientation. Every route opens with one. */
   readonly quickRecognition: string;
   /**
@@ -104,10 +107,15 @@ const V3: Record<ResidentId, V3Canon> = {
   momo: MOMO_HOLIC,
 };
 
-/** The v3 canon for this resident, or null when the route is not v3. */
-export function v3CanonFor(residentId: string, isV3: boolean): V3Canon | null {
-  if (!isV3) return null;
-  return V3[residentId as ResidentId] ?? null;
+/** The v3 canon for this resident, or null when the selected route is not v3. */
+export function v3CanonFor(
+  residentId: string,
+  route: CanonRoute | boolean
+): V3Canon | null {
+  if (route !== true && route !== 'sao') return null;
+  const canon = V3[residentId as ResidentId];
+  if (!canon) throw new Error(`No v3 canon for resident: ${residentId}`);
+  return canon;
 }
 
 /** Every resident now has a v3 route, so this is a completeness assertion. */

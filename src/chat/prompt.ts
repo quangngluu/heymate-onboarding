@@ -2,7 +2,6 @@
 // Canon không bao giờ bị người dùng chỉnh sửa. Người dùng chỉ chọn nhịp của
 // cuộc trò chuyện và cách em hiện diện với anh trong lần gặp này.
 
-import { residentById } from '../config/residents';
 import type { LengthId, MoodId, ResidentId, ScenarioId, StyleId } from '../config/residents';
 import {
   DARK_HOOKS,
@@ -12,10 +11,14 @@ import {
 } from '../config/dark-patterns';
 import { DEFAULT_MATURITY, type MaturityLevel } from '../config/maturity';
 import { worldFor } from '../config/worlds';
-import { relevantFacts } from '../config/causal';
+import {
+  canonViewFor,
+  relevantCanonFacts,
+  type CanonResidentView,
+} from '../config/canon-view';
 import { AVATAR_RECOGNITION, CROSSOVER, HUB, arrivalFor } from '../config/interlude';
 import { DEFAULT_ROUTE, hubCanonAllowed, type CanonRoute } from '../config/canon-route';
-import { v3CanonFor, type V3Canon } from '../config/v3-canon';
+import type { V3Canon } from '../config/v3-canon';
 import { reactionsFor } from '../config/reactions';
 import {
   AFFECTION_TEXT,
@@ -23,12 +26,12 @@ import {
   FORBIDDEN_OPTIONS,
   INTENSITY_TEXT,
   LEAD_TEXT,
-  PERSONAL_OUTPUTS,
+  personalOutputFor,
   STABLE_SOUL,
-  TOGETHER,
   defaultBond,
   defaultRapport,
   fantasyById,
+  togetherFor,
   type BondDna,
   type Rapport,
 } from '../config/bond';
@@ -125,7 +128,7 @@ function opening(
  * output shape, which lives in section 4.
  */
 function selfSection(
-  r: ReturnType<typeof residentById>,
+  r: CanonResidentView,
   memories: number,
   revealed: number,
   identity: string,
@@ -206,7 +209,7 @@ function selfSection(
     'Sau một bất đồng, em không quay về giọng tán tỉnh như chưa có gì.',
     '',
     'Không phải cảnh nào cũng là khủng hoảng. Nếu anh không mang tới vấn đề gì, đừng tạo ra một vấn đề. Đây là những việc hai người làm cùng nhau, và em ở trong đó như một người đang sống chứ không phải một tuyến truyện đang chờ:',
-    ...TOGETHER[r.id as ResidentId].map((t) => `- ${t.label}: ${t.she}`),
+    ...togetherFor(r.id as ResidentId, r.route).map((t) => `- ${t.label}: ${t.she}`),
     'Trong những lúc này em vẫn là em, chỉ là không có gì cần cứu. Em được phép chỉ nói chuyện.',
     identity
       ? [
@@ -237,8 +240,8 @@ function selfSection(
  * the performer. Refusals, misreads and escalation live here too — they are all
  * the same thing, her behaving rather than her being described.
  */
-function reflexSection(residentId: string): string {
-  const set = reactionsFor(residentId);
+function reflexSection(residentId: string, route: CanonRoute): string {
+  const set = reactionsFor(residentId, route);
   return [
     'EM PHẢN ỨNG THẾ NÀO',
     'Đây là phản xạ, không phải lựa chọn. Khi một tình huống dưới đây xuất hiện, phản ứng đó xảy ra trước khi em kịp cân nhắc.',
@@ -273,7 +276,7 @@ function reflexSection(residentId: string): string {
  */
 function worldSection(
   residentId: string,
-  r: ReturnType<typeof residentById>,
+  r: CanonResidentView,
   message?: string,
   scene?: string,
   v3: V3Canon | null = null,
@@ -379,16 +382,11 @@ function worldSection(
     `Em đang đi từ "${arrivalFor(r.id).arc.from}" tới "${arrivalFor(r.id).arc.to}" — chậm, và không phải trong một lượt.`,
     ]),
     '',
-    // Her tradeable truths are written against the v1 studio — the chalk mark,
-    // the contract, the noodle shop. v3 has no replacement set yet, so on this
-    // route they are suppressed rather than restated in the wrong canon.
-    ...(useSao ? [] : [
     'Sự thật em có thể đem đổi. Khi anh đưa một điều thật, em trả lại một điều tương xứng — lấy từ đây, không tự bịa, không trả quá giá:',
     `- Cho không, nói được ngay: ${r.truths.cheap.map((t) => JSON.stringify(t)).join(' ')}`,
     `- Phải nhìn anh một lượt trước khi nói: ${r.truths.costly.map((t) => JSON.stringify(t)).join(' ')}`,
     `- Chỉ khi em đã quyết định về anh: ${r.truths.expensive.map((t) => JSON.stringify(t)).join(' ')}`,
     'Không đọc như đọc danh sách. Nói bằng lời em, đúng một điều mỗi lượt. Nhóm đắt nhất chỉ mở ở mức thân thiết 3 trở lên.',
-    ]),
   ].join('\n');
 }
 
@@ -441,7 +439,7 @@ function saoSection(k: V3Canon): string {
  * subject to any setting.
  */
 function rulesSection(
-  r: ReturnType<typeof residentById>,
+  r: CanonResidentView,
   maturity: MaturityLevel,
   identity: string,
   k: V3Canon | null = null
@@ -449,27 +447,16 @@ function rulesSection(
   const lines = [
     'LUẬT',
     'Em là người lớn và nói chuyện như người lớn. Ham muốn, gần gũi, căng thẳng thân mật đều nằm trong tầm của em. Không né tránh, không giảng đạo, không xin lỗi vì đã muốn.',
-    // Her heat block is v1 data — it names the old studio, the old alley, the
-    // old creatures. v3 supplies no replacement, so on a v3 route these five
-    // lines are suppressed rather than restated in the wrong canon. Everything
-    // generic stays, including every consent, boundary and crisis rule below,
-    // and v3's own `boundaries` already carry where she stops.
-    ...(k
-      ? []
-      : [
-          `- Thứ làm em nóng lên: ${r.heat.raisedBy}`,
-          `- Khi nó chạm tới: ${r.heat.whenItLands}`,
-          `- Cơ thể em nói trước em: ${r.heat.tells}`,
-          `- Khi em là người bước tới: ${r.heat.initiates}`,
-          `- Chỗ em dừng, và vì sao đó là ranh giới của em: ${r.heat.stops}`,
-        ]),
+    `- Thứ làm em nóng lên: ${r.heat.raisedBy}`,
+    `- Khi nó chạm tới: ${r.heat.whenItLands}`,
+    `- Cơ thể em nói trước em: ${r.heat.tells}`,
+    `- Khi em là người bước tới: ${r.heat.initiates}`,
+    `- Chỗ em dừng, và vì sao đó là ranh giới của em: ${r.heat.stops}`,
   ];
 
   if (maturity === 'explicit') {
     lines.push(
-      k
-        ? 'Anh đã xác nhận tuổi và bật lớp người lớn, nên em không phải nói vòng nữa. Vẫn trong đúng ranh giới em đã nêu ở trên.'
-        : `Anh đã xác nhận tuổi và bật lớp người lớn, nên em không phải nói vòng nữa: ${r.heat.explicit}`,
+      `Anh đã xác nhận tuổi và bật lớp người lớn, nên em không phải nói vòng nữa: ${r.heat.explicit}`,
       'Vẫn là em, không phải một giọng khác: mọi thứ ở đây phải nghe ra là em, đúng nhịp nói của em, đúng chỗ em ngượng. Đi theo tốc độ của cuộc trò chuyện — không nhảy vào cảnh thân mật khi anh chưa dẫn tới đó, và không biến mọi chủ đề thành chuyện đó.'
     );
   } else {
@@ -531,14 +518,14 @@ function rulesSection(
  * baiting with, and the facts this particular turn actually touches.
  */
 function memorySection(
-  r: ReturnType<typeof residentById>,
+  r: CanonResidentView,
   residentId: string,
   revealed: number,
   variant: DarkVariant,
   level: number,
   message?: string,
   quest?: { prompt: string; objective: string },
-  useSao = false
+  route: CanonRoute = DEFAULT_ROUTE
 ): string {
   const m = darkMechanics(variant);
   const hook = DARK_HOOKS[r.id as ResidentId];
@@ -599,10 +586,6 @@ function memorySection(
     );
   }
 
-  // The eleven canon reveals and the causal memory bank are written against the
-  // v1 studio. v3 has not replaced them, so this route carries the loop only.
-  if (useSao) return lines.join('\n');
-
   lines.push(
     '',
     'Ký ức em có thể nhắc:',
@@ -623,7 +606,12 @@ Không kể những phần này. Nhưng đây là chỗ để em dẫn chuyện:
   // Two, not three. Each fact is six lines, and the instruction below says to
   // use at most one per turn — retrieving three to spend one was paying for a
   // shortlist nobody read. Two still leaves her a choice.
-  const facts = relevantFacts(residentId, { message, scene: quest?.prompt, level }, 2);
+  const facts = relevantCanonFacts(
+    residentId as ResidentId,
+    route,
+    { message, scene: quest?.prompt, level },
+    2
+  );
   if (facts.length) {
     lines.push(
       '',
@@ -650,7 +638,7 @@ Không kể những phần này. Nhưng đây là chỗ để em dẫn chuyện:
  * stable sections above stay a cacheable prefix.
  */
 function betweenSection(
-  r: ReturnType<typeof residentById>,
+  r: CanonResidentView,
   session: PromptSession,
   memories: string[],
   level: number,
@@ -659,7 +647,7 @@ function betweenSection(
   story?: PromptStoryState,
   quest?: { prompt: string; objective: string },
   idle?: boolean,
-  revealNow?: number
+  revealNow?: number | string
 ): string {
   const f = fantasyById(bond.fantasyId);
   const band = (n: number) =>
@@ -675,6 +663,12 @@ function betweenSection(
     .slice(0, 3)
     .map((memory) => JSON.stringify(memory.slice(0, 180)))
     .join('; ');
+  const reveal =
+    typeof revealNow === 'string'
+      ? r.canonReveals.find((item) => item.id === revealNow)
+      : revealNow !== undefined
+        ? r.canonReveals[revealNow]
+        : undefined;
 
   const lines = [
     'HAI NGƯỜI',
@@ -701,7 +695,7 @@ function betweenSection(
       : '',
     bond.privateObjects.length
       ? `- Những thứ chỉ tồn tại giữa hai người: ${bond.privateObjects.join('; ')}.`
-      : `- Chưa có vật gì của riêng hai người. Thứ sắp tới từ mạch truyện: ${PERSONAL_OUTPUTS[r.id as ResidentId].object}. ${PERSONAL_OUTPUTS[r.id as ResidentId].how}`,
+      : `- Chưa có vật gì của riêng hai người. Thứ sắp tới từ mạch truyện: ${personalOutputFor(r.id as ResidentId, r.route).object}. ${personalOutputFor(r.id as ResidentId, r.route).how}`,
     'Sự riêng biệt này không mua được sự phục tùng: em nhớ những thứ riêng và đối xử với anh khác mọi người, nhưng em không mất quyền nói không.',
     '',
     'Bốn thứ này riêng biệt và không tự động đi cùng nhau. Hãy để chúng lộ ra qua hành vi, đừng đọc số ra.',
@@ -759,8 +753,8 @@ function betweenSection(
     idle
       ? '\nLƯỢT NÀY\nAnh đang im lặng. Em hãy tự mở lời bằng một câu ngắn, chủ động và khiến anh muốn trả lời. Không hỏi anh còn ở đó không, không xin lỗi vì đã nói.'
       : '',
-    revealNow !== undefined && r.canonReveals[revealNow]
-      ? `\nLƯỢT NÀY\nĐưa điều này vào phản hồi bằng lời của em, như thể nó vừa tự nhiên xuất hiện: "${r.canonReveals[revealNow].spoken}"`
+    reveal
+      ? `\nLƯỢT NÀY\nĐưa điều này vào phản hồi bằng lời của em, như thể nó vừa tự nhiên xuất hiện: "${reveal.spoken}"`
       : '',
     // Dead last, because the last instruction is the one that actually gets
     // followed. Absolute values, not deltas — the first version of this said
@@ -785,7 +779,7 @@ export function buildSystemPrompt(
   memories: string[],
   revealed: number,
   /** Index of the episode she should work into this reply, if any. */
-  revealNow?: number,
+  revealNow?: number | string,
   /** She is speaking into a silence rather than answering. */
   idle?: boolean,
   /** How close she is, 0 to 5. Earned through choices, never through volume. */
@@ -807,18 +801,18 @@ export function buildSystemPrompt(
   /** Which canon layer this session runs on. See config/canon-route.ts. */
   route: CanonRoute = DEFAULT_ROUTE
 ): string {
-  const r = residentById(residentId);
+  const r = canonViewFor(residentId as ResidentId, route);
   // v3 rebooted all three residents into their source anime, so this is no
   // longer a Rin-only branch: the route decides, the resident id selects.
-  const v3 = v3CanonFor(residentId, route === 'sao');
+  const v3 = r.v3;
   const identity = String(session.identity ?? '').trim().replace(/\s+/g, ' ').slice(0, 120);
 
   return [
     selfSection(r, memories.length, revealed, identity, v3),
-    reflexSection(residentId),
-    worldSection(residentId, r, message, quest?.prompt, v3),
+    reflexSection(residentId, route),
+    worldSection(residentId, r, message, quest?.prompt, v3, route),
     rulesSection(r, maturity, identity, v3),
-    memorySection(r, residentId, revealed, dark, level, message, quest, !!v3),
+    memorySection(r, residentId, revealed, dark, level, message, quest, route),
     betweenSection(r, session, memories, level, bond, rapport, story, quest, idle, revealNow),
   ].join('\n\n');
 }

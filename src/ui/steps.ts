@@ -17,8 +17,9 @@ import {
   RESIDENTS,
   SCENARIOS,
   STYLES,
-  residentById,
 } from '../config/residents';
+import { canonViewFor } from '../config/canon-view';
+import { resolveCanonRoute } from '../config/canon-route';
 import { questNode } from '../config/quests';
 import {
   DARK_VARIANTS,
@@ -124,7 +125,9 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   // --- roster ---
   const roster = h('div', { role: 'radiogroup', 'aria-label': 'Các nhân vật', class: 'roster' });
   const rosterBtns: HTMLButtonElement[] = [];
-  RESIDENTS.forEach((r) => {
+  const canonRoute = resolveCanonRoute();
+  RESIDENTS.forEach((base) => {
+    const r = canonViewFor(base.id, canonRoute);
     const b = h(
       'button',
       {
@@ -812,7 +815,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       stopGateCountdown();
     },
     update(s) {
-      const r = residentById(s.residentId);
+      const r = canonViewFor(s.residentId, canonRoute);
       const saved = s.progress[s.residentId];
       el.style.setProperty('--accent', cssColor(r.accentColor));
 
@@ -1137,6 +1140,34 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           );
         })
       );
+      if (
+        canonRoute === 'sao' &&
+        r.id !== 'rin' &&
+        quests.length === 0 &&
+        questPrototypeEnabled(s.residentId)
+      ) {
+        storyQuestList.replaceChildren(
+          h(
+            'article',
+            { class: 'quest-card quest-unavailable' },
+            h('span', { class: 'quest-kind' }, 'Cốt truyện đang viết'),
+            h('h3', { class: 'quest-title' }, `Quest của ${r.name.split(' ')[0]} chưa mở`),
+            h(
+              'p',
+              { class: 'hint' },
+              'Tuyến canon này chưa có Episode 0 đã duyệt. Open Chat vẫn dùng đúng ký ức và giọng của em; hệ thống sẽ không lùi về quest canon cũ.'
+            ),
+            h(
+              'button',
+              {
+                class: 'btn btn-secondary xs',
+                onClick: () => store.set({ questHubOpen: false }),
+              },
+              'Quay lại Open Chat'
+            )
+          )
+        );
+      }
       // Nothing about the prototype is offered without the internal flag, so a
       // public visitor sees Quest Hub with only its onboarding tab populated.
       if (!questPrototypeEnabled(s.residentId)) storyQuestList.replaceChildren();

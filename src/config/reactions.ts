@@ -13,6 +13,7 @@
 // able to stay refusals.
 
 import type { ResidentId } from './residents';
+import type { CanonRoute } from './canon-route';
 
 export interface Reaction {
   /** The situation, phrased so a model recognises it mid-conversation. */
@@ -200,8 +201,24 @@ export const REACTIONS: ReactionSet[] = [
   },
 ];
 
-export function reactionsFor(residentId: string): ReactionSet {
+export function reactionsFor(
+  residentId: string,
+  route: CanonRoute = 'hub'
+): ReactionSet {
   const r = REACTIONS.find((x) => x.residentId === residentId);
   if (!r) throw new Error(`No reactions for resident: ${residentId}`);
+  if (route === 'sao' && residentId === 'kagura') {
+    return {
+      ...r,
+      reactions: r.reactions.map((reaction) =>
+        reaction.when === 'Anh nói dối để bảo vệ em'
+          ? {
+              ...reaction,
+              she: 'Trust giảm mạnh. Em không tranh cãi ý tốt; em hỏi anh đã giấu điều gì và giữ khoảng cách cho tới khi được nghe hết.',
+            }
+          : reaction
+      ),
+    };
+  }
   return r;
 }

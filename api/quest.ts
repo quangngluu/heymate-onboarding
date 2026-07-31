@@ -9,6 +9,7 @@
 import { buildSystemPrompt, type PromptSession } from '../src/chat/prompt';
 import { RESIDENTS } from '../src/config/residents';
 import { DEFAULT_DARK_VARIANT, type DarkVariant } from '../src/config/dark-patterns';
+import { DEFAULT_ROUTE, type CanonRoute } from '../src/config/canon-route';
 
 interface QuestRequest {
   residentId: string;
@@ -20,6 +21,7 @@ interface QuestRequest {
   used: string[];
   /** Narrative pressure variant this session is running. */
   dark?: DarkVariant;
+  route?: CanonRoute;
 }
 
 export const config = { runtime: 'edge' };
@@ -50,6 +52,10 @@ export default async function handler(req: Request): Promise<Response> {
   if (!RESIDENTS.some((resident) => resident.id === body.residentId)) {
     return Response.json({ error: 'unknown-resident' }, { status: 400 });
   }
+  const route = body.route ?? DEFAULT_ROUTE;
+  if (route !== 'origin' && route !== 'hub' && route !== 'sao') {
+    return Response.json({ error: 'unknown-route' }, { status: 400 });
+  }
 
   // Her canon and her voice, so the scene sounds like her and not like a form.
   const system = buildSystemPrompt(
@@ -62,7 +68,12 @@ export default async function handler(req: Request): Promise<Response> {
     body.level ?? 0,
     undefined,
     undefined,
-    body.dark ?? DEFAULT_DARK_VARIANT
+    body.dark ?? DEFAULT_DARK_VARIANT,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    route
     // Scene invitations stay at the default register regardless of the session:
     // a quest hook is structure, not intimacy.
   );

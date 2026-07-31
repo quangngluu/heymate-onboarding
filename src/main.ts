@@ -23,7 +23,9 @@ import { idleLine, openingLine, speakingDuration } from './chat/engine';
 import { getReply } from './chat/client';
 import { cancelSpeech, renderSpeech, resetSpeechEmotion, streamSpeech } from './chat/voice';
 import { spoken } from './chat/dialogue';
-import { residentById, type ResidentId } from './config/residents';
+import type { ResidentId } from './config/residents';
+import { canonViewFor } from './config/canon-view';
+import { resolveCanonRoute } from './config/canon-route';
 import { drawScene } from './chat/scene';
 import {
   questNode,
@@ -431,7 +433,7 @@ class App implements UIActions {
       // not only when the visitor changes who is on the plinth.
       resetSpeechEmotion();
       store.beginEncounter(store.get().residentId);
-      const first = residentById(store.get().residentId);
+      const first = canonViewFor(store.get().residentId, resolveCanonRoute());
       this.backdrop.showStudio(first.visual.domeTop, first.visual.domeBottom, 0.8);
       this.setPlinthsVisible(false);
       this.portalTarget = 0.35;
@@ -530,7 +532,7 @@ class App implements UIActions {
    * colours behind her and the motes in the air all come from her story.
    */
   private applyStageAccent(): void {
-    const r = residentById(store.get().residentId);
+    const r = canonViewFor(store.get().residentId, resolveCanonRoute());
     const v = r.visual;
     this.residentStage?.setAccent(r.accentColor);
     this.residentStage?.setMotes(v.moteColor, v.moteMotif);
@@ -550,7 +552,8 @@ class App implements UIActions {
    */
   private greet(): void {
     const s = store.get();
-    const r = residentById(s.residentId);
+    const route = resolveCanonRoute();
+    const r = canonViewFor(s.residentId, route);
     const saved = store.progressFor(s.residentId);
     this.idleSpoken = 0;
 
@@ -560,7 +563,7 @@ class App implements UIActions {
     const resuming = s.chat.length > 0;
     const line = resuming
       ? r.returnGreeting
-      : openingLine(r, saved.memories, saved.nickname, saved.revealed);
+      : openingLine(r, saved.memories, saved.nickname, saved.revealed, route);
     const chat: ChatTurn[] = resuming
       ? [...s.chat, { from: 'resident', text: line }]
       : [{ from: 'resident', text: line }];
@@ -604,7 +607,8 @@ class App implements UIActions {
       this.armIdleNudge();
       return;
     }
-    const r = residentById(s.residentId);
+    const route = resolveCanonRoute();
+    const r = canonViewFor(s.residentId, route);
     // Only the phrasing rotates off this; the stopping rule is the count above.
     const spokenIndex = this.idleSpoken;
     this.idleSpoken++;
@@ -617,7 +621,7 @@ class App implements UIActions {
       turn: s.turns,
     };
     const chatLength = s.chat.length;
-    void getReply(idleLine(r, spokenIndex), ctx, s.chat, {
+    void getReply(idleLine(r, spokenIndex, route), ctx, s.chat, {
       idle: true,
       level: store.level,
       story: storyContext(s.residentId, 'open-chat'),
@@ -656,7 +660,7 @@ class App implements UIActions {
    * whole-file path.
    */
   private async speakStreamed(text: string, residentId: ResidentId): Promise<number | null> {
-    const r = residentById(residentId);
+    const r = canonViewFor(residentId, resolveCanonRoute());
     const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
     const line = spoken(text);
     if (!line) return null;
@@ -716,7 +720,7 @@ class App implements UIActions {
     residentId: ResidentId,
     bump = true
   ): Promise<AudioBuffer | null> {
-    const r = residentById(residentId);
+    const r = canonViewFor(residentId, resolveCanonRoute());
     const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
     if (bump) this.speechToken++;
     const line = spoken(text);
@@ -828,7 +832,7 @@ class App implements UIActions {
     stopAfter(speakingDuration(spoken(text) || text));
     store.set({ voicing: true });
     const speakerId = store.get().residentId;
-    const r = residentById(speakerId);
+    const r = canonViewFor(speakerId, resolveCanonRoute());
     const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
     const line = spoken(text);
     if (!line) {
@@ -898,7 +902,7 @@ class App implements UIActions {
     const s = store.get();
     if (s.thinking) return;
     if (!store.spend('turn')) return;
-    const r = residentById(s.residentId);
+    const r = canonViewFor(s.residentId, resolveCanonRoute());
     const mode = s.activeQuestId ? 'quest' : 'open-chat';
     this.cancelIdleNudge();
     if (mode === 'quest') store.pushQuestTurn({ from: 'user', text });
@@ -1310,7 +1314,7 @@ class App implements UIActions {
     }
 
     const residentId = s.residentId;
-    const r = residentById(residentId);
+    const r = canonViewFor(residentId, resolveCanonRoute());
     const slot = r.voices.find((voice) => voice.slot === s.session.voice) ?? r.voices[0];
     this.cancelIdleNudge();
     store.set({ voicing: true });
@@ -1339,7 +1343,7 @@ class App implements UIActions {
     store.updateSession(patch);
     store.completeOnboarding('set-chat-config');
     if (patch.voice) {
-      const r = residentById(store.get().residentId);
+      const r = canonViewFor(store.get().residentId, resolveCanonRoute());
       const v = r.voices.find((x) => x.slot === patch.voice);
       if (v?.url) this.ambience.playClip(v.url);
     }

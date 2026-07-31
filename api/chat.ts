@@ -25,7 +25,7 @@ interface ChatRequest {
   memories: string[];
   approvedCrossMode?: string[];
   revealed: number;
-  revealNow?: number;
+  revealNow?: number | string;
   idle?: boolean;
   level?: number;
   quest?: { prompt: string; objective: string };
@@ -116,16 +116,20 @@ export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
   }
-  const key = process.env.DEEPSEEK_API_KEY;
-  if (!key) {
-    return Response.json({ error: 'not-configured' }, { status: 503 });
-  }
 
   let body: ChatRequest;
   try {
     body = (await req.json()) as ChatRequest;
   } catch {
     return Response.json({ error: 'bad-request' }, { status: 400 });
+  }
+  const route = body.route ?? DEFAULT_ROUTE;
+  if (route !== 'sao' && route !== 'origin' && route !== 'hub') {
+    return Response.json({ error: 'unknown-route' }, { status: 400 });
+  }
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) {
+    return Response.json({ error: 'not-configured' }, { status: 503 });
   }
 
   let system: string;
@@ -149,9 +153,7 @@ export default async function handler(req: Request): Promise<Response> {
       body.bond ?? defaultBond(),
       sanitizeRapport(body.rapport ?? defaultRapport()),
       String(body.message ?? ''),
-      body.route === 'sao' || body.route === 'origin' || body.route === 'hub'
-        ? body.route
-        : DEFAULT_ROUTE
+      route
     );
   } catch {
     return Response.json({ error: 'unknown-resident' }, { status: 400 });

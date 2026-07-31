@@ -17,10 +17,17 @@
 // Every hop is off the critical path: it is fired after her line is on screen,
 // and any failure means no picture, never a stall.
 
-import { residentById } from '../src/config/residents';
+import {
+  canonViewFor,
+  sceneBriefFor,
+  subjectBriefFor,
+} from '../src/config/canon-view';
+import { DEFAULT_ROUTE, type CanonRoute } from '../src/config/canon-route';
+import type { ResidentId } from '../src/config/residents';
 
 interface SceneRequest {
   residentId: string;
+  route?: CanonRoute;
   /** The outcome of the branch: what the choice left behind. */
   text: string;
   /** The scene it belongs to, so the drawing is of that scene and not of a mood. */
@@ -51,14 +58,6 @@ function usableSubject(value: unknown): string | null {
   return s;
 }
 
-/** Each resident's world, so three sets of pictures never blur together. */
-const LOOK: Record<string, string> = {
-  rin: 'near-future Akihabara at 3am, cyan and steel, screen glow, wet asphalt, dense signage, cinematic still, shallow depth of field',
-  kagura:
-    'between feudal Japan and a modern Japanese city, deep red and lacquer black, ember light, shrine timber and cold neon, cinematic still',
-  momo: 'Tokyo after the last train, violet and dark plum, paper lanterns and vending-machine light, soft rain, cinematic still',
-};
-
 const BRIEF_EMPTY = `Bạn viết brief cho một tấm ảnh minh hoạ bối cảnh trong một câu chuyện cụ thể.
 Luật:
 - Tuyệt đối không có người, không khuôn mặt, không cơ thể, không bóng người.
@@ -85,26 +84,29 @@ Luật:
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
 
-  const writerKey = process.env.DEEPSEEK_API_KEY;
-  const drawerKey = process.env.FAL_KEY;
-  if (!writerKey || !drawerKey) return Response.json({ error: 'not-configured' }, { status: 503 });
-
   let body: SceneRequest;
   try {
     body = (await req.json()) as SceneRequest;
   } catch {
     return Response.json({ error: 'bad-request' }, { status: 400 });
   }
+  const route = body.route ?? DEFAULT_ROUTE;
+  if (route !== 'origin' && route !== 'hub' && route !== 'sao') {
+    return Response.json({ error: 'unknown-route' }, { status: 400 });
+  }
 
   const text = String(body.text ?? '').trim().slice(0, 600);
   if (!text) return Response.json({ error: 'empty-text' }, { status: 400 });
 
-  let resident;
+  let resident: ReturnType<typeof canonViewFor>;
   try {
-    resident = residentById(body.residentId);
+    resident = canonViewFor(body.residentId as ResidentId, route);
   } catch {
     return Response.json({ error: 'unknown-resident' }, { status: 400 });
   }
+  const writerKey = process.env.DEEPSEEK_API_KEY;
+  const drawerKey = process.env.FAL_KEY;
+  if (!writerKey || !drawerKey) return Response.json({ error: 'not-configured' }, { status: 503 });
 
   const subject = usableSubject(body.subject);
 
@@ -122,10 +124,7 @@ export default async function handler(req: Request): Promise<Response> {
             content: [
               subject ? BRIEF_WITH_SUBJECT : BRIEF_EMPTY,
               '',
-              `Thế giới: ${resident.setting}`,
-              `Những nơi có thật trong truyện: ${resident.imagery.places}`,
-              `Những đồ vật có thật trong truyện: ${resident.imagery.props}`,
-              `Ánh sáng và chất liệu: ${resident.imagery.air}`,
+              sceneBriefFor(resident.id, route, body.scene ?? text),
             ].join('\n'),
           },
           {
@@ -142,7 +141,7 @@ export default async function handler(req: Request): Promise<Response> {
     const sceneBrief = (briefData.choices?.[0]?.message?.content ?? '').trim().replace(/^["']|["']$/g, '');
     if (!sceneBrief) return Response.json({ error: 'no-brief' }, { status: 502 });
 
-    const look = LOOK[resident.id] ?? '';
+    const look = `${resident.setting}. ${resident.keyVisual.palette} cinematic still, shallow depth of field`;
 
     // Two different asks. Kontext is given an image and told what to change,
     // so the instruction is about the surroundings and explicitly about what
@@ -157,7 +156,7 @@ export default async function handler(req: Request): Promise<Response> {
               `Environment style: ${look}.`,
               // From the key art, so a composed frame and a poster agree on who
               // she is. Wardrobe and features first: those are what drift.
-              `The character is: ${resident.keyVisual.wardrobe} ${resident.keyVisual.features} ${resident.keyVisual.aura}`,
+              subjectBriefFor(resident.id, route),
               'Keep the character identical: same face, same hairstyle, same outfit, same pose, same proportions. Do not redraw or restyle her.',
               'Relight her to match the environment and ground her in it with contact shadows and reflections.',
               'Remove the grey backdrop and the display stand entirely. She is a person in a place, not a figurine on a base.',

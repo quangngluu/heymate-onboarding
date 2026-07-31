@@ -1,4 +1,5 @@
 import type { ResidentId } from './residents';
+import { DEFAULT_ROUTE, type CanonRoute } from './canon-route';
 
 export interface QuestChoice {
   id: string;
@@ -9,6 +10,8 @@ export interface QuestChoice {
   flag: string;
   /** Opens one canonical reveal as this part of the arc is discovered. */
   unlockCanonReveal?: number;
+  /** Stable route-owned reveal. Required on v3 quests; numeric stays for Hub saves. */
+  unlockCanonRevealId?: string;
   /** Hook for a future generated scene; no asset is implied today. */
   imageKey?: string;
   /**
@@ -43,6 +46,7 @@ export interface FreeformFamily {
   flag: string;
   nextNodeId?: string;
   unlockCanonReveal?: number;
+  unlockCanonRevealId?: string;
   imageKey?: string;
   crossMode?: QuestChoice['crossMode'];
 }
@@ -131,6 +135,7 @@ export function resolveFreeform(node: QuestNode, action: string): QuestChoice | 
     flag: hit.flag,
     nextNodeId: hit.nextNodeId,
     unlockCanonReveal: hit.unlockCanonReveal,
+    unlockCanonRevealId: hit.unlockCanonRevealId,
     imageKey: hit.imageKey,
     playerAuthored: true,
     crossMode: hit.crossMode,
@@ -144,6 +149,7 @@ export function resolveFreeform(node: QuestNode, action: string): QuestChoice | 
 export interface QuestDefinition {
   id: string;
   residentId: ResidentId;
+  route: CanonRoute;
   kind: 'story';
   title: string;
   synopsis: string;
@@ -161,12 +167,14 @@ export interface QuestDefinition {
   };
   /** The last canonical memory reveal this complete arc can open. */
   rewardCanonReveal: number;
+  rewardCanonRevealId?: string;
 }
 
 export const QUESTS: QuestDefinition[] = [
   {
     id: 'rin-twelfth-frame',
     residentId: 'rin',
+    route: 'sao',
     kind: 'story',
     title: 'Frame thứ mười hai',
     synopsis:
@@ -175,6 +183,7 @@ export const QUESTS: QuestDefinition[] = [
     canonRef: ['Hành lang Motion Archive', 'Frame 12', 'Chuyển động không thuộc studio'],
     startNodeId: 'frame-12',
     rewardCanonReveal: 2,
+    rewardCanonRevealId: 'rin-v3-fluctlight-clause',
     questEpisodes: [
       {
         id: 'motion-archive-corridor',
@@ -248,6 +257,7 @@ export const QUESTS: QuestDefinition[] = [
             nextNodeId: 'enter-frame',
             flag: 'rin:priority-footprint',
             unlockCanonReveal: 1,
+            unlockCanonRevealId: 'rin-v3-motion-source',
             imageKey: 'rin-frame12-footprint',
           },
           {
@@ -258,6 +268,7 @@ export const QUESTS: QuestDefinition[] = [
             nextNodeId: 'enter-frame',
             flag: 'rin:priority-headset',
             unlockCanonReveal: 1,
+            unlockCanonRevealId: 'rin-v3-motion-source',
             imageKey: 'rin-frame12-headset',
           },
           {
@@ -268,6 +279,7 @@ export const QUESTS: QuestDefinition[] = [
             nextNodeId: 'enter-frame',
             flag: 'rin:priority-reaction',
             unlockCanonReveal: 1,
+            unlockCanonRevealId: 'rin-v3-motion-source',
             imageKey: 'rin-frame12-reaction',
           },
         ],
@@ -421,6 +433,7 @@ export const QUESTS: QuestDefinition[] = [
               'Frame xuất hiện waveform thứ hai. Một giọng nói gọi đúng tên anh trước thời điểm anh giới thiệu mình. Rin chỉ nói: “Đừng rời mic.”',
             flag: 'rin-ending:open-audio',
             unlockCanonReveal: 2,
+            unlockCanonRevealId: 'rin-v3-fluctlight-clause',
             imageKey: 'rin-frame12-open-channel',
             crossMode: {
               kind: 'relationship',
@@ -434,6 +447,7 @@ export const QUESTS: QuestDefinition[] = [
               'Silhouette biến mất nhưng bàn tay archived Rin vẫn vươn về khoảng trống. Rin tôn trọng ranh giới và trở nên nghi ngờ hơn.',
             flag: 'rin-ending:erase-signature',
             unlockCanonReveal: 2,
+            unlockCanonRevealId: 'rin-v3-fluctlight-clause',
             imageKey: 'rin-frame12-erased',
             crossMode: {
               kind: 'relationship',
@@ -447,6 +461,7 @@ export const QUESTS: QuestDefinition[] = [
               'Frame bị khóa sau lớp kính mờ; giọng nói vẫn rất nhỏ. Rin đọc lựa chọn này là thận trọng, không phải hèn nhát.',
             flag: 'rin-ending:quarantine',
             unlockCanonReveal: 2,
+            unlockCanonRevealId: 'rin-v3-fluctlight-clause',
             imageKey: 'rin-frame12-quarantined',
             crossMode: {
               kind: 'relationship',
@@ -464,6 +479,7 @@ export const QUESTS: QuestDefinition[] = [
                 'Rin tách một bản chỉ hai người có khóa. Frame gốc tối đi; một kênh riêng nhận tên do chính em đặt.',
               flag: 'rin-ending:private-copy',
               unlockCanonReveal: 2,
+              unlockCanonRevealId: 'rin-v3-fluctlight-clause',
               imageKey: 'rin-frame12-private-copy',
               crossMode: {
                 kind: 'private-object',
@@ -478,6 +494,7 @@ export const QUESTS: QuestDefinition[] = [
               'Rin chuyển hành động anh tự đặt thành một protocol mới. Archive chấp nhận nó vì lần đầu tiên quy tắc đến từ hai người đang sống, không phải studio.',
             flag: 'rin-ending:authored-protocol',
             unlockCanonReveal: 2,
+            unlockCanonRevealId: 'rin-v3-fluctlight-clause',
             imageKey: 'rin-frame12-authored-protocol',
             crossMode: {
               kind: 'relationship',
@@ -491,6 +508,7 @@ export const QUESTS: QuestDefinition[] = [
   {
     id: 'kagura-red-oath',
     residentId: 'kagura',
+    route: 'hub',
     kind: 'story',
     title: 'Lời thề màu đỏ',
     synopsis:
@@ -744,6 +762,7 @@ export const QUESTS: QuestDefinition[] = [
   {
     id: 'momo-zero-price',
     residentId: 'momo',
+    route: 'hub',
     kind: 'story',
     title: 'Điều ước không có giá',
     synopsis:
@@ -1002,12 +1021,20 @@ export const QUESTS: QuestDefinition[] = [
   },
 ];
 
-export function questsForResident(residentId: ResidentId): QuestDefinition[] {
-  return QUESTS.filter((quest) => quest.residentId === residentId);
+export function questsForResident(
+  residentId: ResidentId,
+  route: CanonRoute = DEFAULT_ROUTE
+): QuestDefinition[] {
+  return QUESTS.filter(
+    (quest) => quest.residentId === residentId && quest.route === route
+  );
 }
 
-export function questById(id: string): QuestDefinition | undefined {
-  return QUESTS.find((quest) => quest.id === id);
+export function questById(
+  id: string,
+  route: CanonRoute = DEFAULT_ROUTE
+): QuestDefinition | undefined {
+  return QUESTS.find((quest) => quest.id === id && quest.route === route);
 }
 
 export function questNodes(quest: QuestDefinition): QuestNode[] {

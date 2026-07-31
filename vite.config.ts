@@ -33,11 +33,21 @@ function devChatApi(key: string): Plugin {
           const chunks: Buffer[] = [];
           for await (const c of req) chunks.push(c as Buffer);
           const body = JSON.parse(Buffer.concat(chunks).toString());
+          if (
+            body.route !== undefined &&
+            body.route !== 'origin' &&
+            body.route !== 'hub' &&
+            body.route !== 'sao'
+          ) {
+            res.statusCode = 400;
+            return res.end(JSON.stringify({ error: 'unknown-route' }));
+          }
+          const route = body.route ?? 'hub';
           const { buildSystemPrompt } = await server.ssrLoadModule('/src/chat/prompt.ts');
-          const system = buildSystemPrompt(
+          let system = buildSystemPrompt(
             body.residentId,
             body.session,
-            body.memories ?? [],
+            body.mode === 'quest' ? [] : body.memories ?? [],
             body.revealed ?? 0,
             body.idle ? undefined : body.revealNow,
             body.idle,
@@ -48,12 +58,29 @@ function devChatApi(key: string): Plugin {
             body.maturity,
             body.bond,
             body.rapport,
-            body.message
+            body.message,
+            route
           );
+          const approved = (Array.isArray(body.approvedCrossMode) ? body.approvedCrossMode : [])
+            .filter((line: unknown): line is string => typeof line === 'string')
+            .map((line: string) => line.trim().slice(0, 240))
+            .filter(Boolean)
+            .slice(-8);
+          if (approved.length) {
+            const guard = `KÝ ỨC ĐƯỢC PHÉP QUA CHẾ ĐỘ\n${approved
+              .map((line: string) => `- ${line}`)
+              .join('\n')}\nKhông suy diễn thêm chi tiết đời thật ngoài danh sách này.`;
+            const contract = 'BẮT BUỘC Ở CUỐI MỖI LƯỢT';
+            const at = system.lastIndexOf(contract);
+            system =
+              at === -1
+                ? `${system}\n\n${guard}`
+                : `${system.slice(0, at)}${guard}\n\n${system.slice(at)}`;
+          }
           const model = 'deepseek-chat';
           const messages = [
             { role: 'system', content: system },
-            ...(body.history ?? []).slice(-12),
+            ...(body.mode === 'quest' ? body.questHistory ?? [] : body.history ?? []).slice(-12),
             {
               role: 'user',
               content: body.idle

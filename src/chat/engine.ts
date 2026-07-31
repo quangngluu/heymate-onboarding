@@ -10,6 +10,8 @@
 // a server-side model call given her canon; nothing else moves.
 
 import { fnv1a } from '../util/hash';
+import { DEFAULT_ROUTE, type CanonRoute } from '../config/canon-route';
+import { canonViewFor } from '../config/canon-view';
 import type { LengthId, MoodId, ResidentConfig, ResidentId, StyleId } from '../config/residents';
 
 type Intent =
@@ -177,7 +179,15 @@ const IDLE_LINES: Record<ResidentId, string[]> = {
 };
 
 /** A deterministic line for the nth silence in a session. */
-export function idleLine(resident: ResidentConfig, index: number): string {
+export function idleLine(
+  resident: ResidentConfig,
+  index: number,
+  route: CanonRoute = DEFAULT_ROUTE
+): string {
+  const view = canonViewFor(resident.id, route);
+  if (view.fallback) {
+    return view.fallback.returning[index % view.fallback.returning.length];
+  }
   const pool = IDLE_LINES[resident.id];
   return pool[index % pool.length];
 }
@@ -191,6 +201,7 @@ export interface SessionSetup {
 
 export interface ReplyContext {
   resident: ResidentConfig;
+  route?: CanonRoute;
   session: SessionSetup;
   /** Rungs of her ladder already revealed (persisted across saved sessions). */
   revealed: number;
@@ -239,10 +250,18 @@ function visitorAddress(nickname: string): string {
  * resident's canon plus the session setup; the signature stays the same.
  */
 export function reply(message: string, ctx: ReplyContext): ReplyResult {
-  const { resident, session } = ctx;
+  const route = ctx.route ?? DEFAULT_ROUTE;
+  const resident = canonViewFor(ctx.resident.id, route);
+  const { session } = ctx;
   const intent = detectIntent(message);
   const seed = fnv1a(message.trim().toLowerCase() + resident.id + session.mood);
-  const pair = LINES[resident.id][intent];
+  const pair = resident.fallback
+    ? intent === 'greeting'
+      ? ctx.memories.length
+        ? resident.fallback.returning
+        : resident.fallback.stranger
+      : resident.fallback.generic
+    : LINES[resident.id][intent];
   let text = pair[seed % 2];
   let revealedRung: number | undefined;
 
@@ -255,11 +274,16 @@ export function reply(message: string, ctx: ReplyContext): ReplyResult {
   }
 
   // Mood colours the line without changing who is speaking.
-  const tag = MOOD_TAG[resident.id][session.mood];
+  const tag = resident.canonVersion === 'v3' ? undefined : MOOD_TAG[resident.id][session.mood];
   if (tag && !revealedRung && seed % 3 === 0) text = `${text} ${tag}`;
 
   // Who drives: she asks her own question, or she stays out of the way.
-  if (session.style === 'lead' && !revealedRung && intent !== 'farewell') {
+  if (
+    resident.canonVersion !== 'v3' &&
+    session.style === 'lead' &&
+    !revealedRung &&
+    intent !== 'farewell'
+  ) {
     text = `${text} ${resident.curiosity[seed % resident.curiosity.length]}`;
   } else if (session.style === 'listen') {
     text = text.replace(/\s*[^.!?]*\?$/, '').trim() || text;
@@ -287,13 +311,18 @@ export function openingLine(
   resident: ResidentConfig,
   memories: string[],
   nickname: string,
-  revealed = 0
+  revealed = 0,
+  route: CanonRoute = DEFAULT_ROUTE
 ): string {
-  if (!memories.length) return resident.greeting;
-  if (revealed >= 3) return resident.closeGreeting;
+  const view = canonViewFor(resident.id, route);
+  if (!memories.length) return view.greeting;
+  if (revealed >= 3) return view.closeGreeting;
   const who = visitorAddress(nickname);
   const memory = memories[0];
-  switch (resident.id) {
+  if (view.fallback) {
+    return `${who}, ${view.returnGreeting} Lần trước anh nhắc đến ${memory}.`;
+  }
+  switch (view.id) {
     case 'rin':
       return `${who}, lần trước anh nhắc đến ${memory}. Em cứ nghĩ về đoạn đó. Kể em nghe đi.`;
     case 'kagura':

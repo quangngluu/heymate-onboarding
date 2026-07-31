@@ -355,6 +355,35 @@ export const TOGETHER: Record<ResidentId, TogetherActivity[]> = {
   ],
 };
 
+export function togetherFor(
+  residentId: ResidentId,
+  route: import('./canon-route').CanonRoute = 'hub'
+): TogetherActivity[] {
+  const base = TOGETHER[residentId];
+  if (route !== 'sao') return base;
+  if (residentId === 'rin') {
+    return base.map((activity) =>
+      activity.label === 'Bốn giờ sáng, ăn cùng em'
+        ? {
+            label: 'Bốn giờ sáng, sửa archive cùng em',
+            she: 'Em mở một motion hỏng, để anh chọn giữ hay xoá, rồi phản đối lựa chọn của anh bằng ba con số em vừa bịa.',
+          }
+        : activity
+    );
+  }
+  if (residentId === 'kagura') {
+    return base.map((activity) =>
+      activity.label === 'Nghe radio thời tiết buổi sáng'
+        ? {
+            label: 'Nghe dự báo thời tiết dưới mái đền',
+            she: 'Em nghe kỹ như báo cáo địa hình, hỏi Kagome vì sao người trong hộp biết gió ngày mai, rồi vẫn mang áo mưa đúng giờ.',
+          }
+        : activity
+    );
+  }
+  return base;
+}
+
 /**
  * What each chapter has to leave behind.
  *
@@ -376,6 +405,19 @@ export const PERSONAL_OUTPUTS: Record<ResidentId, { object: string; how: string 
     how: 'Luật mới trên biển hiệu do anh đặt, và trang cuối cuốn trắng là kết của riêng hai người.',
   },
 };
+
+export function personalOutputFor(
+  residentId: ResidentId,
+  route: import('./canon-route').CanonRoute = 'hub'
+): { object: string; how: string } {
+  if (route === 'sao' && residentId === 'momo') {
+    return {
+      object: 'Một luật thứ ba không được ghi thành giao kèo, một chỗ ngồi có số, và trang cuối cuốn sách trắng',
+      how: 'Hai người để lại một lựa chọn ngoài A/B trong gian sách phía sau; trang cuối chỉ được mở khi cả hai cùng muốn, không ai tự tính giá.',
+    };
+  }
+  return PERSONAL_OUTPUTS[residentId];
+}
 
 /** The "This is your Rin" summary. Data only; the UI decides how it looks. */
 export function bondCard(residentId: ResidentId, bond: BondDna): string[] {

@@ -32,6 +32,8 @@ import {
   onboardingQuestFor,
   type OnboardingTrigger,
 } from '../config/onboarding-quests';
+import { resolveCanonRoute } from '../config/canon-route';
+import { canonRevealIndexFor } from '../config/canon-view';
 
 export { COST } from '../config/economy';
 export type { Spend } from '../config/economy';
@@ -792,11 +794,11 @@ export class Store {
   /** Start the next quest in a resident's ordered story path. */
   /** Exactly one authored arc per resident. */
   questsFor(id = this.state.residentId): QuestDefinition[] {
-    return questsForResident(id);
+    return questsForResident(id, resolveCanonRoute());
   }
 
   questById2(id: string): QuestDefinition | undefined {
-    return this.questsFor().find((q) => q.id === id) ?? questById(id);
+    return questById(id, resolveCanonRoute());
   }
 
   /** The next scene she has not run yet, if there is one. */
@@ -927,10 +929,24 @@ export class Store {
         : [...residentFlags, choice.flag],
     };
     const prev = this.progressFor();
+    const route = resolveCanonRoute();
+    const stableRevealIndex = choice.unlockCanonRevealId
+      ? canonRevealIndexFor(quest.residentId, route, choice.unlockCanonRevealId)
+      : -1;
+    if (choice.unlockCanonRevealId && stableRevealIndex < 0) {
+      throw new Error(
+        `Quest '${quest.id}' references unknown reveal '${choice.unlockCanonRevealId}'`
+      );
+    }
+    if (quest.route === 'sao' && choice.unlockCanonReveal !== undefined && !choice.unlockCanonRevealId) {
+      throw new Error(`V3 quest '${quest.id}' must unlock canon by stable id`);
+    }
+    const unlockIndex =
+      stableRevealIndex >= 0 ? stableRevealIndex : choice.unlockCanonReveal;
     const revealed =
-      choice.unlockCanonReveal === undefined
+      unlockIndex === undefined
         ? prev.revealed
-        : Math.max(prev.revealed, choice.unlockCanonReveal + 1);
+        : Math.max(prev.revealed, unlockIndex + 1);
     const createdAt = Date.now();
     const canonEntry: CanonLedgerEntry = {
       id: `${quest.id}:${nodeId}:${createdAt}:${this.state.canonLedger.length}`,

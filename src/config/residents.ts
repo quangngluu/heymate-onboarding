@@ -51,6 +51,11 @@ export interface CharacterCard {
  * entry (narration); `spoken` is how she says it herself, in first person.
  */
 export interface CanonReveal {
+  /**
+   * Stable route-owned identifier. Legacy Hub reveals intentionally omit this
+   * so their serialized shape and numeric save format remain byte-identical.
+   */
+  id?: string;
   title: string;
   body: string;
   spoken: string;

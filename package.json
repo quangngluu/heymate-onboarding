@@ -7,6 +7,8 @@
     "dev": "vite",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
+    "verify:canon": "tsx scripts/verify-canon.ts && tsx scripts/export-character-data.ts --route=hub --check && tsx scripts/export-character-data.ts --route=sao --check",
+    "verify": "npm run build && npm run verify:canon",
     "preview": "vite preview",
     "push:github": "git -C .. subtree push --prefix=heymate-onboarding heymate-github main"
   },
@@ -21,6 +23,7 @@
     "gltfpack": "^1.2.0",
     "puppeteer-core": "^25.3.0",
     "sharp": "^0.35.3",
+    "tsx": "^4.23.1",
     "typescript": "~5.6.3",
     "vite": "^5.4.10"
   }

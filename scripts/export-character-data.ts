@@ -30,9 +30,10 @@ import { worldFor } from '../src/config/worlds';
 import { factsFor } from '../src/config/causal';
 import { reactionsFor } from '../src/config/reactions';
 import { DARK_HOOKS } from '../src/config/dark-patterns';
-import { PERSONAL_OUTPUTS, STABLE_SOUL, TOGETHER } from '../src/config/bond';
+import { PERSONAL_OUTPUTS, STABLE_SOUL, TOGETHER, personalOutputFor, togetherFor } from '../src/config/bond';
 import { AVATAR_RECOGNITION, CROSSOVER, HUB, SERIES_PROMISE, arrivalFor } from '../src/config/interlude';
 import { v3CanonFor, type V3Canon } from '../src/config/v3-canon';
+import { canonViewFor } from '../src/config/canon-view';
 
 type Route = 'hub' | 'sao';
 
@@ -46,7 +47,7 @@ const route: Route = routeArg;
 const outDir = args.find((a) => a.startsWith('--out='))?.slice('--out='.length) ?? 'docs/';
 const jsonPath = resolve(outDir.endsWith('/') ? outDir : `${outDir}/`, `characters.${route}.json`);
 const jsonlPath = jsonPath.replace(/\.json$/, '.jsonl');
-mkdirSync(dirname(jsonPath), { recursive: true });
+const checkOnly = args.includes('--check');
 
 /**
  * Anchors that prove a route's canon is the one being exported, and that the
@@ -61,7 +62,7 @@ const PROBES: Record<Route, { required: RegExp; forbidden: RegExp }> = {
   sao: {
     required: /Sword Art Online|lightcube|Fluctlight|Inuyasha|Giếng Ăn Xương|Tōtōsai|xxxHOLiC|Watanuki|Mokona/,
     forbidden:
-      /Interlude Hub|Studio Tsukikage|Akihabara|Sotokanda|Last Link|kinetic likeness|2042|Nakachō|Tachikawa|Sekigahara|Karasumori|Serizawa|Ichiya|Kōno|Khối đen/,
+      /Interlude Hub|Studio Tsukikage|Akihabara|Sotokanda|Last Link|kinetic likeness|2042|Nakachō|Tachikawa|Sekigahara|Karasumori|Route Zero|THE CRIMSON NAME|The First Living Virtual Idol|Serizawa|Ichiya|Kōno|Khối đen/,
   },
 };
 
@@ -78,15 +79,7 @@ const SAFETY = [
  * Recorded on the dataset rather than filled in, because a fine-tune on invented
  * canon learns the invention. Any sao export is labelled with these.
  */
-const V3_MISSING = [
-  { id: 'v3-tradeable-truths', what: 'cheap / costly / expensive truth sets per resident' },
-  { id: 'v3-causal-memory-bank', what: 'fact → private meaning → false belief → reflex → trigger → voiced line' },
-  { id: 'v3-heat-registers', what: 'per-resident intimacy register (raisedBy / whenItLands / tells / initiates / stops)' },
-  {
-    id: 'v3-visual-identity',
-    what: 'keyVisual + imagery per resident. Authored in the v3 bible (Visual Description / Aura) but not yet transcribed into the route files.',
-  },
-];
+const V3_MISSING: { id: string; what: string }[] = [];
 
 const SOURCE_FILES: Record<Route, string[]> = {
   hub: [
@@ -100,6 +93,8 @@ const SOURCE_FILES: Record<Route, string[]> = {
   ],
   sao: [
     'src/config/v3-canon.ts',
+    'src/config/v3-authored.ts',
+    'src/config/canon-view.ts',
     'src/config/rin-sao.ts',
     'src/config/kagari-inuyasha.ts',
     'src/config/momo-holic.ts',
@@ -112,7 +107,7 @@ const SOURCE_FILES: Record<Route, string[]> = {
 /** Fails loudly rather than falling back to Hub/v1. */
 function canonFor(id: ResidentId): V3Canon | null {
   if (route === 'hub') return null;
-  const k = v3CanonFor(id, true);
+  const k = v3CanonFor(id, 'sao');
   if (!k) {
     throw new Error(
       `No '${route}' canon for resident '${id}'. Refusing to fall back to Hub/v1 — ` +
@@ -122,10 +117,23 @@ function canonFor(id: ResidentId): V3Canon | null {
   return k;
 }
 
+function questNodesForExport(quest: (typeof QUESTS)[number]) {
+  if (route !== 'hub') return quest.nodes;
+  // Stable ids were added for v3 runtime saves. The frozen Hub artifact predates
+  // them, so omit only that new key when serializing the legacy route.
+  return JSON.parse(
+    JSON.stringify(quest.nodes, (key, value) =>
+      key === 'unlockCanonRevealId' ? undefined : value
+    )
+  ) as typeof quest.nodes;
+}
+
 const characters = RESIDENTS.map((r) => {
   const k = canonFor(r.id);
-  const reactions = reactionsFor(r.id);
+  const view = canonViewFor(r.id, route);
+  const reactions = reactionsFor(r.id, route);
   const quest = QUESTS.find((q) => q.residentId === r.id);
+  const routeQuest = QUESTS.find((q) => q.residentId === r.id && q.route === route);
 
   return {
     // Resident id never changes — it keys saved progress, transcripts and quest
@@ -181,34 +189,33 @@ const characters = RESIDENTS.map((r) => {
       escalation: reactions.escalation,
       misreads: reactions.misreads,
     },
-    // v1-only layers. On a v3 route they are omitted, not adapted.
-    truths: k ? null : r.truths,
-    causalMemory: k ? null : factsFor(r.id),
-    canonReveals: k ? null : r.canonReveals,
-    heat: k ? null : r.heat,
-    openLoop: k ? null : { ...r.loop, hook: DARK_HOOKS[r.id] },
-    ordinaryTime: k ? null : TOGETHER[r.id],
-    personalOutput: k ? null : PERSONAL_OUTPUTS[r.id],
+    truths: k ? view.truths : r.truths,
+    causalMemory: k ? view.causalFacts : factsFor(r.id),
+    canonReveals: k ? view.canonReveals : r.canonReveals,
+    heat: k ? view.heat : r.heat,
+    openLoop: k ? { ...view.loop, hook: DARK_HOOKS[r.id] } : { ...r.loop, hook: DARK_HOOKS[r.id] },
+    ordinaryTime: k ? togetherFor(r.id, route) : TOGETHER[r.id],
+    personalOutput: k ? personalOutputFor(r.id, route) : PERSONAL_OUTPUTS[r.id],
     seriesPromise: k ? undefined : SERIES_PROMISE[r.id],
     // A fourth v1-only layer, found by the isolation probe: Rin's keyVisual
     // names Akihabara, Momo's imagery names a creature this route no longer
     // contains. v3 does author Visual Description and Aura per resident, but
     // transcribing it is content work — omitted here rather than exported in the
     // wrong canon. Tracked as `v3-visual-identity`.
-    keyVisual: k ? null : r.keyVisual,
-    imagery: k ? null : r.imagery,
+    keyVisual: k ? view.keyVisual : r.keyVisual,
+    imagery: k ? view.imagery : r.imagery,
     voices: r.voices,
     quest:
-      quest && route === 'hub'
+      (route === 'hub' ? quest : routeQuest)
         ? {
-            id: quest.id,
-            title: quest.title,
-            synopsis: quest.synopsis,
-            objective: quest.objective,
-            canonRef: quest.canonRef,
-            questEpisodes: quest.questEpisodes ?? [],
-            threshold: quest.threshold ?? null,
-            nodes: quest.nodes,
+            id: (route === 'hub' ? quest! : routeQuest!).id,
+            title: (route === 'hub' ? quest! : routeQuest!).title,
+            synopsis: (route === 'hub' ? quest! : routeQuest!).synopsis,
+            objective: (route === 'hub' ? quest! : routeQuest!).objective,
+            canonRef: (route === 'hub' ? quest! : routeQuest!).canonRef,
+            questEpisodes: (route === 'hub' ? quest! : routeQuest!).questEpisodes ?? [],
+            threshold: (route === 'hub' ? quest! : routeQuest!).threshold ?? null,
+            nodes: questNodesForExport(route === 'hub' ? quest! : routeQuest!),
           }
         : null,
   };
@@ -227,11 +234,9 @@ const dataset = {
     })),
     ...(route === 'sao'
       ? {
-          status: 'content-incomplete',
+          status: 'complete-for-route',
           missing: V3_MISSING,
-          note:
-            'Tradeable truths, causal memory and per-resident heat registers are not authored for v3. ' +
-            'They are omitted rather than adapted from v1, so this dataset is thinner than the hub one by design.',
+          note: 'All required v3 narrative layers are authored and route-isolated.',
         }
       : { status: 'complete-for-route' }),
   },
@@ -261,7 +266,8 @@ const pairs: Pair[] = [];
 for (const c of characters) {
   const r = RESIDENTS.find((x) => x.id === c.residentId)!;
   const k = canonFor(r.id);
-  const reactions = reactionsFor(r.id);
+  const view = canonViewFor(r.id, route);
+  const reactions = reactionsFor(r.id, route);
   const base = {
     residentId: c.residentId,
     displayName: c.displayName,
@@ -293,9 +299,11 @@ for (const c of characters) {
     pairs.push({ ...base, kind: 'curiosity', instruction: 'Em chủ động hỏi vì em quan tâm.', response: q });
   }
 
-  if (!k) {
-    // v1-only pair sources.
-    for (const f of factsFor(r.id)) {
+  {
+    const causal = k ? view.causalFacts : factsFor(r.id);
+    const truths = k ? view.truths : r.truths;
+    const reveals = k ? view.canonReveals : r.canonReveals;
+    for (const f of causal) {
       for (const line of f.evidence) {
         pairs.push({
           ...base,
@@ -306,9 +314,9 @@ for (const c of characters) {
       }
     }
     for (const [tier, list] of [
-      ['cheap', r.truths.cheap],
-      ['costly', r.truths.costly],
-      ['expensive', r.truths.expensive],
+      ['cheap', truths.cheap],
+      ['costly', truths.costly],
+      ['expensive', truths.expensive],
     ] as const) {
       for (const t of list) {
         pairs.push({
@@ -319,7 +327,7 @@ for (const c of characters) {
         });
       }
     }
-    for (const ep of r.canonReveals) {
+    for (const ep of reveals) {
       pairs.push({ ...base, kind: 'canon-reveal', instruction: `Mở ký ức: ${ep.title}`, response: ep.spoken });
     }
   }
@@ -362,15 +370,21 @@ if (failures.length) {
   process.exit(1);
 }
 
-writeFileSync(jsonPath, `${JSON.stringify(dataset, null, 2)}\n`, 'utf8');
-writeFileSync(jsonlPath, pairs.map((x) => JSON.stringify(x)).join('\n') + '\n', 'utf8');
+if (!checkOnly) {
+  mkdirSync(dirname(jsonPath), { recursive: true });
+  writeFileSync(jsonPath, `${JSON.stringify(dataset, null, 2)}\n`, 'utf8');
+  writeFileSync(jsonlPath, pairs.map((x) => JSON.stringify(x)).join('\n') + '\n', 'utf8');
+}
 
 const per = characters
   .map((c) => `${c.residentId}=${pairs.filter((p) => p.residentId === c.residentId).length}`)
   .join(' ');
 console.log(`route '${route}' (${dataset.metadata.canonVersion}) — probes passed`);
-console.log(`  ${jsonPath} — ${characters.length} residents`);
-console.log(`  ${jsonlPath} — ${pairs.length} pairs (${per})`);
+console.log(
+  checkOnly
+    ? `  check-only — ${characters.length} residents, ${pairs.length} pairs (${per})`
+    : `  ${jsonPath} — ${characters.length} residents\n  ${jsonlPath} — ${pairs.length} pairs (${per})`
+);
 if (route === 'sao') {
-  console.log(`  status: content-incomplete — missing ${V3_MISSING.map((m) => m.id).join(', ')}`);
+  console.log(`  status: complete-for-route — missing ${V3_MISSING.length}`);
 }
