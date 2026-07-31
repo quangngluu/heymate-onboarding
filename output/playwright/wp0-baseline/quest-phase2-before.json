@@ -1,0 +1,59 @@
+{
+  "route": "/?canon=sao&questPrototype=rin",
+  "results": [
+    {
+      "viewport": "360x800",
+      "firstBeatMs": 243,
+      "route": "sao",
+      "prototype": "rin",
+      "questPhase": "threshold",
+      "episodeLabel": "EPISODE 0 · MOTION ARCHIVE CORRIDOR",
+      "firstLine": "Đừng",
+      "rosterHidden": true,
+      "exitVisible": true,
+      "horizontalOverflowPx": 0,
+      "navigationLoadMs": 200,
+      "expectedWarnings": [
+        "502 http://127.0.0.1:5199/api/tts",
+        "502 http://127.0.0.1:5199/api/tts"
+      ],
+      "failures": []
+    },
+    {
+      "viewport": "390x844",
+      "firstBeatMs": 272,
+      "route": "sao",
+      "prototype": "rin",
+      "questPhase": "threshold",
+      "episodeLabel": "EPISODE 0 · MOTION ARCHIVE CORRIDOR",
+      "firstLine": "Đừng",
+      "rosterHidden": true,
+      "exitVisible": true,
+      "horizontalOverflowPx": 0,
+      "navigationLoadMs": 170,
+      "expectedWarnings": [
+        "502 http://127.0.0.1:5199/api/tts",
+        "502 http://127.0.0.1:5199/api/tts"
+      ],
+      "failures": []
+    },
+    {
+      "viewport": "430x932",
+      "firstBeatMs": 245,
+      "route": "sao",
+      "prototype": "rin",
+      "questPhase": "threshold",
+      "episodeLabel": "EPISODE 0 · MOTION ARCHIVE CORRIDOR",
+      "firstLine": "Đừng",
+      "rosterHidden": true,
+      "exitVisible": true,
+      "horizontalOverflowPx": 0,
+      "navigationLoadMs": 166,
+      "expectedWarnings": [
+        "502 http://127.0.0.1:5199/api/tts",
+        "502 http://127.0.0.1:5199/api/tts"
+      ],
+      "failures": []
+    }
+  ]
+}
