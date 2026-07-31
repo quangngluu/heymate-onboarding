@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 
 const MAX_TOKENS = { short: 70, natural: 130, expressive: 180 } as const;
@@ -271,12 +272,32 @@ function devSceneImageApi(writerKey: string, drawerKey: string): Plugin {
   };
 }
 
+/**
+ * A build id the running page can report.
+ *
+ * Vercel exposes the commit as VERCEL_GIT_COMMIT_SHA; locally fall back to git.
+ * Without this a stale tab is indistinguishable from a fresh one, which cost a
+ * QA cycle: a superseded bundle kept working from memory while its asset URL
+ * 404ed, and the resulting bug report described something already fixed.
+ */
+function buildId(env: Record<string, string>): string {
+  if (env.VERCEL_GIT_COMMIT_SHA) return env.VERCEL_GIT_COMMIT_SHA.slice(0, 7);
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+  } catch {
+    return 'dev';
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
     base: './',
     server: { port: 5199 },
     build: { target: 'es2022' },
+    define: { 'import.meta.env.VITE_BUILD_ID': JSON.stringify(buildId(env)) },
     plugins: [
       devChatApi(env.DEEPSEEK_API_KEY ?? ''),
       devTtsApi(env.SPOON_API_KEY ?? '', env.SPOON_VOICE_ID ?? ''),

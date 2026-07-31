@@ -82,7 +82,24 @@ html, body {
   align-items: center;
   padding: 18px 22px;
 }
+.chrome-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .wordmark { font-size: 12px; letter-spacing: 0.42em; color: var(--ivory-dim); }
+/* Diagnostic stamp: only rendered off the default route. Deliberately plain —
+   it must be legible against both the bright and the dark stage without
+   competing with the wordmark for attention. */
+.route-badge {
+  pointer-events: auto;
+  flex-shrink: 0;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  line-height: 1;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ivory-dim);
+  background: rgba(0, 0, 0, 0.28);
+  white-space: nowrap;
+}
 .chrome-btn {
   pointer-events: auto;
   background: none;

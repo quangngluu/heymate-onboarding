@@ -15,8 +15,56 @@ import {
 } from './steps';
 import { COPY } from '../config/copy';
 import { COST, CREDIT_CATALOG, CREDIT_LABEL, type Spend } from '../config/economy';
+import { resolveCanonRoute } from '../config/canon-route';
+
+/**
+ * Which build and canon layer this page is actually running.
+ *
+ * A tab kept serving a superseded bundle for hours after a redeploy during QA,
+ * and the resulting report described a bug that had already been fixed — the
+ * asset URL 404ed while the loaded page kept working from memory. There was no
+ * way to ask the page what it was. Now there is: `__HEYMATE__` in the console,
+ * always, costing nothing.
+ *
+ * Since the v3 cutover made `resolveCanonRoute()` one-way, the route is no
+ * longer ambiguous — the build is the part still worth stamping.
+ */
+function publishBuildStamp(): void {
+  const stamp = {
+    build: import.meta.env.VITE_BUILD_ID ?? 'dev',
+    route: resolveCanonRoute(),
+  };
+  (window as unknown as { __HEYMATE__?: typeof stamp }).__HEYMATE__ = stamp;
+}
+
+/**
+ * The same stamp, on screen, only behind `?debug`.
+ *
+ * Ordinary visitors never see it; a tester checking "am I on the build I just
+ * deployed" does not have to open a console on a phone.
+ */
+function buildStampBadge(): HTMLElement[] {
+  let debug = false;
+  try {
+    debug = new URLSearchParams(window.location.search).has('debug');
+  } catch {
+    return [];
+  }
+  if (!debug) return [];
+
+  const { build, route } = (window as unknown as { __HEYMATE__: { build: string; route: string } })
+    .__HEYMATE__;
+  return [
+    h(
+      'span',
+      { class: 'route-badge', role: 'status', title: 'Canon route · build' },
+      `${route.toUpperCase()} · ${String(build).slice(0, 7)}`
+    ),
+  ];
+}
 
 export function mountUI(root: HTMLElement, store: Store, actions: UIActions): void {
+  publishBuildStamp();
   const stepHost = h('div', { class: 'step-host' });
   const skipBtn = h(
     'button',
@@ -159,7 +207,7 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
     h(
       'header',
       { class: 'chrome' },
-      h('span', { class: 'wordmark' }, 'HEYMATE'),
+      h('div', { class: 'chrome-left' }, h('span', { class: 'wordmark' }, 'HEYMATE'), ...buildStampBadge()),
       h('div', { class: 'chrome-right' }, wallet, questBtn, muteBtn)
     ),
     stepHost,
