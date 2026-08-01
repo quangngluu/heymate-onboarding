@@ -168,10 +168,48 @@ export function relevantCanonFacts(
     .map(({ fact }) => fact);
 }
 
+/**
+ * Whose eyes the picture is taken from.
+ *
+ * `observed` is the original framing: a place, with her in it. `first-person`
+ * puts the viewer in the room — his hands or an object at the near edge, her at
+ * mid-distance looking back.
+ *
+ * That framing is worth having because the product has always addressed him as
+ * "anh" and never once shown him. It costs nothing in likeness, which is the
+ * usual reason not to draw a player: a foreground hand needs no consistency
+ * because it is not a face. And three scenes are already written for it — his
+ * shadow beside her archive hand, his name on a blade before they met, a
+ * silhouette on the last page that changes with him.
+ */
+export type ScenePerspective = 'observed' | 'first-person';
+
+/**
+ * Rules, not content, for the near edge of a first-person frame.
+ *
+ * Stated generically on purpose. Naming a specific object per resident would be
+ * authoring canon, and naming the wrong one would break it: Kagari does not hand
+ * Akagane over — one of her own quest branches is about him holding the scabbard
+ * so she does not have to draw the blade — and Momo's red pen in his hand would
+ * mean he had signed something, which is a story event rather than a picture.
+ *
+ * So the objects come from the authored Props list, and what may not be in his
+ * hands is a rule the writer applies.
+ */
+const FIRST_PERSON_RULES = [
+  'Camera is the viewer’s own eyes, at standing eye level, looking at her.',
+  'She stands at mid-distance and is aware of the viewer; she is the subject.',
+  'The near edge of the frame may carry the viewer’s hand, forearm, or shoulder, or one object from the Props list above. Nothing else.',
+  'The viewer is never identifiable: no face, no reflection of a face, no distinctive clothing, no jewellery, no visible skin detail that would fix an age or a gender.',
+  'Never place an object that belongs to her personally — her weapon, her instrument, her working tools — in the viewer’s hands. He may stand near it, hold something that carries it, or reach towards it, and that is all.',
+  'Only draw the viewer holding an object if the Scene line above says he is holding it.',
+].join('\n');
+
 export function sceneBriefFor(
   residentId: ResidentId,
   route: CanonRoute,
-  scene: string
+  scene: string,
+  perspective: ScenePerspective = 'observed'
 ): string {
   const view = canonViewFor(residentId, route);
   return [
@@ -180,6 +218,7 @@ export function sceneBriefFor(
     `Places: ${view.imagery.places}`,
     `Props: ${view.imagery.props}`,
     `Atmosphere: ${view.imagery.air}`,
+    ...(perspective === 'first-person' ? ['', 'Framing — first person:', FIRST_PERSON_RULES] : []),
   ].join('\n');
 }
 

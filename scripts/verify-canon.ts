@@ -363,6 +363,21 @@ function briefAndOverrideCoverage(): void {
       `${resident.id} scene brief`,
       sceneBriefFor(resident.id, 'sao', 'một lựa chọn vừa thay đổi căn phòng')
     );
+    // First person adds a near edge to the frame, which is a new place for canon
+    // to leak: the props it may draw from are hers, and the rule about what may
+    // not be in the viewer's hands is the only thing standing between a picture
+    // and a story event he never chose.
+    const pov = sceneBriefFor(resident.id, 'sao', 'anh bước tới gần em', 'first-person');
+    clean(`${resident.id} first-person brief`, pov);
+    assert.ok(pov.includes('never identifiable'), `${resident.id}: viewer may be drawn identifiably`);
+    assert.ok(
+      pov.includes('belongs to her personally'),
+      `${resident.id}: nothing stops her own instrument being put in his hands`
+    );
+    assert.ok(
+      pov.includes(canonViewFor(resident.id, 'sao').imagery.props),
+      `${resident.id}: first-person frame may draw props that were never authored`
+    );
     clean(`${resident.id} subject brief`, subjectBriefFor(resident.id, 'sao'));
   }
   const kagariV3 = reactionsFor('kagura', 'sao').reactions.find(

@@ -20,6 +20,7 @@
 import {
   canonViewFor,
   sceneBriefFor,
+  type ScenePerspective,
   subjectBriefFor,
 } from '../src/config/canon-view';
 import { DEFAULT_ROUTE, type CanonRoute } from '../src/config/canon-route';
@@ -32,6 +33,12 @@ interface SceneRequest {
   text: string;
   /** The scene it belongs to, so the drawing is of that scene and not of a mood. */
   scene?: string;
+  /**
+   * Whose eyes the frame is from. Defaults to `observed`, the original framing;
+   * `first-person` puts the viewer in the room. See canon-view.ts for why the
+   * near edge of that frame is governed by a rule rather than by content.
+   */
+  perspective?: ScenePerspective;
   /**
    * Her render as a data URI, from `src/three/subject.ts`. Optional: without it
    * the place is drawn empty. `image_url` on fal accepts a data URI directly,
@@ -125,7 +132,7 @@ export default async function handler(req: Request): Promise<Response> {
             content: [
               subject ? BRIEF_WITH_SUBJECT : BRIEF_EMPTY,
               '',
-              sceneBriefFor(resident.id, route, body.scene ?? text),
+              sceneBriefFor(resident.id, route, body.scene ?? text, body.perspective ?? 'observed'),
             ].join('\n'),
           },
           {

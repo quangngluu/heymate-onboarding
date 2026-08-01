@@ -10,11 +10,13 @@
 import { canonViewFor } from '../config/canon-view';
 import { resolveCanonRoute } from '../config/canon-route';
 import { subjectShot } from '../three/subject';
+import type { ScenePerspective } from '../config/canon-view';
 
 export async function drawScene(
   residentId: string,
   text: string,
-  scene?: string
+  scene?: string,
+  perspective: ScenePerspective = 'observed'
 ): Promise<string | null> {
   try {
     const route = resolveCanonRoute();
@@ -23,7 +25,7 @@ export async function drawScene(
     const res = await fetch('/api/scene-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ residentId, route, text, scene, subject: subject ?? undefined }),
+      body: JSON.stringify({ residentId, route, text, scene, perspective, subject: subject ?? undefined }),
       // Composing her into a place is a heavier model than drawing an empty
       // room, so the client waits longer when it sent a subject.
       signal: AbortSignal.timeout(subject ? 80000 : 40000),
