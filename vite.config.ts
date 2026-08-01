@@ -1,151 +1,37 @@
 import { execSync } from 'node:child_process';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 
-const MAX_TOKENS = { short: 70, natural: 130, expressive: 180 } as const;
-/** Headroom for the trailing state line; see STATE_BUDGET in api/chat.ts. */
-const STATE_BUDGET = 90;
-const INVALID_ADDRESSING = /(^|[^\p{L}])(?:tôi|tao|tớ|mình(?!\s+anh(?=$|[^\p{L}]))|chị|cậu|bạn|ngươi|ngài|i|you|your)(?=$|[^\p{L}])/iu;
-
-function hasInvalidAddressing(text: string): boolean {
-  return INVALID_ADDRESSING.test(text);
-}
-
 /**
  * Runs the same chat endpoint as the deployed edge function during
  * `npm run dev`, using DEEPSEEK_API_KEY from .env.local. Without this the dev
  * server 404s on /api/chat and the app silently drops to scripted replies,
  * which makes local behaviour differ from production.
  */
-function devChatApi(key: string): Plugin {
+function devChatApi(key: string, model: string): Plugin {
   return {
     name: 'dev-chat-api',
     configureServer(server) {
       server.middlewares.use('/api/chat', async (req, res) => {
-        if (req.method !== 'POST') {
-          res.statusCode = 405;
-          return res.end();
-        }
-        res.setHeader('Content-Type', 'application/json');
-        if (!key) {
-          res.statusCode = 503;
-          return res.end(JSON.stringify({ error: 'not-configured' }));
-        }
         try {
+          // Run the real edge handler in development so prompt derivation,
+          // repair, timeouts and failure semantics cannot drift by copy/paste.
+          process.env.DEEPSEEK_API_KEY ??= key;
+          process.env.DEEPSEEK_MODEL ??= model;
           const chunks: Buffer[] = [];
-          for await (const c of req) chunks.push(c as Buffer);
-          const body = JSON.parse(Buffer.concat(chunks).toString());
-          if (body.route !== undefined && body.route !== 'sao') {
-            res.statusCode = 400;
-            const error =
-              body.route === 'origin' || body.route === 'hub'
-                ? 'retired-route'
-                : 'unknown-route';
-            return res.end(JSON.stringify({ error }));
-          }
-          const route = body.route ?? 'sao';
-          const { buildSystemPrompt } = await server.ssrLoadModule('/src/chat/prompt.ts');
-          let system = buildSystemPrompt(
-            body.residentId,
-            body.session,
-            body.mode === 'quest' ? [] : body.memories ?? [],
-            body.revealed ?? 0,
-            body.idle ? undefined : body.revealNow,
-            body.idle,
-            body.level ?? 0,
-            body.quest,
-            body.story,
-            body.dark,
-            body.maturity,
-            body.bond,
-            body.rapport,
-            body.message,
-            route
+          for await (const chunk of req) chunks.push(chunk as Buffer);
+          const method = req.method ?? 'GET';
+          const { default: handler } = await server.ssrLoadModule('/api/chat.ts');
+          const response = await handler(
+            new Request(`http://localhost${req.url ?? '/api/chat'}`, {
+              method,
+              headers: { 'Content-Type': req.headers['content-type'] ?? 'application/json' },
+              body: method === 'GET' || method === 'HEAD' ? undefined : Buffer.concat(chunks),
+            })
           );
-          const approved = (Array.isArray(body.approvedCrossMode) ? body.approvedCrossMode : [])
-            .filter((line: unknown): line is string => typeof line === 'string')
-            .map((line: string) => line.trim().slice(0, 240))
-            .filter(Boolean)
-            .slice(-8);
-          if (approved.length) {
-            const guard = `KÝ ỨC ĐƯỢC PHÉP QUA CHẾ ĐỘ\n${approved
-              .map((line: string) => `- ${line}`)
-              .join('\n')}\nKhông suy diễn thêm chi tiết đời thật ngoài danh sách này.`;
-            const contract = 'BẮT BUỘC Ở CUỐI MỖI LƯỢT';
-            const at = system.lastIndexOf(contract);
-            system =
-              at === -1
-                ? `${system}\n\n${guard}`
-                : `${system.slice(0, at)}${guard}\n\n${system.slice(at)}`;
-          }
-          const model = 'deepseek-chat';
-          const messages = [
-            { role: 'system', content: system },
-            ...(body.mode === 'quest' ? body.questHistory ?? [] : body.history ?? []).slice(-12),
-            {
-              role: 'user',
-              content: body.idle
-                ? '[The visitor is quiet. Speak first now.]'
-                : String(body.message ?? '').slice(0, 500),
-            },
-          ];
-          const upstream = await fetch('https://api.deepseek.com/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-            body: JSON.stringify({
-              model,
-              messages,
-              temperature: 0.92,
-              max_tokens: (MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural) + STATE_BUDGET,
-              stop: ['\nUser:', '\nYou:', '\nAnh:'],
-            }),
-          });
-          const data = await upstream.json();
-          const raw = data?.choices?.[0]?.message?.content?.trim();
-          if (!raw) {
-            res.statusCode = 502;
-            return res.end(JSON.stringify({ error: 'empty' }));
-          }
-          const stateMatch = raw.match(/<<\s*state\s*(\{[\s\S]*?\})\s*>>/);
-          const text = raw.replace(/<<\s*state\s*\{[\s\S]*?\}\s*>>/, '').trim();
-          let rapport;
-          if (stateMatch) {
-            try {
-              rapport = JSON.parse(stateMatch[1]);
-            } catch {
-              rapport = undefined;
-            }
-          }
-          if (!text) {
-            res.statusCode = 502;
-            return res.end(JSON.stringify({ error: 'empty' }));
-          }
-          if (!hasInvalidAddressing(text)) return res.end(JSON.stringify({ text, rapport }));
 
-          const retry = await fetch('https://api.deepseek.com/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-            body: JSON.stringify({
-              model,
-              messages: [
-                {
-                  role: 'system',
-                  content:
-                    `${system}\n\nLUẬT CUỐI CÙNG KHÔNG ĐƯỢC VI PHẠM: Hãy tạo một câu trả lời mới cho anh ngay bây giờ. Phải là tiếng Việt tự nhiên. Em luôn xưng "em" và người đang trò chuyện luôn là "anh". Không dùng bất kỳ đại từ quan hệ nào khác. Chỉ trả lời bằng lời thoại.`,
-                },
-                ...messages.slice(1),
-              ],
-              temperature: 0.7,
-              max_tokens: (MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural) + STATE_BUDGET,
-              stop: ['\nUser:', '\nYou:', '\nAnh:'],
-            }),
-          });
-          const retryData = await retry.json();
-          const rewritten = retryData?.choices?.[0]?.message?.content?.trim();
-          if (!rewritten || hasInvalidAddressing(rewritten)) {
-            res.statusCode = 502;
-            return res.end(JSON.stringify({ error: 'invalid-addressing' }));
-          }
-          res.end(JSON.stringify({ text: rewritten }));
+          res.statusCode = response.status;
+          response.headers.forEach((value, header) => res.setHeader(header, value));
+          res.end(Buffer.from(await response.arrayBuffer()));
         } catch {
           res.statusCode = 502;
           res.end(JSON.stringify({ error: 'unreachable' }));
@@ -301,7 +187,7 @@ export default defineConfig(({ mode }) => {
     build: { target: 'es2022' },
     define: { 'import.meta.env.VITE_BUILD_ID': JSON.stringify(buildId(env)) },
     plugins: [
-      devChatApi(env.DEEPSEEK_API_KEY ?? ''),
+      devChatApi(env.DEEPSEEK_API_KEY ?? '', env.DEEPSEEK_MODEL ?? 'deepseek-chat'),
       devTtsApi(env.SPOON_API_KEY ?? '', env.SPOON_VOICE_ID ?? ''),
       devQuestApi(env.DEEPSEEK_API_KEY ?? ''),
       devSceneImageApi(env.DEEPSEEK_API_KEY ?? '', env.FAL_KEY ?? ''),

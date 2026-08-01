@@ -8,6 +8,14 @@ import {
   type PromptStoryState,
 } from '../src/chat/prompt';
 import { effectivePromptSession, type ConversationMode } from '../src/chat/mode';
+import {
+  applyAddressingPatch,
+  addressingRepairTokenBudget,
+  addressingRepairMessages,
+  parseAddressingPatch,
+  repairAddressingDeterministically,
+} from '../src/chat/addressing';
+import { splitModelState, trimModelProse } from '../src/chat/model-response';
 import { DEFAULT_DARK_VARIANT, type DarkVariant } from '../src/config/dark-patterns';
 import { DEFAULT_MATURITY, type MaturityLevel } from '../src/config/maturity';
 import { DEFAULT_ROUTE, type CanonRoute } from '../src/config/canon-route';
@@ -52,57 +60,11 @@ export const config = { runtime: 'edge' };
 const ENDPOINT = 'https://api.deepseek.com/chat/completions';
 const MODEL = process.env.DEEPSEEK_MODEL ?? 'deepseek-chat';
 const MAX_TOKENS = { short: 120, natural: 220, expressive: 320 } as const;
-/**
- * Headroom for the trailing `<<state {...}>>` line.
- *
- * Without it the state line is the first thing the token cap eats, which looked
- * like the model ignoring the instruction — it was answering fully and getting
- * truncated. The budget is not part of what she is allowed to say.
- */
-const STATE_BUDGET = 90;
-const INVALID_ADDRESSING = /(^|[^\p{L}])(?:tôi|tao|tớ|mình(?!\s+anh(?=$|[^\p{L}]))|chị|cậu|bạn|ngươi|ngài|i|you|your)(?=$|[^\p{L}])/iu;
+/** Stay inside the client's 20s request timeout across both upstream calls. */
+const TOTAL_UPSTREAM_BUDGET_MS = 18_000;
 
-/**
- * A reply stopped by the token cap ends mid-clause, which reads as a bug. Cut
- * back to the last sentence she finished; keep the whole thing if there is no
- * clean break to fall back to.
- */
-function trimToSentence(text: string | undefined, finishReason?: string): string | undefined {
-  if (!text || finishReason !== 'length') return text;
-  const cut = Math.max(
-    text.lastIndexOf('.'),
-    text.lastIndexOf('!'),
-    text.lastIndexOf('?'),
-    text.lastIndexOf('\u2026')
-  );
-  return cut > text.length * 0.4 ? text.slice(0, cut + 1) : text;
-}
-
-/**
- * Pull the relationship state off the end of a reply.
- *
- * She is asked to append one `<<state {...}>>` line so trust, desire, respect,
- * irritation and any unresolved conflict survive the turn instead of resetting.
- * It is stripped here and never reaches the browser as text. A missing or
- * malformed line is not an error — the caller simply keeps the previous state,
- * which is the safe direction to fail in.
- */
-const STATE_RE = /<<\s*state\s*(\{[\s\S]*?\})\s*>>/;
-
-function splitState(text: string): { text: string; state: unknown | null } {
-  const m = text.match(STATE_RE);
-  if (!m) return { text, state: null };
-  const clean = text.replace(STATE_RE, '').trim();
-  try {
-    return { text: clean, state: JSON.parse(m[1]) as unknown };
-  } catch {
-    return { text: clean, state: null };
-  }
-}
-
-/** Never leak a model turn that breaks the app-wide em/anh relationship. */
-function hasInvalidAddressing(text: string): boolean {
-  return INVALID_ADDRESSING.test(text);
+function deadlineSignal(deadline: number): AbortSignal {
+  return AbortSignal.timeout(Math.max(1, deadline - Date.now()));
 }
 
 function sanitizeCrossMode(input: unknown): string[] {
@@ -204,6 +166,7 @@ export default async function handler(req: Request): Promise<Response> {
   ];
 
   try {
+    const deadline = Date.now() + TOTAL_UPSTREAM_BUDGET_MS;
     const upstream = await fetch(ENDPOINT, {
       method: 'POST',
       headers: {
@@ -218,7 +181,7 @@ export default async function handler(req: Request): Promise<Response> {
         // She speaks as herself; stop the model from writing the user's turn.
         stop: ['\nUser:', '\nYou:', '\nAnh:'],
       }),
-      signal: AbortSignal.timeout(20000),
+      signal: deadlineSignal(deadline),
     });
 
     if (!upstream.ok) {
@@ -232,16 +195,26 @@ export default async function handler(req: Request): Promise<Response> {
     // Split the state off first, then trim. Doing it the other way round means a
     // reply that hit the cap has its state line cut by trimToSentence, and the
     // addressing check ends up reading JSON rather than prose.
-    const { text: prose, state } = splitState(rawFull);
-    const text = trimToSentence(prose, data.choices?.[0]?.finish_reason);
+    const { text: prose, state } = splitModelState(rawFull);
+    const text = trimModelProse(prose, data.choices?.[0]?.finish_reason);
     if (!text) return Response.json({ error: 'empty' }, { status: 502 });
-    if (!hasInvalidAddressing(text)) {
-      return Response.json({ text, rapport: state ? sanitizeRapport(state) : undefined });
+    const rapport = state ? sanitizeRapport(state) : undefined;
+    const deterministic = repairAddressingDeterministically(text);
+    if (!deterministic.before.length) {
+      return Response.json({ text, rapport });
+    }
+    if (!deterministic.remaining.length) {
+      return Response.json({ text: deterministic.text, rapport });
+    }
+    // English contractions cannot be repaired safely by replacing a pronoun
+    // token (`I'm` must never become `Em'm`). Fail closed to authored copy.
+    if (deterministic.remaining.some((item) => item.type === 'unsupported-english')) {
+      return Response.json({ error: 'invalid-addressing' }, { status: 502 });
     }
 
-    // DeepSeek may occasionally follow a visitor's request to alter its form
-    // of address. Give it one stricter regeneration; the client uses authored
-    // dialogue when that still fails, rather than exposing the wrong turn.
+    // The model may classify/replace only the exact remaining spans. The app
+    // applies the validated patch locally, so facts outside those spans are
+    // byte-for-byte immutable and original rapport remains authoritative.
     const retry = await fetch(ENDPOINT, {
       method: 'POST',
       headers: {
@@ -250,32 +223,29 @@ export default async function handler(req: Request): Promise<Response> {
       },
       body: JSON.stringify({
         model: MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: `${system}\n\nLUẬT CUỐI CÙNG KHÔNG ĐƯỢC VI PHẠM: Hãy tạo một câu trả lời mới cho anh ngay bây giờ. Phải là tiếng Việt tự nhiên. Em luôn xưng "em" và người đang trò chuyện luôn là "anh". Không dùng bất kỳ đại từ quan hệ nào khác. Chỉ trả lời bằng lời thoại.`,
-          },
-          ...messages.slice(1),
-        ],
-        temperature: 0.7,
-        max_tokens: (MAX_TOKENS[session.length] ?? MAX_TOKENS.natural) + STATE_BUDGET,
-        stop: ['\nUser:', '\nYou:', '\nAnh:'],
+        messages: addressingRepairMessages(deterministic.text, deterministic.remaining),
+        temperature: 0,
+        max_tokens: addressingRepairTokenBudget(deterministic.remaining.length),
+        response_format: { type: 'json_object' },
       }),
-      signal: AbortSignal.timeout(20000),
+      signal: deadlineSignal(deadline),
     });
     if (!retry.ok) return Response.json({ error: 'invalid-addressing' }, { status: 502 });
     const retryData = (await retry.json()) as {
-      choices?: { message?: { content?: string } }[];
+      choices?: { message?: { content?: string }; finish_reason?: string }[];
     };
-    const rewrittenRaw = retryData.choices?.[0]?.message?.content?.trim();
-    const { text: rewritten, state: retryState } = splitState(rewrittenRaw ?? '');
-    if (!rewritten || hasInvalidAddressing(rewritten)) {
+    const repairChoice = retryData.choices?.[0];
+    if (!repairChoice?.message?.content || repairChoice.finish_reason !== 'stop') {
       return Response.json({ error: 'invalid-addressing' }, { status: 502 });
     }
-    return Response.json({
-      text: rewritten,
-      rapport: retryState ? sanitizeRapport(retryState) : undefined,
-    });
+    const patch = parseAddressingPatch(repairChoice.message.content);
+    const applied = patch
+      ? applyAddressingPatch(deterministic.text, deterministic.remaining, patch)
+      : { ok: false as const, error: 'invalid-json' };
+    if (!applied.ok) {
+      return Response.json({ error: 'invalid-addressing' }, { status: 502 });
+    }
+    return Response.json({ text: applied.text, rapport });
   } catch {
     return Response.json({ error: 'unreachable' }, { status: 502 });
   }
