@@ -275,12 +275,14 @@ function devSceneImageApi(writerKey: string, drawerKey: string): Plugin {
 /**
  * A build id the running page can report.
  *
- * Vercel exposes the commit as VERCEL_GIT_COMMIT_SHA; locally fall back to git.
+ * Manual releases provide VITE_BUILD_ID explicitly. Git-connected Vercel builds
+ * expose VERCEL_GIT_COMMIT_SHA; local builds fall back to git.
  * Without this a stale tab is indistinguishable from a fresh one, which cost a
  * QA cycle: a superseded bundle kept working from memory while its asset URL
  * 404ed, and the resulting bug report described something already fixed.
  */
 function buildId(env: Record<string, string>): string {
+  if (env.VITE_BUILD_ID?.trim()) return env.VITE_BUILD_ID.trim();
   if (env.VERCEL_GIT_COMMIT_SHA) return env.VERCEL_GIT_COMMIT_SHA.slice(0, 7);
   try {
     return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })

@@ -12,6 +12,7 @@
     "verify:canon": "tsx scripts/verify-canon.ts && tsx scripts/export-character-data.ts --route=hub --check && tsx scripts/export-character-data.ts --route=sao --check",
     "check:release": "npm run build && npm test && npm run verify:canon && npm run test:quest-smoke",
     "verify": "npm run check:release",
+    "deploy:prod": "node scripts/deploy-production.mjs",
     "preview": "vite preview",
     "push:github": "git -C .. subtree push --prefix=heymate-onboarding heymate-github main"
   },
