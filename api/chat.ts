@@ -7,6 +7,7 @@ import {
   type PromptSession,
   type PromptStoryState,
 } from '../src/chat/prompt';
+import { effectivePromptSession, type ConversationMode } from '../src/chat/mode';
 import { DEFAULT_DARK_VARIANT, type DarkVariant } from '../src/config/dark-patterns';
 import { DEFAULT_MATURITY, type MaturityLevel } from '../src/config/maturity';
 import { DEFAULT_ROUTE, type CanonRoute } from '../src/config/canon-route';
@@ -20,8 +21,8 @@ import {
 
 interface ChatRequest {
   residentId: string;
-  mode?: 'open-chat' | 'quest';
-  session: PromptSession;
+  mode?: ConversationMode;
+  session: Omit<PromptSession, 'face'> & { face?: unknown };
   memories: string[];
   approvedCrossMode?: string[];
   revealed: number;
@@ -133,16 +134,18 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ error: 'not-configured' }, { status: 503 });
   }
 
+  const mode: ConversationMode = body.mode === 'quest' ? 'quest' : 'open-chat';
+  const session = effectivePromptSession(body.session, mode);
   let system: string;
   try {
     system = buildSystemPrompt(
       body.residentId,
-      body.session,
+      session,
       // Quest never reads saved Open Chat memories. Approved cross-mode lines
       // are delivered once, by the labelled guardrail block below, rather than
       // also being poured into this slot where they would read as "context he
       // once mentioned" and be stated twice.
-      body.mode === 'quest' ? [] : body.memories ?? [],
+      mode === 'quest' ? [] : body.memories ?? [],
       body.revealed ?? 0,
       body.revealNow,
       body.idle,
@@ -163,7 +166,7 @@ export default async function handler(req: Request): Promise<Response> {
   // Quest requests never read `history`, even if a stale or malicious client
   // sends it. Only the dedicated Quest transcript may enter the scene.
   const scopedHistory =
-    body.mode === 'quest' ? body.questHistory ?? [] : body.history ?? [];
+    mode === 'quest' ? body.questHistory ?? [] : body.history ?? [];
 
   // The cross-mode guardrail is *inserted*, not appended.
   //
@@ -211,7 +214,7 @@ export default async function handler(req: Request): Promise<Response> {
         model: MODEL,
         messages,
         temperature: 0.92, // a distinct voice without generic/canon-drifting improvisation
-        max_tokens: MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural,
+        max_tokens: MAX_TOKENS[session.length] ?? MAX_TOKENS.natural,
         // She speaks as herself; stop the model from writing the user's turn.
         stop: ['\nUser:', '\nYou:', '\nAnh:'],
       }),
@@ -255,7 +258,7 @@ export default async function handler(req: Request): Promise<Response> {
           ...messages.slice(1),
         ],
         temperature: 0.7,
-        max_tokens: (MAX_TOKENS[body.session.length] ?? MAX_TOKENS.natural) + STATE_BUDGET,
+        max_tokens: (MAX_TOKENS[session.length] ?? MAX_TOKENS.natural) + STATE_BUDGET,
         stop: ['\nUser:', '\nYou:', '\nAnh:'],
       }),
       signal: AbortSignal.timeout(20000),

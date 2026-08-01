@@ -18,7 +18,6 @@ import {
   type QuestDefinition,
 } from '../config/quests';
 import type { LengthId, ScenarioId } from '../config/residents';
-import { DEFAULT_FACE, isFace, type Face } from '../config/face';
 import {
   COST,
   START_CREDITS,
@@ -111,14 +110,7 @@ export interface SessionSetup {
   nickname: string;
   /** Visitor preference for the resident's conversational presence, never canon. */
   persona: string;
-  /**
-   * Which face of her this session is for. See config/face.ts.
-   *
-   * The primary choice, and the only one that changes what she is briefed to be.
-   * `scenario` and `length` refine it; everything else that used to sit here
-   * (mood, style, lead) is now either hers to decide or earned through `bond`.
-   */
-  face: Face;
+  /** Open Chat context. Quest scenes ignore it and supply their own setting. */
   scenario: ScenarioId;
   length: LengthId;
   voice: VoiceSlot;
@@ -169,7 +161,6 @@ function defaultSession(): SessionSetup {
   return {
     nickname: '',
     persona: '',
-    face: DEFAULT_FACE,
     scenario: 'casual',
     length: 'natural',
     voice: 'signature',

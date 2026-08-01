@@ -6,7 +6,6 @@ import { h } from './dom';
 import type { UIActions } from './actions';
 import type { AppState } from '../state/store';
 import { COPY } from '../config/copy';
-import { FACES } from '../config/face';
 import { factionById } from '../config/factions';
 import { CHARACTERS, characterById, characterIndex } from '../config/characters';
 import { characterThumb, monogramThumb } from '../three/thumbs';
@@ -521,13 +520,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     identityInput,
     h('p', { class: 'hint faint' }, COPY.stage.identityNote)
   );
-  // The primary choice. Everything else in this sheet refines it.
-  const face = selectField(
-    'Em ở đây để',
-    FACES.map((f) => ({ id: f.id, label: f.label })),
-    (id) => actions.updateSession({ face: id })
-  );
-  const faceHint = h('p', { class: 'hint faint' }, '');
   const scen = selectField('Bối cảnh', SCENARIOS, (id) =>
     actions.updateSession({ scenario: id })
   );
@@ -648,12 +640,10 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h(
       'div',
       { class: 'sheet-body' },
-      h('p', { class: 'session-impact-note' }, 'Ba lựa chọn này thay đổi cách em phản hồi rõ nhất.'),
+      h('p', { class: 'session-impact-note' }, 'Hai lựa chọn này thay đổi cách em phản hồi rõ nhất.'),
       h(
         'div',
         { class: 'session-primary' },
-        face.el,
-        faceHint,
         identityMode.el,
         identityCustom,
         scen.el
@@ -969,19 +959,15 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       identityMode.select.value = identityCustomActive ? 'character' : 'self';
       identityCustom.hidden = !identityCustomActive;
       scen.select.value = s.session.scenario;
-      face.select.value = s.session.face;
       len.select.value = s.session.length;
-      const activeFace = FACES.find((f) => f.id === s.session.face) ?? FACES[0];
-      faceHint.textContent = activeFace.hint;
-      // Bối cảnh only means anything in the companion face; the story face takes
-      // its scene from the quest, so offering it there would be a dead control.
-      scen.el.hidden = s.session.face !== 'companion';
+      // Scenario belongs to Open Chat. Quest owns its authored scene, so this
+      // control disappears rather than pretending it can tune the story face.
+      scen.el.hidden = s.activeQuestId !== null;
       const scenarioLabel = scen.select.selectedOptions[0]?.text ?? 'Thường ngày';
       const identityLabel = s.session.identity || 'Chính anh';
-      const sessionSummary =
-        s.session.face === 'companion'
-          ? `${identityLabel} · ${activeFace.label} · ${scenarioLabel}`
-          : `${identityLabel} · ${activeFace.label}`;
+      const sessionSummary = s.activeQuestId
+        ? `${identityLabel} · Câu chuyện`
+        : `${identityLabel} · Đồng hành · ${scenarioLabel}`;
       setChip.textContent = sessionSummary;
       setChip.title = sessionSummary;
       mobileSettingsBtn.setAttribute('aria-label', `Cấu hình: ${sessionSummary}`);

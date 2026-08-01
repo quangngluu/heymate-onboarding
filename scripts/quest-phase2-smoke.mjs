@@ -14,6 +14,7 @@ const PORT = 5198;
 const ROUTE = '/';
 const captureArg = process.argv.find((arg) => arg.startsWith('--capture-dir='));
 const captureDir = captureArg ? resolve(captureArg.slice('--capture-dir='.length)) : null;
+const modeOnly = process.argv.includes('--mode-only');
 const externalUrl = process.env.QUEST_SMOKE_URL?.replace(/\/$/, '');
 const baseUrl = externalUrl ?? `http://${HOST}:${PORT}`;
 
@@ -69,6 +70,218 @@ async function clickSelector(page, selector) {
     return true;
   });
   if (!clicked) throw new Error(`Could not click ${selector}`);
+}
+
+async function fillInput(page, selector, value) {
+  const filled = await page.$eval(
+    selector,
+    (element, next) => {
+      if (!(element instanceof HTMLInputElement)) return false;
+      element.value = String(next);
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      return element.value === next;
+    },
+    value
+  );
+  if (!filled) throw new Error(`Could not fill ${selector}`);
+}
+
+async function runModeTransitionCoverage(browser) {
+  const failures = [];
+
+  const installFetchMock = () => {
+    const realFetch = window.fetch.bind(window);
+    const requests = [];
+    const fetchUrls = [];
+    const pendingChat = [];
+    const pendingTts = [];
+    window.__heymateModeSmoke = {
+      requests,
+      fetchUrls,
+      pendingChat,
+      pendingTts,
+      releaseChat(text) {
+        pendingChat.shift()?.(
+          new Response(JSON.stringify({ text, rapport: { trust: 0.99 } }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        );
+      },
+      releaseTts() {
+        pendingTts.shift()?.resolve(new Response('', { status: 503 }));
+      },
+    };
+    window.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+      fetchUrls.push(url);
+      if (url.includes('/api/chat')) {
+        const body = JSON.parse(String(init?.body ?? '{}'));
+        requests.push(body);
+        if (String(body.message).includes('DEFER')) {
+          return new Promise((resolve) => pendingChat.push(resolve));
+        }
+        return Promise.resolve(
+          new Response(JSON.stringify({ text: 'Em đang đọc câu kiểm thử.' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        );
+      }
+      if (url.includes('/api/tts')) {
+        const body = JSON.parse(String(init?.body ?? '{}'));
+        if (String(body.text).includes('đang đọc câu kiểm thử')) {
+          return new Promise((resolve, reject) => {
+            const pending = { resolve, reject };
+            pendingTts.push(pending);
+            init?.signal?.addEventListener(
+              'abort',
+              () => {
+                const at = pendingTts.indexOf(pending);
+                if (at !== -1) pendingTts.splice(at, 1);
+                reject(new DOMException('Aborted', 'AbortError'));
+              },
+              { once: true }
+            );
+          });
+        }
+        return Promise.resolve(new Response('', { status: 503 }));
+      }
+      return realFetch(input, init);
+    };
+  };
+
+  const input = '.dock-bar .chat-input';
+  const send = '.dock-bar .btn-primary';
+  const openModePage = async () => {
+    const context = await browser.createBrowserContext();
+    const page = await context.newPage();
+    await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true });
+    // Install before the app module evaluates so no early request can make the
+    // client's endpoint-availability circuit breaker affect this coverage.
+    await page.evaluateOnNewDocument(installFetchMock);
+    await page.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.click('[data-testid="universe-waifu-universe"]');
+    await page.waitForSelector('.step-stage', { visible: true });
+    return { context, page };
+  };
+  const openQuest = async (page) => {
+    await page.click('[data-testid="quest-hub-open"]');
+    await page.waitForSelector('.quest-hub:not([hidden])', { visible: true });
+    await clickSelector(page, '[data-testid="quest-start"]:not([disabled])');
+    await page.waitForSelector('.step-stage.is-quest-mode', { visible: true });
+  };
+  const leaveQuest = async (page) => {
+    await clickSelector(page, '.quest-mode-head .btn:last-child');
+    await page.waitForSelector('.step-stage:not(.is-quest-mode)', { visible: true });
+  };
+
+  // Open Chat request remains pending while the visitor enters Quest.
+  {
+    const { context, page } = await openModePage();
+    await page.waitForSelector(`${input}:not([disabled])`);
+    await fillInput(page, input, 'OPEN DEFER');
+    await clickSelector(page, send);
+    await page.waitForFunction(() => window.__heymateModeSmoke.requests.length === 1);
+    await openQuest(page);
+    await page.evaluate(() => window.__heymateModeSmoke.releaseChat('OPEN LATE REPLY'));
+    await new Promise((done) => setTimeout(done, 80));
+    const openRequest = await page.evaluate(() => window.__heymateModeSmoke.requests[0]);
+    if (openRequest?.session?.face !== 'companion') {
+      failures.push(`Open Chat face=${JSON.stringify(openRequest?.session?.face)}`);
+    }
+    if ((await page.$eval('.speech-log', (element) => element.textContent ?? '')).includes('OPEN LATE REPLY')) {
+      failures.push('late Open Chat reply crossed into Quest');
+    }
+    await leaveQuest(page);
+    const resumedTranscript = await page.$eval('.speech-log', (element) => element.textContent ?? '');
+    if (!resumedTranscript.includes('OPEN DEFER')) failures.push('Open Chat transcript was not preserved');
+    if (resumedTranscript.includes('OPEN LATE REPLY')) failures.push('late Open Chat reply entered its old transcript');
+    await context.close();
+  }
+
+  // Quest request remains pending while the visitor returns to Open Chat.
+  {
+    const { context, page } = await openModePage();
+    await openQuest(page);
+    // Let the threshold's atMs=0 authored beat finish its TTS failure path;
+    // otherwise the send button can toggle disabled between the selector wait
+    // and the click, which tests a race in the harness rather than mode scope.
+    await new Promise((done) => setTimeout(done, 120));
+    await page.waitForSelector(`${input}:not([disabled])`);
+    await fillInput(page, input, 'QUEST DEFER');
+    await clickSelector(page, send);
+    try {
+      await page.waitForFunction(
+        () => window.__heymateModeSmoke.requests.length === 1,
+        { timeout: 2_000 }
+      );
+    } catch {
+      const state = await page.evaluate(() => ({
+        requests: window.__heymateModeSmoke.requests,
+        fetchUrls: window.__heymateModeSmoke.fetchUrls,
+        input: document.querySelector('.dock-bar .chat-input')?.value,
+        inputDisabled: document.querySelector('.dock-bar .chat-input')?.disabled,
+        sendDisabled: document.querySelector('.dock-bar .btn-primary')?.disabled,
+        sendText: document.querySelector('.dock-bar .btn-primary')?.textContent,
+        speakMode: document.querySelector('.stage-dock')?.classList.contains('is-speak'),
+        credits: document.querySelector('.turns-left')?.textContent,
+        transcript: document.querySelector('.speech-log')?.textContent,
+        phase: document.querySelector('.step-stage')?.getAttribute('data-quest-phase'),
+        store: window.__hm?.store?.get?.(),
+      }));
+      throw new Error(`Mode smoke did not send Quest request: ${JSON.stringify(state)}`);
+    }
+    const questRequest = await page.evaluate(() => window.__heymateModeSmoke.requests[0]);
+    if (questRequest?.session?.face !== 'story') {
+      failures.push(`Quest face=${JSON.stringify(questRequest?.session?.face)}`);
+    }
+    await leaveQuest(page);
+    await page.evaluate(() => window.__heymateModeSmoke.releaseChat('QUEST LATE REPLY'));
+    await new Promise((done) => setTimeout(done, 80));
+    const openTranscript = await page.$eval('.speech-log', (element) => element.textContent ?? '');
+    if (openTranscript.includes('QUEST LATE REPLY')) failures.push('late Quest reply crossed into Open Chat');
+    await context.close();
+  }
+
+  // A completed model reply has entered TTS, then Quest starts before audio is available.
+  {
+    const { context, page } = await openModePage();
+    await page.waitForSelector(`${input}:not([disabled])`);
+    await fillInput(page, input, 'OPEN VOICE');
+    await clickSelector(page, send);
+    await page.waitForFunction(
+      () => window.__heymateModeSmoke.requests.length === 1 && window.__heymateModeSmoke.pendingTts.length === 1
+    );
+    await openQuest(page);
+    // Quest's own atMs=0 line briefly owns voicing. Wait for that new scope to
+    // settle, then prove the still-pending Open Chat clip cannot block it.
+    try {
+      await page.waitForSelector(`${input}:not([disabled])`, { timeout: 5_000 });
+    } catch {
+      const state = await page.evaluate(() => ({
+        fetchUrls: window.__heymateModeSmoke.fetchUrls,
+        pendingTts: window.__heymateModeSmoke.pendingTts.length,
+        inputDisabled: document.querySelector('.dock-bar .chat-input')?.disabled,
+        store: window.__hm?.store?.get?.(),
+      }));
+      throw new Error(`Quest stayed blocked after Open Chat TTS cancellation: ${JSON.stringify(state)}`);
+    }
+    const questInputEnabled = await page.$eval(input, (element) =>
+      element instanceof HTMLInputElement ? !element.disabled : false
+    );
+    if (!questInputEnabled) failures.push('old Open Chat voicing state blocked Quest input');
+    await page.evaluate(() => window.__heymateModeSmoke.releaseTts());
+    await new Promise((done) => setTimeout(done, 80));
+    const remainsEnabled = await page.$eval(input, (element) =>
+      element instanceof HTMLInputElement ? !element.disabled : false
+    );
+    if (!remainsEnabled) failures.push('late Open Chat TTS reclaimed Quest voicing state');
+    await leaveQuest(page);
+    await context.close();
+  }
+
+  return failures;
 }
 
 async function runViewport(browser, viewport) {
@@ -189,6 +402,9 @@ async function runViewport(browser, viewport) {
           : null,
       settingsShape: settingsShape_,
       settingsState: settingsState_,
+      scenarioHiddenInQuest:
+        document.querySelector('[data-testid="session-scenario"]')?.closest('.session-setting-row')
+          ?.hasAttribute('hidden') ?? false,
     };
   }, settingsShape, settingsState);
 
@@ -212,7 +428,7 @@ async function runViewport(browser, viewport) {
   if (!state.series.includes('SWORD ART ONLINE')) {
     failures.push(`series=${JSON.stringify(state.series)}`);
   }
-  if (state.settingsShape.primaryRows !== 3) {
+  if (state.settingsShape.primaryRows !== 2) {
     failures.push(`settings primary rows=${state.settingsShape.primaryRows}`);
   }
   if (state.settingsShape.advancedOpen !== false) {
@@ -226,6 +442,7 @@ async function runViewport(browser, viewport) {
   if (state.settingsState.scenario !== 'latenight') {
     failures.push(`settings scenario=${JSON.stringify(state.settingsState.scenario)}`);
   }
+  if (!state.scenarioHiddenInQuest) failures.push('scenario remains visible in Quest');
   if (state.settingsState.length !== 'expressive') {
     failures.push(`settings length=${JSON.stringify(state.settingsState.length)}`);
   }
@@ -278,9 +495,12 @@ try {
   });
 
   const results = [];
-  for (const viewport of VIEWPORTS) {
-    results.push(await runViewport(browser, viewport));
+  if (!modeOnly) {
+    for (const viewport of VIEWPORTS) {
+      results.push(await runViewport(browser, viewport));
+    }
   }
+  const modeFailures = await runModeTransitionCoverage(browser);
 
   if (captureDir) {
     writeFileSync(
@@ -300,7 +520,10 @@ try {
     }
   }
 
-  if (results.some((result) => result.failures.length)) process.exitCode = 1;
+  process.stdout.write(`${modeFailures.length ? 'FAIL' : 'PASS'} mode transition/request binding\n`);
+  for (const failure of modeFailures) process.stderr.write(`  - ${failure}\n`);
+
+  if (results.some((result) => result.failures.length) || modeFailures.length) process.exitCode = 1;
 } finally {
   await browser?.close();
   if (vite && !vite.killed) vite.kill('SIGTERM');

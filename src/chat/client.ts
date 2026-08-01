@@ -10,6 +10,11 @@ import {
 } from './engine';
 import type { ChatTurn } from '../state/store';
 import type { PromptStoryState } from './prompt';
+import {
+  effectivePromptSession,
+  type ConversationMode,
+  type PromptSessionInput,
+} from './mode';
 import { resolveDarkVariant } from '../config/dark-patterns';
 import { resolveMaturity } from '../config/maturity';
 import { resolveCanonRoute } from '../config/canon-route';
@@ -27,11 +32,11 @@ let endpointAvailable = true;
 
 export async function getReply(
   message: string,
-  ctx: ReplyContext,
+  ctx: Omit<ReplyContext, 'session'> & { session: PromptSessionInput },
   history: ChatTurn[],
   opts: {
     idle?: boolean;
-    mode?: 'open-chat' | 'quest';
+    mode?: ConversationMode;
     level?: number;
     quest?: { prompt: string; objective: string };
     approvedCrossMode?: string[];
@@ -51,6 +56,7 @@ export async function getReply(
 
   try {
     const mode = opts.mode ?? 'open-chat';
+    const session = effectivePromptSession(ctx.session, mode);
     const mappedHistory = history.map((t) => ({
       role: t.from === 'user' ? ('user' as const) : ('assistant' as const),
       content: t.text,
@@ -60,7 +66,7 @@ export async function getReply(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         residentId: ctx.resident.id,
-        session: ctx.session,
+        session,
         memories: ctx.memories,
         mode,
         approvedCrossMode: opts.approvedCrossMode ?? [],

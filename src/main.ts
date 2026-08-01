@@ -21,6 +21,12 @@ import { FactionBackdrop } from './three/backdrop';
 import { WaifuStage } from './three/waifu-stage';
 import { idleLine, openingLine, speakingDuration } from './chat/engine';
 import { getReply } from './chat/client';
+import {
+  ConversationLifetime,
+  effectivePromptSession,
+  type ConversationMode,
+  type ConversationToken,
+} from './chat/mode';
 import { cancelSpeech, renderSpeech, resetSpeechEmotion, streamSpeech } from './chat/voice';
 import { spoken } from './chat/dialogue';
 import type { ResidentId } from './config/residents';
@@ -103,6 +109,7 @@ class App implements UIActions {
   private picker: Picker;
   private ambience = new Ambience();
   private questVisuals = new QuestVisualRuntime(store);
+  private conversation = new ConversationLifetime();
   private nameplate: Nameplate;
   private backdrop!: FactionBackdrop;
 
@@ -136,6 +143,27 @@ class App implements UIActions {
   /** Height of the loaded center base's top surface (Mate stands here). */
   private centerTopY = 0.09;
   private errorTimer = 0;
+
+  private conversationToken(): ConversationToken {
+    return this.conversation.capture(store.get());
+  }
+
+  private conversationIsCurrent(token: ConversationToken): boolean {
+    return this.conversation.isCurrent(token, store.get());
+  }
+
+  /** Stop every presentational side effect owned by the conversation we leave. */
+  private transitionConversation(): void {
+    this.conversation.transition();
+    this.cancelIdleNudge();
+    this.speechToken++;
+    window.clearTimeout(this.speakTimer);
+    window.clearInterval(this.revealTimer);
+    cancelSpeech();
+    this.ambience.stopClip();
+    store.set({ thinking: false, voicing: false, speaking: false, reveal: null });
+    this.residentStage?.setSpeaking(false);
+  }
 
   constructor() {
     const canvas = document.getElementById('stage') as HTMLCanvasElement;
@@ -613,10 +641,11 @@ class App implements UIActions {
     // Only the phrasing rotates off this; the stopping rule is the count above.
     const spokenIndex = this.idleSpoken;
     this.idleSpoken++;
+    const conversation = this.conversationToken();
 
     const ctx = {
       resident: r,
-      session: s.session,
+      session: effectivePromptSession(s.session, 'open-chat'),
       revealed: s.revealed,
       memories: store.progressFor(s.residentId).memories,
       turn: s.turns,
@@ -624,6 +653,7 @@ class App implements UIActions {
     const chatLength = s.chat.length;
     void getReply(idleLine(r, spokenIndex, route), ctx, s.chat, {
       idle: true,
+      mode: 'open-chat',
       level: store.level,
       story: storyContext(s.residentId, 'open-chat'),
       bond: s.bond,
@@ -633,6 +663,7 @@ class App implements UIActions {
       // after the encounter has changed while the request was in flight.
       const current = store.get();
       if (
+        !this.conversationIsCurrent(conversation) ||
         current.residentId !== s.residentId ||
         current.step !== 'stage' ||
         current.chat.length !== chatLength
@@ -640,9 +671,9 @@ class App implements UIActions {
         return;
       }
       store.set({ thinking: false, voicing: true });
-      const prepared = this.speakReply(result.text, s.residentId);
+      const prepared = this.speakReply(result.text, s.residentId, conversation);
       store.pushTurn({ from: 'resident', text: result.text });
-      this.streamIn(store.get().chat.length - 1, result.text, prepared);
+      this.streamIn(store.get().chat.length - 1, result.text, prepared, true, conversation);
     });
   }
 
@@ -660,7 +691,11 @@ class App implements UIActions {
    * the stream gave us nothing and the caller should fall back to the
    * whole-file path.
    */
-  private async speakStreamed(text: string, residentId: ResidentId): Promise<number | null> {
+  private async speakStreamed(
+    text: string,
+    residentId: ResidentId,
+    conversation = this.conversationToken()
+  ): Promise<number | null> {
     const r = canonViewFor(residentId, resolveCanonRoute());
     const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
     const line = spoken(text);
@@ -677,7 +712,7 @@ class App implements UIActions {
         vol: slot.vol,
       },
       (samples, rate) => {
-        if (token !== this.speechToken) return;
+        if (token !== this.speechToken || !this.conversationIsCurrent(conversation)) return;
         if (!stream) {
           // The first samples are also the moment she starts moving.
           stream = this.ambience.openStream(rate);
@@ -689,11 +724,12 @@ class App implements UIActions {
       }
     );
 
-    if (token !== this.speechToken) return seconds;
+    if (token !== this.speechToken || !this.conversationIsCurrent(conversation)) return seconds;
     if (seconds === null) return null;
     // Hold the speaking pose until the last scheduled piece has played out.
     const tail = stream ? (stream as { end(): number }).end() : seconds;
     this.speakTimer = window.setTimeout(() => {
+      if (!this.conversationIsCurrent(conversation)) return;
       store.set({ speaking: false });
       this.residentStage?.setSpeaking(false);
       this.armIdleNudge();
@@ -705,12 +741,21 @@ class App implements UIActions {
    * Say a reply, streaming when the provider can and falling back to the
    * finished file when it cannot. Resolves with how long she spoke.
    */
-  private speakReply(text: string, residentId: ResidentId): Promise<number | null> {
-    return this.speakStreamed(text, residentId).then(async (seconds) => {
+  private speakReply(
+    text: string,
+    residentId: ResidentId,
+    conversation = this.conversationToken()
+  ): Promise<number | null> {
+    return this.speakStreamed(text, residentId, conversation).then(async (seconds) => {
+      if (!this.conversationIsCurrent(conversation)) return null;
       if (seconds !== null) return seconds;
-      const buffer = await this.startReplySpeech(text, residentId, false);
-      if (!buffer || store.get().residentId !== residentId) return null;
-      this.speakPrepared(text, buffer);
+      const buffer = await this.startReplySpeech(text, residentId, false, conversation);
+      if (
+        !buffer ||
+        store.get().residentId !== residentId ||
+        !this.conversationIsCurrent(conversation)
+      ) return null;
+      this.speakPrepared(text, buffer, conversation);
       return buffer.duration;
     });
   }
@@ -718,16 +763,19 @@ class App implements UIActions {
   private startReplySpeech(
     text: string,
     residentId: ResidentId,
-    bump = true
+    bump = true,
+    conversation = this.conversationToken()
   ): Promise<AudioBuffer | null> {
     const r = canonViewFor(residentId, resolveCanonRoute());
     const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
     if (bump) this.speechToken++;
     const line = spoken(text);
     if (!line) return Promise.resolve(null);
-    return renderSpeech(line, slot.voiceId, slot.speed, text, slot.vol).then((url) =>
-      url ? this.ambience.prepareClip(url) : null
-    );
+    return renderSpeech(line, slot.voiceId, slot.speed, text, slot.vol).then(async (url) => {
+      if (!url || !this.conversationIsCurrent(conversation)) return null;
+      const buffer = await this.ambience.prepareClip(url);
+      return this.conversationIsCurrent(conversation) ? buffer : null;
+    });
   }
 
   /**
@@ -742,7 +790,8 @@ class App implements UIActions {
     /** Resolves with the length of the spoken clip, or null if there is none. */
     prepared: Promise<number | null>,
     /** False when some other path already owns the clip and the voicing flag. */
-    ownsVoice = true
+    ownsVoice = true,
+    conversation = this.conversationToken()
   ): void {
     window.clearInterval(this.revealTimer);
     const token = this.speechToken;
@@ -752,7 +801,12 @@ class App implements UIActions {
 
     const stillMine = () => {
       const s = store.get();
-      return s.step === 'stage' && s.residentId === residentId && token === this.speechToken;
+      return (
+        s.step === 'stage' &&
+        s.residentId === residentId &&
+        token === this.speechToken &&
+        this.conversationIsCurrent(conversation)
+      );
     };
     const run = (stepMs: number) => {
       window.clearInterval(this.revealTimer);
@@ -787,7 +841,12 @@ class App implements UIActions {
   }
 
   /** Start a reply that has already been prepared, with text and voice together. */
-  private speakPrepared(text: string, buffer: AudioBuffer | null): void {
+  private speakPrepared(
+    text: string,
+    buffer: AudioBuffer | null,
+    conversation = this.conversationToken()
+  ): void {
+    if (!this.conversationIsCurrent(conversation)) return;
     window.clearTimeout(this.speakTimer);
     // Only cancel when we actually have a clip to play. Cancelling on the
     // silent path would abort the render that is still on its way.
@@ -797,6 +856,7 @@ class App implements UIActions {
     if (buffer) this.ambience.playBuffer(buffer);
     const secs = buffer?.duration ?? speakingDuration(spoken(text) || text);
     this.speakTimer = window.setTimeout(() => {
+      if (!this.conversationIsCurrent(conversation)) return;
       store.set({ speaking: false });
       this.residentStage?.setSpeaking(false);
       this.armIdleNudge();
@@ -807,7 +867,11 @@ class App implements UIActions {
    * Drive a greeting or other pre-existing line. Live chat replies take the
    * prepared path above so their text and voice begin together.
    */
-  private speak(text: string, voiceUrl?: string): void {
+  private speak(
+    text: string,
+    voiceUrl?: string,
+    conversation = this.conversationToken()
+  ): void {
     window.clearTimeout(this.speakTimer);
     this.speechToken++;
     cancelSpeech();
@@ -817,6 +881,7 @@ class App implements UIActions {
     const stopAfter = (secs: number) => {
       window.clearTimeout(this.speakTimer);
       this.speakTimer = window.setTimeout(() => {
+        if (!this.conversationIsCurrent(conversation)) return;
         store.set({ speaking: false });
         this.residentStage?.setSpeaking(false);
         this.armIdleNudge();
@@ -840,6 +905,7 @@ class App implements UIActions {
       return;
     }
     void renderSpeech(line, slot.voiceId, slot.speed, text, slot.vol).then((url) => {
+      if (!this.conversationIsCurrent(conversation)) return;
       store.set({ voicing: false });
       // She may have been swapped out while the audio rendered.
       if (!url || store.get().residentId !== speakerId) return;
@@ -852,13 +918,9 @@ class App implements UIActions {
 
   leaveUniverse(): void {
     this.rig.cancel();
-    window.clearTimeout(this.speakTimer);
-    window.clearInterval(this.revealTimer);
-    this.cancelIdleNudge();
+    this.transitionConversation();
     window.clearTimeout(this.genTimer);
     this.controls.enabled = false;
-    this.ambience.stopClip();
-    cancelSpeech();
     this.residentStage?.dispose();
     this.residentStage = null;
     this.mate?.dispose();
@@ -885,7 +947,7 @@ class App implements UIActions {
   selectResident(id: string): void {
     if (store.get().step !== 'stage' || store.get().residentId === id) return;
     this.controls.enabled = false;
-    this.speechToken++;
+    this.transitionConversation();
     // Her mood does not travel to the next person on the plinth.
     resetSpeechEmotion();
     store.beginEncounter(id as ResidentId);
@@ -903,7 +965,8 @@ class App implements UIActions {
     if (s.thinking) return;
     if (!store.spend('turn')) return;
     const r = canonViewFor(s.residentId, resolveCanonRoute());
-    const mode = s.activeQuestId ? 'quest' : 'open-chat';
+    const mode: ConversationMode = s.activeQuestId ? 'quest' : 'open-chat';
+    const conversation = this.conversationToken();
     this.cancelIdleNudge();
     if (mode === 'quest') store.pushQuestTurn({ from: 'user', text });
     else store.pushTurn({ from: 'user', text });
@@ -913,7 +976,7 @@ class App implements UIActions {
     const after = store.get();
     const ctx = {
       resident: r,
-      session: after.session,
+      session: effectivePromptSession(after.session, mode),
       revealed: after.revealed,
       memories:
         mode === 'quest'
@@ -940,27 +1003,29 @@ class App implements UIActions {
       bond: s.bond,
       rapport: s.rapport,
     }).then(async (result) => {
-      if (store.get().residentId !== s.residentId) return; // switched residents
+      if (!this.conversationIsCurrent(conversation)) return;
       // Trust, desire, respect and irritation carry to the next turn instead of
       // resetting; a missing report keeps whatever was already there.
       store.applyRapport(result.rapport);
       // The line starts arriving the moment the model answers. Its clip is
       // rendered alongside and joins in when it is ready.
       store.set({ thinking: false, voicing: true });
-      const prepared = this.speakReply(result.text, s.residentId);
+      const prepared = this.speakReply(result.text, s.residentId, conversation);
       if (mode === 'quest') store.pushQuestTurn({ from: 'resident', text: result.text });
       else store.pushTurn({ from: 'resident', text: result.text });
       if (result.revealedRung !== undefined) {
         store.set({ revealed: result.revealedRung + 1 });
       }
       const visibleChat = mode === 'quest' ? store.get().questChat : store.get().chat;
-      this.streamIn(visibleChat.length - 1, result.text, prepared);
+      this.streamIn(visibleChat.length - 1, result.text, prepared, true, conversation);
       // The free encounter ends by offering to keep what was said, not by
       // blocking the conversation mid-sentence.
       // Offer to keep the chapter once there is one worth keeping, rather
       // than at a turn count.
       if (mode === 'open-chat' && store.get().turns === 5) {
-        window.setTimeout(() => store.set({ saveGateOpen: true }), 1200);
+        window.setTimeout(() => {
+          if (this.conversationIsCurrent(conversation)) store.set({ saveGateOpen: true });
+        }, 1200);
       }
     });
   }
@@ -1150,15 +1215,14 @@ class App implements UIActions {
 
   leaveQuest(): void {
     if (!store.get().activeQuestId) return;
-    this.speechToken++;
-    cancelSpeech();
-    this.ambience.stopClip();
+    this.transitionConversation();
     store.leaveQuest();
     this.exitQuestPresentation();
   }
 
   startQuest(id: string): void {
     if (!store.startQuest(id)) return;
+    this.transitionConversation();
     // A story scene only enters the conversation after the visitor explicitly
     // starts it from Quest Hub. Close the hub so chat and quest never compete
     // as two simultaneous primary surfaces.
@@ -1222,8 +1286,7 @@ class App implements UIActions {
       this.ambience.chime(980);
       const timer = window.setTimeout(() => {
         if (store.get().activeQuestId === quest.id && store.get().questPhase === 'ending') {
-          store.leaveQuest();
-          this.exitQuestPresentation();
+          this.leaveQuest();
         }
       }, 4200);
       this.questTimers.push(timer);
@@ -1268,8 +1331,7 @@ class App implements UIActions {
     if (result.completed) {
       const timer = window.setTimeout(() => {
         if (store.get().activeQuestId === quest.id && store.get().questPhase === 'ending') {
-          store.leaveQuest();
-          this.exitQuestPresentation();
+          this.leaveQuest();
         }
       }, 4200);
       this.questTimers.push(timer);
@@ -1291,14 +1353,15 @@ class App implements UIActions {
     }
 
     const residentId = s.residentId;
+    const conversation = this.conversationToken();
     const r = canonViewFor(residentId, resolveCanonRoute());
     const slot = r.voices.find((voice) => voice.slot === s.session.voice) ?? r.voices[0];
     this.cancelIdleNudge();
     store.set({ voicing: true });
     void renderSpeech(line, slot.voiceId, slot.speed, undefined, slot.vol).then(async (url) => {
-      if (store.get().residentId !== residentId || store.get().step !== 'stage') return;
+      if (!this.conversationIsCurrent(conversation) || store.get().step !== 'stage') return;
       const buffer = url ? await this.ambience.prepareClip(url) : null;
-      if (store.get().residentId !== residentId || store.get().step !== 'stage') return;
+      if (!this.conversationIsCurrent(conversation) || store.get().step !== 'stage') return;
       if (!buffer) {
         store.set({ voicing: false });
         this.flashError(COPY.errors.generic);
@@ -1312,7 +1375,7 @@ class App implements UIActions {
       store.set({ voicing: false });
       store.completeOnboarding('try-speak-for-me');
       store.pushTurn({ from: 'resident', text: line });
-      this.speakPrepared(line, buffer);
+      this.speakPrepared(line, buffer, conversation);
     });
   }
 

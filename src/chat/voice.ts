@@ -5,7 +5,7 @@
 // moves on (new line, different resident, left the stage) so an old line can
 // never talk over a new one.
 
-export type SpeakHandle = { cancelled: boolean };
+export type SpeakHandle = { cancelled: boolean; controller: AbortController };
 
 let current: SpeakHandle | null = null;
 /** The provider renders one clip at a time; serialise so lines never collide. */
@@ -24,7 +24,10 @@ let lastEmotion: string | undefined;
 
 /** Cancel whatever is being fetched or is about to play. */
 export function cancelSpeech(): void {
-  if (current) current.cancelled = true;
+  if (current) {
+    current.cancelled = true;
+    current.controller.abort();
+  }
   current = null;
 }
 
@@ -57,7 +60,7 @@ export function renderSpeech(
   vol?: number
 ): Promise<string | null> {
   cancelSpeech();
-  const handle: SpeakHandle = { cancelled: false };
+  const handle: SpeakHandle = { cancelled: false, controller: new AbortController() };
   current = handle;
   const run = chain.then(() => request(text, handle, voiceId, speed, raw, vol));
   chain = run.catch(() => undefined);
@@ -74,12 +77,13 @@ async function request(
 ): Promise<string | null> {
   // Superseded while queued: never spend a render on a line nobody waits for.
   if (handle.cancelled) return null;
+  const timeout = setTimeout(() => handle.controller.abort(), 30_000);
   try {
     const res = await fetch('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, voiceId, speed, raw, vol, prev: lastEmotion }),
-      signal: AbortSignal.timeout(30000),
+      signal: handle.controller.signal,
     });
     if (handle.cancelled || !res.ok) return null;
     rememberEmotion(res);
@@ -89,6 +93,7 @@ async function request(
   } catch {
     return null;
   } finally {
+    clearTimeout(timeout);
     if (current === handle) current = null;
   }
 }
@@ -113,17 +118,18 @@ export async function streamSpeech(
   onSamples: (samples: Float32Array, sampleRate: number) => void
 ): Promise<number | null> {
   cancelSpeech();
-  const handle: SpeakHandle = { cancelled: false };
+  const handle: SpeakHandle = { cancelled: false, controller: new AbortController() };
   current = handle;
 
   const run = chain.then(async () => {
     if (handle.cancelled) return null;
+    const timeout = setTimeout(() => handle.controller.abort(), 35_000);
     try {
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...opts, stream: true, prev: lastEmotion }),
-        signal: AbortSignal.timeout(35000),
+        signal: handle.controller.signal,
       });
       if (!res.ok || !res.body) return null;
       rememberEmotion(res);
@@ -164,6 +170,7 @@ export async function streamSpeech(
     } catch {
       return null;
     } finally {
+      clearTimeout(timeout);
       if (current === handle) current = null;
     }
   });

@@ -22,7 +22,12 @@ import {
   type ResidentId,
   type ScenarioId,
 } from '../src/config/residents';
-import { FACES, type Face } from '../src/config/face';
+import { FACES } from '../src/config/face';
+import {
+  effectivePromptSession,
+  faceForMode,
+  type ConversationMode,
+} from '../src/chat/mode';
 import { idleLine, openingLine, reply } from '../src/chat/engine';
 import { resolveSemanticBones, type BoneLike } from '../src/three/bone-map';
 
@@ -159,10 +164,15 @@ function faceCoverage(): void {
 
   for (const resident of RESIDENTS) {
     const view = canonViewFor(resident.id, 'sao');
-    const build = (face: Face, scenario: ScenarioId, length: LengthId, revealNow?: string) =>
+    const build = (
+      mode: ConversationMode,
+      scenario: ScenarioId,
+      length: LengthId,
+      revealNow?: string
+    ) =>
       buildSystemPrompt(
         resident.id,
-        { ...SESSION, face, scenario, length },
+        effectivePromptSession({ ...SESSION, scenario, length }, mode),
         [],
         5,
         revealNow,
@@ -180,22 +190,22 @@ function faceCoverage(): void {
 
     // Companion never withholds and never drips, so there is nothing for a
     // scenario to have to switch off.
-    const companion = build('companion', 'together', 'natural');
+    const companion = build('open-chat', 'together', 'natural');
     assert.ok(!companion.includes(OPEN_LOOP), `${resident.id}: companion carries the open loop`);
     assert.ok(companion.includes(STRAIGHT), `${resident.id}: companion lost the straight-answer rule`);
     // Companion never *schedules* a reveal. It may still let her mention one she
     // already opened in the story face — that is continuity, not a drip — so the
     // assertion is about the directive, not about the text appearing at all.
     const INJECT = 'Đưa điều này vào phản hồi bằng lời của em';
-    const withReveal = build('companion', 'casual', 'natural', view.canonReveals[3].id);
+    const withReveal = build('open-chat', 'casual', 'natural', view.canonReveals[3].id);
     assert.ok(!withReveal.includes(INJECT), `${resident.id}: companion scheduled a canon reveal`);
     assert.ok(
-      build('story', 'casual', 'natural', view.canonReveals[3].id).includes(INJECT),
+      build('quest', 'casual', 'natural', view.canonReveals[3].id).includes(INJECT),
       `${resident.id}: story stopped scheduling reveals`
     );
 
     // Story does withhold, and does drip.
-    const story = build('story', 'casual', 'natural');
+    const story = build('quest', 'casual', 'natural');
     assert.ok(story.includes(OPEN_LOOP), `${resident.id}: story lost the open loop`);
 
     // The split has to be worth its complexity: if both faces come out the same
@@ -211,33 +221,31 @@ function faceCoverage(): void {
 
     // No prompt may tell her both to lead and to follow. This is the assertion
     // the old two-axis surface would have failed.
-    const faces: Face[] = ['companion', 'story'];
+    const modes: ConversationMode[] = ['open-chat', 'quest'];
     const scenarios: ScenarioId[] = ['casual', 'latenight', 'together', 'goodnight'];
     const lengths: LengthId[] = ['short', 'natural', 'expressive'];
-    for (const face of faces) {
+    for (const mode of modes) {
       for (const scenario of scenarios) {
         for (const length of lengths) {
-          const prompt = build(face, scenario, length);
+          const prompt = build(mode, scenario, length);
           assert.ok(
             !(LEADS_HER.test(prompt) && LEADS_HIM.test(prompt)),
-            `${resident.id}/${face}/${scenario}/${length}: prompt says both "Em dẫn" and "Anh dẫn"`
+            `${resident.id}/${mode}/${scenario}/${length}: prompt says both "Em dẫn" and "Anh dẫn"`
           );
           for (const rule of SAFETY) assert.ok(prompt.includes(rule));
-          clean(`${resident.id} ${face}/${scenario}`, prompt);
+          clean(`${resident.id} ${mode}/${scenario}`, prompt);
         }
       }
     }
   }
 
-  // The surface itself: two faces, four contexts, three lengths. Nothing else.
-  assert.equal(FACES.length, 2, 'face count');
+  // Faces remain authored prompt contracts, but mode owns their binding. The
+  // visitor-facing settings surface no longer exposes this as a selector.
+  assert.equal(FACES.length, 2, 'authored face count');
+  assert.equal(faceForMode('open-chat'), 'companion');
+  assert.equal(faceForMode('quest'), 'story');
   assert.equal(SCENARIOS.length, 4, 'scenario count');
   assert.equal(LENGTHS.length, 3, 'length count');
-  assert.equal(
-    FACES.length + SCENARIOS.length + LENGTHS.length,
-    9,
-    'config surface grew back'
-  );
 }
 
 function scriptedCoverage(): void {
