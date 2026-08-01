@@ -195,8 +195,15 @@ export type ScenePerspective = 'observed' | 'first-person';
  *
  * So the objects come from the authored Props list, and what may not be in his
  * hands is a rule the writer applies.
+ *
+ * Exported because the brief writer is not the only reader. The first version
+ * put these in the writer's context alone, and the writer — correctly obeying a
+ * separate instruction to return one sentence of place and light — never passed
+ * them on. The drawing model was told nothing about a camera and was still being
+ * told she was the only person in the frame, so `first-person` rendered
+ * identically to `observed`. Whoever builds the drawer's prompt needs these too.
  */
-const FIRST_PERSON_RULES = [
+export const FIRST_PERSON_RULES = [
   'Camera is the viewer’s own eyes, at standing eye level, looking at her.',
   'She stands at mid-distance and is aware of the viewer; she is the subject.',
   'The near edge of the frame may carry the viewer’s hand, forearm, or shoulder, or one object from the Props list above. Nothing else.',

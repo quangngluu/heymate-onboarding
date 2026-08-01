@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import chatHandler from '../api/chat';
-import sceneHandler from '../api/scene-image';
+import sceneHandler, { composerPrompt } from '../api/scene-image';
 import { buildSystemPrompt, type PromptSession } from '../src/chat/prompt';
 import {
   canonRevealIndexFor,
@@ -379,6 +379,49 @@ function briefAndOverrideCoverage(): void {
       `${resident.id}: first-person frame may draw props that were never authored`
     );
     clean(`${resident.id} subject brief`, subjectBriefFor(resident.id, 'sao'));
+
+    // The brief being right is not the picture being right. The first version
+    // of first person passed every check above and rendered identically to
+    // `observed`, because the only text the drawing model ever sees is the one
+    // built here — and it was still saying she was the only person in the frame
+    // while saying nothing at all about a camera.
+    const draw = (perspective: 'observed' | 'first-person'): string =>
+      composerPrompt({
+        sceneBrief: 'shrine steps in rain, prayer paper curling',
+        look: `${canonViewFor(resident.id, 'sao').setting}. cinematic still`,
+        subjectBrief: subjectBriefFor(resident.id, 'sao'),
+        perspective,
+      });
+    const observed = draw('observed');
+    const composed = draw('first-person');
+    clean(`${resident.id} composer prompt`, observed);
+    clean(`${resident.id} first-person composer prompt`, composed);
+    assert.ok(
+      observed.includes('She is the only person in the frame.'),
+      `${resident.id}: observed frame no longer excludes bystanders`
+    );
+    assert.ok(
+      composed.includes('viewer’s own eyes'),
+      `${resident.id}: the drawing model is never told where the camera is`
+    );
+    // Position, not just presence. Buried after "keep her identical" the same
+    // sentence produced an observed frame every time; it only works first.
+    assert.ok(
+      composed.indexOf('Reframe as a first-person') === 0,
+      `${resident.id}: the camera is no longer the first thing the drawer reads`
+    );
+    assert.ok(
+      composed.includes('belongs to her personally'),
+      `${resident.id}: the drawing model may put her own weapon in his hands`
+    );
+    assert.ok(
+      composed.includes('never identifiable'),
+      `${resident.id}: the drawing model may give the viewer a face`
+    );
+    assert.ok(
+      !composed.includes('She is the only person in the frame.'),
+      `${resident.id}: first-person frame still forbids the hand it exists to draw`
+    );
   }
   const kagariV3 = reactionsFor('kagura', 'sao').reactions.find(
     (item) => item.when === 'Anh nói dối để bảo vệ em'
