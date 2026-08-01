@@ -344,14 +344,15 @@ function endingCoverage(): void {
     }
   }
 
-  // An unfinished ending must be unfinished loudly: the marker present, and the
-  // gate that stops it reaching a player working.
+  // Rin's review copy is fully authored but must remain behind the explicit gate
+  // until K approves the five endings as one arc.
   const rinEndings = canonViewFor('rin', 'sao').endings;
-  const unfinished = rinEndings.filter((e) => !endingReady(e));
-  assert.equal(unfinished.length, 5, "rin's five endings should still be unwritten");
-  for (const ending of unfinished) {
-    assert.equal(ending.label, 'MISSING INPUT');
-    assert.ok(!endingReady(ending), `${ending.id}: unwritten ending must not be marked ready`);
+  assert.equal(rinEndings.length, 5, "rin's ending count");
+  for (const ending of rinEndings) {
+    assert.ok(!endingReady(ending), `${ending.id}: review copy must remain gated`);
+    assert.ok(!/MISSING INPUT/.test(ending.label + ending.what + ending.closingLine));
+    assert.ok(ending.closingLine?.trim(), `${ending.id}: missing closing line`);
+    clean(`rin ending ${ending.id}`, `${ending.label} ${ending.what} ${ending.closingLine}`);
   }
   // Kagari and Momo's are written, and must not be gated by accident.
   for (const id of ['kagura', 'momo'] as const) {
@@ -708,6 +709,6 @@ console.log('  prompts: every reveal + every enabled route quest + safety');
 console.log('  faces: companion withholds nothing; 72 combinations carry no contradictory lead');
 console.log('  scripted fallback: 12 turns per resident');
 console.log('  quests: route lookup + checkpoint resume + stable reveal ids');
-console.log('  endings: every terminal branch resolves; rin x5 unwritten and gated');
+console.log('  endings: every terminal branch resolves; rin x5 authored and gated');
 console.log('  rig: semantic bones resolved by hierarchy; inverted spine rejected');
 console.log('  HTTP: chat memory isolation + scene route propagation');

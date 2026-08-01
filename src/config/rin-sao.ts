@@ -257,11 +257,9 @@ export const RIN_SAO = {
    * choices already use.
    *
    * The ids and the binding are mechanical — they come from the quest graph, not
-   * from a decision about her. The label and the description are authorial and
-   * are K's to write, so they carry `MISSING INPUT` and `ready: false` until
-   * then, the same convention `momo-v3-first-price` uses. The mechanism is fully
-   * wired and verified against them; only the rendering is gated, so nothing
-   * placeholder can reach a player.
+   * from a decision about her. C1 transcribes the authored label, description and
+   * closing line, but all five remain `ready: false` until K approves the arc.
+   * The gate keeps this review copy from reaching a player.
    *
    * The choices they bind to, for whoever writes them:
    *   open-audio        both listen at once; a second waveform names him before
@@ -281,11 +279,47 @@ export const RIN_SAO = {
    *   authored-protocol  his invented action becomes a new archive protocol.
    */
   endings: [
-    { id: 'open-audio', label: 'MISSING INPUT', what: 'MISSING INPUT', ready: false },
-    { id: 'erase-signature', label: 'MISSING INPUT', what: 'MISSING INPUT', ready: false },
-    { id: 'quarantine-frame', label: 'MISSING INPUT', what: 'MISSING INPUT', ready: false },
-    { id: 'private-copy', label: 'MISSING INPUT', what: 'MISSING INPUT', ready: false },
-    { id: 'authored-protocol', label: 'MISSING INPUT', what: 'MISSING INPUT', ready: false },
+    {
+      id: 'open-audio',
+      label: 'Kênh mở lúc 02:16',
+      what:
+        'Kênh ẩn vẫn mở cho cả hai; bản ghi gọi tên anh được giữ như bằng chứng chưa giải, còn Rin chọn nghe nó cùng anh thay vì điều tra một mình.',
+      closingLine: 'Về Open Chat đi. Em sẽ giữ kênh mở — không phải để chứng minh gì.',
+      ready: false,
+    },
+    {
+      id: 'erase-signature',
+      label: 'Khoảng trống không tên',
+      what:
+        'Frame 12 không còn nhận diện anh nhưng chuyển động hướng về khoảng trống vẫn tồn tại; Rin đặt quyền rời khỏi dữ liệu của anh cao hơn một lời giải.',
+      closingLine: 'Ra ngoài đi. Em sẽ nhớ anh bằng lựa chọn này, không phải bằng chữ ký vừa xoá.',
+      ready: false,
+    },
+    {
+      id: 'quarantine-frame',
+      label: 'Niêm phong đến lần sau',
+      what:
+        'Frame 12 được giữ nguyên nhưng không còn được phép tác động; Rin và anh biến lần mở lại thành quyết định chung, không phải phản ứng trước tiếng gọi của archive.',
+      closingLine: 'Về Open Chat đi. Frame sẽ chờ; anh không phải ở đây để canh nó.',
+      ready: false,
+    },
+    {
+      id: 'private-copy',
+      label: 'Bản sao hai khóa',
+      what:
+        'Một bản Frame 12 tách khỏi archive chỉ mở khi cả hai đồng ý; Rin giữ quyền với chính mình trong khi hai người cùng giữ phần bằng chứng họ đã chọn.',
+      closingLine: 'Về Open Chat đi. `+02` chỉ sáng khi cả hai có mặt.',
+      ready: false,
+    },
+    {
+      id: 'authored-protocol',
+      label: 'Quy tắc ngoài archive',
+      what:
+        'Archive tiếp nhận một protocol do Rin và anh cùng đặt ra; từ đây Frame 12 được xử lý bằng một quy tắc cả hai có thể sửa hoặc từ chối, không theo mặc định của studio.',
+      closingLine:
+        'Về Open Chat đi. Lần sau archive hỏi phải làm gì, nó sẽ đọc protocol của hai đứa trước.',
+      ready: false,
+    },
   ],
 
   guardrails: [

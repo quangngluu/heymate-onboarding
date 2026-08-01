@@ -121,6 +121,8 @@ export interface V3Ending {
   readonly id: string;
   readonly label: string;
   readonly what: string;
+  /** Authored final line shown by the ending presenter before returning to chat. */
+  readonly closingLine?: string;
   /**
    * Absent means ready. Only an ending still being written sets this to false,
    * so the eight already-authored entries needed no edit. The mechanism is wired
