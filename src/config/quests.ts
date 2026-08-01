@@ -148,6 +148,7 @@ export function resolveFreeform(node: QuestNode, action: string): QuestChoice | 
     nextNodeId: hit.nextNodeId,
     unlockCanonReveal: hit.unlockCanonReveal,
     unlockCanonRevealId: hit.unlockCanonRevealId,
+    endingId: hit.endingId,
     imageKey: hit.imageKey,
     playerAuthored: true,
     crossMode: hit.crossMode,
