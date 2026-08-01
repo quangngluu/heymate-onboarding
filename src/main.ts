@@ -26,12 +26,12 @@ import { spoken } from './chat/dialogue';
 import type { ResidentId } from './config/residents';
 import { canonViewFor } from './config/canon-view';
 import { resolveCanonRoute } from './config/canon-route';
-import { drawScene } from './chat/scene';
 import {
   questNode,
   type QuestDefinition,
   type QuestPresentation,
 } from './config/quests';
+import { QuestVisualRuntime } from './quest/visual-runtime';
 import { Ambience } from './audio/ambience';
 import { COST, store, type ChatTurn, type SessionSetup, type Step } from './state/store';
 import { mountUI } from './ui/overlay';
@@ -102,6 +102,7 @@ class App implements UIActions {
   private stage: StageHandles;
   private picker: Picker;
   private ambience = new Ambience();
+  private questVisuals = new QuestVisualRuntime(store);
   private nameplate: Nameplate;
   private backdrop!: FactionBackdrop;
 
@@ -996,34 +997,6 @@ class App implements UIActions {
     store.set({ sessionPanelOpen: false });
   }
 
-  /**
-   * Draw what a branch left behind, once the line is already on screen.
-   *
-   * Only outcomes get a picture. Every line would be noise, and noise that
-   * costs money; an outcome is a room or an object by construction, which is
-   * also the only subject a text-to-image model can keep consistent without a
-   * trained likeness.
-   */
-  private illustrate(turn: number, imageKey: string, text: string, scene?: string): void {
-    if (store.get().sceneShots[imageKey]) {
-      store.showShot(turn, imageKey);
-      return;
-    }
-    if (!store.spend('sceneImage')) return;
-    const residentId = store.get().residentId;
-    void drawScene(residentId, text, scene).then((url) => {
-      if (!url) {
-        // Charged for a picture that never arrived.
-        store.refund('sceneImage');
-        return;
-      }
-      const now = store.get();
-      if (now.residentId !== residentId || now.step !== 'stage') return;
-      store.keepShot(imageKey, url);
-      store.showShot(turn, imageKey);
-    });
-  }
-
   private clearQuestSequence(): void {
     this.questSequenceToken++;
     this.thresholdInterruptible = false;
@@ -1239,10 +1212,12 @@ class App implements UIActions {
     this.speak(reply);
     const turn = store.get().questChat.length - 1;
     this.streamIn(turn, reply, Promise.resolve(null), false);
-    if (choice.imageKey) {
-      const scene = `${quest.title}. ${quest.synopsis} Vừa hỏi: ${node.prompt}`;
-      this.illustrate(turn, choice.imageKey, choice.outcome, scene);
-    }
+    void this.questVisuals.outcomeCommitted({
+      quest,
+      node,
+      choice: result.choice,
+      turn,
+    });
     if (result.completed) {
       this.ambience.chime(980);
       const timer = window.setTimeout(() => {
@@ -1282,10 +1257,13 @@ class App implements UIActions {
     this.speak(reply);
     const turn = store.get().questChat.length - 1;
     this.streamIn(turn, reply, Promise.resolve(null), false);
-    if (result.choice.imageKey) {
-      const scene = `${quest.title}. ${quest.synopsis} Anh tự hành động: ${text}`;
-      this.illustrate(turn, result.choice.imageKey, result.choice.outcome, scene);
-    }
+    void this.questVisuals.outcomeCommitted({
+      quest,
+      node,
+      choice: result.choice,
+      turn,
+      playerAction: text,
+    });
     this.ambience.chime(result.completed ? 980 : 720);
     if (result.completed) {
       const timer = window.setTimeout(() => {

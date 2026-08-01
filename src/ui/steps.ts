@@ -33,7 +33,14 @@ import {
 } from '../config/bond';
 import { ONBOARDING_QUESTS } from '../config/onboarding-quests';
 import { segments, segmentsUpTo } from '../chat/dialogue';
-import { COST, store } from '../state/store';
+import {
+  COST,
+  chatConversationScope,
+  questConversationScope,
+  shotAssignmentsSignature,
+  shotOwnerKey,
+  store,
+} from '../state/store';
 import { extractMemories } from '../chat/memory';
 
 export interface StepView {
@@ -1127,11 +1134,13 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       // Waiting belongs in the conversation, as a turn she has not started,
       // rather than as a status line under the buttons.
       const visibleChat = openQuest ? s.questChat : s.chat;
-      const chatScope = openQuest ? `quest:${openQuest.id}` : `chat:${s.residentId}`;
+      const chatScope = openQuest
+        ? questConversationScope(openQuest.id)
+        : chatConversationScope(s.residentId);
       const lastTurn = visibleChat[visibleChat.length - 1];
       const waiting = s.thinking || (s.voicing && lastTurn?.from === 'user');
       const revealKey = s.reveal ? `${s.reveal.turn}:${s.reveal.words}` : '';
-      const shotKeys = Object.keys(s.turnShots).join(',');
+      const shotKeys = shotAssignmentsSignature(s.turnShots);
       if (
         visibleChat.length !== lastChatLen ||
         chatScope !== lastChatScope ||
@@ -1151,7 +1160,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
             if (t.from !== 'resident') return [h('p', { class: 'bubble bubble-user' }, t.text)];
             const partial = s.reveal?.turn === i;
             const parts = partial ? segmentsUpTo(t.text, s.reveal!.words) : segments(t.text);
-            const shotKey = s.turnShots[i];
+            const shotKey = s.turnShots[shotOwnerKey(chatScope, i)];
             const shotUrl = shotKey ? s.sceneShots[shotKey] : undefined;
             const shot: HTMLElement[] = shotUrl
               ? [h('img', { class: 'scene-shot', src: shotUrl, alt: '', loading: 'lazy' })]

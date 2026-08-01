@@ -62,6 +62,8 @@ export interface ChatTurn {
   text: string;
 }
 
+export type ConversationScope = `chat:${ResidentId}` | `quest:${string}`;
+
 export type CanonType =
   | 'fixed'
   | 'branch'
@@ -262,12 +264,12 @@ export interface AppState {
   /** Turn the last scene closed on, so the next one does not follow instantly. */
   questClosedAt: number;
   /**
-   * Pictures of the places a branch left behind, keyed by the choice's
-   * imageKey and persisted: taking the same branch again should not redraw it.
+   * Pictures of branch outcomes keyed by the versioned visual cache key.
+   * Repeating the same resolved specification must not redraw it.
    */
   sceneShots: Record<string, string>;
-  /** Which shot belongs to which turn on screen. Session only. */
-  turnShots: Record<number, string>;
+  /** Which cached shot belongs to a scoped conversation turn. Session only. */
+  turnShots: Record<string, string>;
 
   // --- creator universe ---
   characterId: string;
@@ -279,6 +281,26 @@ export interface AppState {
 
   transitioning: boolean;
   error: string | null;
+}
+
+export function chatConversationScope(residentId: ResidentId): ConversationScope {
+  return `chat:${residentId}`;
+}
+
+export function questConversationScope(questId: string): ConversationScope {
+  return `quest:${questId}`;
+}
+
+export function shotOwnerKey(scope: ConversationScope, turn: number): string {
+  return `${scope}:${turn}`;
+}
+
+/** Changes when either an owner or its attached cache key changes. */
+export function shotAssignmentsSignature(turnShots: Record<string, string>): string {
+  return Object.entries(turnShots)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([owner, cacheKey]) => `${owner}=${cacheKey}`)
+    .join('|');
 }
 
 const initialState: AppState = {
@@ -391,6 +413,13 @@ export class Store {
 
   get(): AppState {
     return this.state;
+  }
+
+  /** Scope currently owning the visible transcript. */
+  get conversationScope(): ConversationScope {
+    return this.state.activeQuestId
+      ? questConversationScope(this.state.activeQuestId)
+      : chatConversationScope(this.state.residentId);
   }
 
   subscribe(fn: Listener): () => void {
@@ -901,14 +930,24 @@ export class Store {
   }
 
   /** Remember a drawing so the same branch never pays to be drawn twice. */
-  keepShot(imageKey: string, url: string): void {
-    this.set({ sceneShots: { ...this.state.sceneShots, [imageKey]: url } });
+  keepShot(cacheKey: string, url: string): void {
+    this.set({ sceneShots: { ...this.state.sceneShots, [cacheKey]: url } });
     this.persist();
   }
 
-  /** Attach an already-known drawing to the line it belongs to. */
-  showShot(turn: number, imageKey: string): void {
-    this.set({ turnShots: { ...this.state.turnShots, [turn]: imageKey } });
+  /**
+   * Attach a drawing only while its captured transcript still owns the UI.
+   * Late valid responses may enter the cache but cannot cross this guard.
+   */
+  showShot(scope: ConversationScope, turn: number, cacheKey: string): boolean {
+    if (scope !== this.conversationScope) return false;
+    this.set({
+      turnShots: {
+        ...this.state.turnShots,
+        [shotOwnerKey(scope, turn)]: cacheKey,
+      },
+    });
+    return true;
   }
 
   chooseActiveQuest(choiceId: string): QuestChoiceResult | null {
