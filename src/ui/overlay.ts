@@ -100,7 +100,12 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
   // A scene waiting is worth a dot; a scene running is worth saying so.
   const questBtn = h(
     'button',
-    { class: 'chrome-btn quest-btn', 'aria-label': COPY.stage.questTitle, onClick: () => actions.openQuests() },
+    {
+      class: 'chrome-btn quest-btn',
+      'data-testid': 'quest-hub-open',
+      'aria-label': COPY.stage.questTitle,
+      onClick: () => actions.openQuests(),
+    },
     '\u2726',
     h('span', { class: 'quest-dot', hidden: true, 'aria-hidden': 'true' })
   ) as HTMLButtonElement;

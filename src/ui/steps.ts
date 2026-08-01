@@ -63,6 +63,7 @@ export function galleryStep(actions: UIActions): StepView {
       'button',
       {
         class: 'universe-tile',
+        'data-testid': `universe-${u.id}`,
         style: `--accent:${cssColor(u.accentColor)}`,
         onClick: () => actions.openUniverse(u.id),
       },
@@ -195,7 +196,11 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   ) as HTMLButtonElement;
   const turnsLeft = h('span', { class: 'turns-left' });
   const dockHint = h('p', { class: 'dock-hint', hidden: true });
-  const speakChip = h('button', { class: 'dock-chip' }, COPY.stage.speakAs) as HTMLButtonElement;
+  const speakChip = h(
+    'button',
+    { class: 'dock-chip', 'data-testid': 'voice-speak-as' },
+    COPY.stage.speakAs
+  ) as HTMLButtonElement;
   const setChip = h(
     'button',
     { class: 'dock-chip', onClick: () => actions.openSessionPanel() },
@@ -277,6 +282,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     'button',
     {
       class: 'mobile-icon-btn',
+      'data-testid': 'session-settings-open',
       'aria-label': COPY.stage.setSession,
       'aria-expanded': 'false',
       onClick: () => {
@@ -518,9 +524,11 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   const scen = selectField('Bối cảnh', SCENARIOS, (id) =>
     actions.updateSession({ scenario: id })
   );
+  scen.select.dataset.testid = 'session-scenario';
   const len = selectField(COPY.stage.length, LENGTHS, (id) =>
     actions.updateSession({ length: id })
   );
+  len.select.dataset.testid = 'session-length';
 
   // --- the bond: how she is with him, not who she is ---
   //
@@ -562,7 +570,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
 
   const sessionAdvanced = h(
     'details',
-    { class: 'session-advanced' },
+    { class: 'session-advanced', 'data-testid': 'session-advanced' },
     h('summary', {}, h('span', {}, 'Nâng cao')),
     h(
       'div',
@@ -619,7 +627,16 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       'div',
       { class: 'row sheet-head' },
       h('h2', { class: 'panel-title' }, COPY.stage.setSession),
-      h('button', { class: 'chrome-btn', 'aria-label': 'Đóng thiết lập', onClick: () => actions.closeSessionPanel() }, '×')
+      h(
+        'button',
+        {
+          class: 'chrome-btn',
+          'data-testid': 'session-settings-close',
+          'aria-label': 'Đóng thiết lập',
+          onClick: () => actions.closeSessionPanel(),
+        },
+        '×'
+      )
     ),
     h(
       'div',
@@ -1248,7 +1265,13 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
             ),
             h(
               'button',
-              { class: 'btn btn-secondary xs', disabled: done || !available || active, onClick: () => actions.startQuest(quest.id) },
+              {
+                class: 'btn btn-secondary xs',
+                'data-testid': 'quest-start',
+                'data-quest-id': quest.id,
+                disabled: done || !available || active,
+                onClick: () => actions.startQuest(quest.id),
+              },
               status
             )
           );

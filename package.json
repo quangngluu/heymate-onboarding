@@ -10,7 +10,8 @@
     "test:quest-smoke": "node scripts/quest-phase2-smoke.mjs",
     "build": "tsc --noEmit && vite build",
     "verify:canon": "tsx scripts/verify-canon.ts && tsx scripts/export-character-data.ts --route=hub --check && tsx scripts/export-character-data.ts --route=sao --check",
-    "verify": "npm run build && npm run verify:canon",
+    "check:release": "npm run build && npm test && npm run verify:canon && npm run test:quest-smoke",
+    "verify": "npm run check:release",
     "preview": "vite preview",
     "push:github": "git -C .. subtree push --prefix=heymate-onboarding heymate-github main"
   },

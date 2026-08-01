@@ -62,22 +62,6 @@ function startVite() {
   return child;
 }
 
-async function clickByText(page, selector, text) {
-  const clicked = await page.$$eval(
-    selector,
-    (elements, expected) => {
-      const target = elements.find((element) =>
-        element.textContent?.includes(expected)
-      );
-      if (!(target instanceof HTMLElement)) return false;
-      target.click();
-      return true;
-    },
-    text
-  );
-  if (!clicked) throw new Error(`Could not click ${selector} containing "${text}"`);
-}
-
 async function clickSelector(page, selector) {
   const clicked = await page.$eval(selector, (element) => {
     if (!(element instanceof HTMLElement)) return false;
@@ -111,14 +95,14 @@ async function runViewport(browser, viewport) {
     waitUntil: 'domcontentloaded',
     timeout: 30_000,
   });
-  await page.waitForSelector('.universe-tile', { visible: true });
-  await clickByText(page, '.universe-tile', 'Vũ trụ Waifu');
+  await page.waitForSelector('[data-testid="universe-waifu-universe"]', { visible: true });
+  await page.click('[data-testid="universe-waifu-universe"]');
   await page.waitForSelector('.step-stage', { visible: true });
   await page.waitForFunction(
     () => document.documentElement.dataset.questRig === 'ready',
     { timeout: 30_000 }
   );
-  await page.click('.mobile-gear');
+  await page.click('[data-testid="session-settings-open"]');
   await page.waitForSelector('.session-scrim:not([hidden])', { visible: true });
   const settingsShape = await page.evaluate(() => ({
     primaryRows: document.querySelectorAll('.session-primary .session-setting-row').length,
@@ -130,21 +114,28 @@ async function runViewport(browser, viewport) {
       getComputedStyle(document.querySelector('.session-select')).fontSize
     ),
   }));
-  await page.select('select[aria-label="Bối cảnh"]', 'latenight');
-  await page.select('select[aria-label="Em chủ động"]', 'lead');
-  const settingsSummary = await page.$eval(
-    '.mobile-gear',
-    (gear) => gear.parentElement?.getAttribute('aria-label') ?? ''
-  );
-  await page.click('button[aria-label="Đóng thiết lập"]');
-  await page.waitForSelector('.quest-btn', { visible: true });
-  await page.click('.quest-btn');
+  await page.select('[data-testid="session-scenario"]', 'latenight');
+  await page.click('[data-testid="session-advanced"] summary');
+  await page.select('[data-testid="session-length"]', 'expressive');
+  const settingsState = await page.evaluate(() => {
+    const scenario = document.querySelector('[data-testid="session-scenario"]');
+    const length = document.querySelector('[data-testid="session-length"]');
+    const voiceAction = document.querySelector('[data-testid="voice-speak-as"]');
+    return {
+      scenario: scenario instanceof HTMLSelectElement ? scenario.value : null,
+      length: length instanceof HTMLSelectElement ? length.value : null,
+      voiceActionEnabled: voiceAction instanceof HTMLButtonElement && !voiceAction.disabled,
+    };
+  });
+  await page.click('[data-testid="session-settings-close"]');
+  await page.waitForSelector('[data-testid="quest-hub-open"]', { visible: true });
+  await page.click('[data-testid="quest-hub-open"]');
   await page.waitForSelector('.quest-hub:not([hidden])', { visible: true });
 
   const start = performance.now();
   await clickSelector(
     page,
-    '.quest-card:not(.quest-unavailable) button:not([disabled])'
+    '[data-testid="quest-start"]:not([disabled])'
   );
   await page.waitForSelector('.step-stage.is-quest-mode .quest-strip:not([hidden])', {
     visible: true,
@@ -156,7 +147,7 @@ async function runViewport(browser, viewport) {
   });
   const firstBeatMs = Math.round(performance.now() - start);
 
-  const state = await page.evaluate((settingsShape_, settingsSummary_) => {
+  const state = await page.evaluate((settingsShape_, settingsState_) => {
     const visible = (element) => {
       if (!(element instanceof HTMLElement)) return false;
       const rect = element.getBoundingClientRect();
@@ -197,9 +188,9 @@ async function runViewport(browser, viewport) {
           ? Math.round(navigation.loadEventEnd)
           : null,
       settingsShape: settingsShape_,
-      settingsSummary: settingsSummary_,
+      settingsState: settingsState_,
     };
-  }, settingsShape, settingsSummary);
+  }, settingsShape, settingsState);
 
   if (captureDir) {
     mkdirSync(captureDir, { recursive: true });
@@ -232,9 +223,13 @@ async function runViewport(browser, viewport) {
       `mobile form fonts=${state.settingsShape.composerFontPx}/${state.settingsShape.selectFontPx}px`
     );
   }
-  if (!state.settingsSummary.includes('Đêm riêng tư · Em dẫn')) {
-    failures.push(`settings summary=${JSON.stringify(state.settingsSummary)}`);
+  if (state.settingsState.scenario !== 'latenight') {
+    failures.push(`settings scenario=${JSON.stringify(state.settingsState.scenario)}`);
   }
+  if (state.settingsState.length !== 'expressive') {
+    failures.push(`settings length=${JSON.stringify(state.settingsState.length)}`);
+  }
+  if (!state.settingsState.voiceActionEnabled) failures.push('voice action is unavailable');
   if (state.questPhase !== 'threshold') {
     failures.push(`questPhase=${state.questPhase}`);
   }
