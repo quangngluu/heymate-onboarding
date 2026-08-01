@@ -12,9 +12,23 @@ export const QUEST_RIG_URL = '/assets/quest/rigs/meshy-biped-placeholder.glb';
  * `spine_upper` on the asset actually in the scene?" without re-walking it.
  */
 let resolved: SemanticSkeleton | null = null;
+let posable: THREE.Object3D | null = null;
 
 export function questRigBones(): SemanticSkeleton | null {
   return resolved;
+}
+
+/**
+ * The skinned model on its own, without the stage's skeleton overlay.
+ *
+ * The overlay exists so this technical placeholder visibly reads as a rig rather
+ * than as final art, but it is presentation for the live stage and must not
+ * travel: `SkeletonHelper` cannot be cloned — it rebuilds itself from a bone list
+ * its copy does not have yet — so cloning the wrapper for an offscreen pose shot
+ * throws inside three.js rather than anywhere near the caller.
+ */
+export function questRigPosable(): THREE.Object3D | null {
+  return posable;
 }
 
 const QUEST_RIG_HEIGHT = 1.52;
@@ -93,6 +107,8 @@ export async function loadQuestRig(maxAnisotropy = 8): Promise<THREE.Group> {
   const box = new THREE.Box3().setFromObject(source);
   const center = box.getCenter(new THREE.Vector3());
   source.position.set(-center.x, -box.min.y, -center.z);
+
+  posable = source;
 
   const wrapper = new THREE.Group();
   wrapper.name = 'QuestRigPlaceholder';

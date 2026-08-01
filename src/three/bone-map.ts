@@ -16,7 +16,15 @@
 // Therefore: resolve by walking the parent chain from Hips, and treat a name as
 // a label rather than as a position.
 
-/** The roles quest content and the animation runtime are allowed to name. */
+/**
+ * The roles quest content and the animation runtime are allowed to name.
+ *
+ * The arms and legs are here because the first version was not: spine, neck, head
+ * and hands only. Posing that set left the rig in its bind pose from the shoulders
+ * out, so a still came back with the arms straight out to the sides — a mannequin
+ * with a tilted head, visibly worse than the neutral sculpt it was meant to
+ * improve. A hand role is useless while the arm holding it is horizontal.
+ */
 export type SemanticBone =
   | 'hips'
   | 'spine_lower'
@@ -24,8 +32,20 @@ export type SemanticBone =
   | 'spine_upper'
   | 'neck'
   | 'head'
+  | 'shoulder_l'
+  | 'arm_l'
+  | 'forearm_l'
   | 'hand_l'
-  | 'hand_r';
+  | 'shoulder_r'
+  | 'arm_r'
+  | 'forearm_r'
+  | 'hand_r'
+  | 'thigh_l'
+  | 'shin_l'
+  | 'foot_l'
+  | 'thigh_r'
+  | 'shin_r'
+  | 'foot_r';
 
 /** Just enough of a bone to resolve a skeleton; THREE.Bone satisfies it. */
 export interface BoneLike {
@@ -95,15 +115,38 @@ export function resolveSemanticBones(root: BoneLike): SemanticSkeleton {
   if (!head) throw new BoneMapError(`no head under ${neck.name}`);
 
   // Shoulders hang off the topmost spine segment. If they are found anywhere
-  // else, the chain was resolved wrongly and the hands cannot be trusted.
-  const handL = descend(upper, /^left_?hand$/i);
-  const handR = descend(upper, /^right_?hand$/i);
-  if (!handL || !handR) {
-    throw new BoneMapError(
-      `hands must descend from the topmost spine segment (${upper.name}); ` +
-        `left=${handL?.name ?? 'missing'} right=${handR?.name ?? 'missing'}`
-    );
-  }
+  // else, the chain was resolved wrongly and the arms cannot be trusted.
+  //
+  // Walked as a chain rather than matched by name for the same reason as the
+  // spine: both conventions agree on shoulder → arm → forearm → hand as a
+  // hierarchy even where the names differ, so depth is the reliable signal.
+  const limb = (root: BoneLike, side: 'left' | 'right', joints: number): BoneLike[] => {
+    const start = descend(root, new RegExp(`^${side}_?(shoulder|upleg)$`, 'i'));
+    if (!start) throw new BoneMapError(`no ${side} limb root under ${root.name}`);
+    const chain = [start];
+    let cursor = start;
+    while (chain.length < joints) {
+      // The single longest sub-chain: a hand may carry fingers, a foot a toe, and
+      // taking the first child would pick a thumb over a forearm.
+      const next = cursor.children
+        .slice()
+        .sort((a, b) => depth(b) - depth(a))[0];
+      if (!next) break;
+      chain.push(next);
+      cursor = next;
+    }
+    if (chain.length < joints) {
+      throw new BoneMapError(
+        `${side} limb is ${chain.length} joints, expected ${joints} (${chain.map((b) => b.name).join(' → ')})`
+      );
+    }
+    return chain;
+  };
+
+  const [shoulderL, armL, forearmL, handL] = limb(upper, 'left', 4);
+  const [shoulderR, armR, forearmR, handR] = limb(upper, 'right', 4);
+  const [thighL, shinL, footL] = limb(hips, 'left', 3);
+  const [thighR, shinR, footR] = limb(hips, 'right', 3);
 
   return {
     hips: hips.name,
@@ -112,9 +155,27 @@ export function resolveSemanticBones(root: BoneLike): SemanticSkeleton {
     spine_upper: upper.name,
     neck: neck.name,
     head: head.name,
+    shoulder_l: shoulderL.name,
+    arm_l: armL.name,
+    forearm_l: forearmL.name,
     hand_l: handL.name,
+    shoulder_r: shoulderR.name,
+    arm_r: armR.name,
+    forearm_r: forearmR.name,
     hand_r: handR.name,
+    thigh_l: thighL.name,
+    shin_l: shinL.name,
+    foot_l: footL.name,
+    thigh_r: thighR.name,
+    shin_r: shinR.name,
+    foot_r: footR.name,
   };
+}
+
+/** Longest path below this bone, in joints. */
+function depth(bone: BoneLike): number {
+  if (!bone.children.length) return 1;
+  return 1 + Math.max(...bone.children.map(depth));
 }
 
 /**

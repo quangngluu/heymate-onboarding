@@ -559,7 +559,8 @@ function boneMapCoverage(): void {
     'Armature',
     bone(
       'Hips',
-      bone('LeftUpLeg', bone('LeftLeg')),
+      bone('LeftUpLeg', bone('LeftLeg', bone('LeftFoot', bone('LeftToeBase')))),
+      bone('RightUpLeg', bone('RightLeg', bone('RightFoot', bone('RightToeBase')))),
       bone(
         'Spine02',
         bone(
