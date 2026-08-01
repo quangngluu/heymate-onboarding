@@ -15,7 +15,7 @@ import {
   RESIDENTS,
   SCENARIOS,
 } from '../config/residents';
-import { canonViewFor } from '../config/canon-view';
+import { canonViewFor, endingFor } from '../config/canon-view';
 import { resolveCanonRoute } from '../config/canon-route';
 import { questNode } from '../config/quests';
 import {
@@ -41,6 +41,7 @@ import {
   store,
 } from '../state/store';
 import { extractMemories } from '../chat/memory';
+import { endingPresentation, terminalEndingIds } from '../quest/endings';
 
 export interface StepView {
   el: HTMLElement;
@@ -359,6 +360,22 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     questActionInput,
     questActionBtn
   );
+  const questEndingLabel = h('h2', { class: 'quest-ending-label' });
+  const questEndingWhat = h('p', { class: 'quest-ending-what' });
+  const questEndingClosing = h('p', { class: 'quest-ending-closing' });
+  const questEnding = h(
+    'section',
+    { class: 'quest-ending', 'data-testid': 'quest-ending', hidden: true, 'aria-live': 'polite' },
+    h('p', { class: 'quest-ending-kicker' }, 'KẾT CỤC'),
+    questEndingLabel,
+    questEndingWhat,
+    questEndingClosing,
+    h(
+      'button',
+      { class: 'btn btn-primary quest-ending-exit', 'data-testid': 'quest-ending-exit', onClick: () => actions.leaveQuest() },
+      'Về Open Chat'
+    )
+  );
   const questStrip = h(
     'div',
     { class: 'quest-strip', hidden: true },
@@ -366,7 +383,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     questObjective,
     questLine,
     questOptions,
-    questFreeform
+    questFreeform,
+    questEnding
   );
 
   const dock = h(
@@ -1055,6 +1073,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       el.dataset.questPhase = openQuest ? s.questPhase : '';
       questCallBtn.hidden = s.questPhase !== 'threshold' || r.id !== 'rin';
       questCallBtn.disabled = !s.questInterruptible;
+      questReturnBtn.hidden = s.questPhase === 'ending';
       questEpisodeLabel.textContent =
         s.questPhase === 'threshold'
           ? 'EPISODE 0 · MOTION ARCHIVE CORRIDOR'
@@ -1095,14 +1114,28 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         (questOptions as HTMLElement).hidden = true;
         (questFreeform as HTMLElement).hidden = true;
       } else if (openQuest && s.questPhase === 'ending') {
-        questLine.textContent = 'Frame đã đổi trạng thái. Canon đang được lưu…';
+        const endingId = s.activeQuestEndingId;
+        const resolved = endingId ? endingFor(openQuest.residentId, canonRoute, endingId) : null;
+        const presentation = endingPresentation(resolved);
+        questLine.textContent = 'Frame đã đổi trạng thái.';
+        questEndingLabel.textContent =
+          presentation.kind === 'ready' ? presentation.label : presentation.title;
+        questEndingWhat.textContent =
+          presentation.kind === 'ready' ? presentation.what : presentation.body;
+        questEndingClosing.textContent =
+          presentation.kind === 'ready' ? presentation.closingLine : '';
+        questEndingClosing.hidden = presentation.kind !== 'ready';
+        (questEnding as HTMLElement).hidden = false;
+        (questObjective as HTMLElement).hidden = true;
         (questOptions as HTMLElement).hidden = true;
         (questFreeform as HTMLElement).hidden = true;
       } else {
+        (questEnding as HTMLElement).hidden = true;
         (questOptions as HTMLElement).hidden = false;
       }
       if (!openQuest) {
         lastQuestId = '';
+        (questEnding as HTMLElement).hidden = true;
         (questFreeform as HTMLElement).hidden = true;
       }
 
@@ -1237,14 +1270,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           // `node.choices`, which silently excluded freeform families — so the
           // two endings a player can author for themselves were exactly the ones
           // it did not count, and Rin's card advertised three of five.
-          const endings = new Set(
-            quest.nodes.flatMap((node) => [
-              ...node.choices.filter((choice) => !choice.nextNodeId).map((choice) => choice.endingId),
-              ...[...(node.freeform?.families ?? []), ...(node.freeform ? [node.freeform.fallback] : [])]
-                .filter((family) => !family.nextNodeId)
-                .map((family) => family.endingId),
-            ])
-          );
+          const endings = new Set(terminalEndingIds(quest));
           endings.delete(undefined);
           return h(
             'article',
@@ -1272,7 +1298,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           );
         })
       );
-      if (canonRoute === 'sao' && r.id !== 'rin' && quests.length === 0) {
+      if (canonRoute === 'sao' && quests.length === 0) {
         storyQuestList.replaceChildren(
           h(
             'article',

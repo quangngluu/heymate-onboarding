@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_ROUTE, resolveCanonRoute } from '../../src/config/canon-route';
 import { Store } from '../../src/state/store';
+import { RIN_ENDINGS_READY } from '../../src/config/rin-sao';
 
 class MemoryStorage {
   private values = new Map<string, string>();
@@ -82,11 +83,14 @@ describe('v3 production cutover', () => {
     expect(state.transcripts).toEqual({});
   });
 
-  it('opens Rin Quest on the public v3 route without a prototype flag', () => {
+  it('binds Rin Quest availability to the single editorial gate', () => {
     runtime();
     const store = new Store();
     store.beginEncounter('rin');
 
-    expect(store.startQuest('rin-twelfth-frame')).toBe(true);
+    expect(store.questsFor('rin').map((quest) => quest.id)).toEqual(
+      RIN_ENDINGS_READY ? ['rin-twelfth-frame'] : []
+    );
+    expect(store.startQuest('rin-twelfth-frame')).toBe(RIN_ENDINGS_READY);
   });
 });

@@ -19,6 +19,9 @@
 
 import { RIN_V3_AUTHORED } from './v3-authored';
 
+/** K-owned editorial gate: approval changes this one line in its own commit. */
+export const RIN_ENDINGS_READY = false;
+
 export const RIN_SAO = {
   route: 'sword-art-online',
   series: 'SWORD ART ONLINE — RIN//REPLAY',
@@ -285,7 +288,7 @@ export const RIN_SAO = {
       what:
         'Kênh ẩn vẫn mở cho cả hai; bản ghi gọi tên anh được giữ như bằng chứng chưa giải, còn Rin chọn nghe nó cùng anh thay vì điều tra một mình.',
       closingLine: 'Về Open Chat đi. Em sẽ giữ kênh mở — không phải để chứng minh gì.',
-      ready: false,
+      ready: RIN_ENDINGS_READY,
     },
     {
       id: 'erase-signature',
@@ -293,7 +296,7 @@ export const RIN_SAO = {
       what:
         'Frame 12 không còn nhận diện anh nhưng chuyển động hướng về khoảng trống vẫn tồn tại; Rin đặt quyền rời khỏi dữ liệu của anh cao hơn một lời giải.',
       closingLine: 'Ra ngoài đi. Em sẽ nhớ anh bằng lựa chọn này, không phải bằng chữ ký vừa xoá.',
-      ready: false,
+      ready: RIN_ENDINGS_READY,
     },
     {
       id: 'quarantine-frame',
@@ -301,7 +304,7 @@ export const RIN_SAO = {
       what:
         'Frame 12 được giữ nguyên nhưng không còn được phép tác động; Rin và anh biến lần mở lại thành quyết định chung, không phải phản ứng trước tiếng gọi của archive.',
       closingLine: 'Về Open Chat đi. Frame sẽ chờ; anh không phải ở đây để canh nó.',
-      ready: false,
+      ready: RIN_ENDINGS_READY,
     },
     {
       id: 'private-copy',
@@ -309,7 +312,7 @@ export const RIN_SAO = {
       what:
         'Một bản Frame 12 tách khỏi archive chỉ mở khi cả hai đồng ý; Rin giữ quyền với chính mình trong khi hai người cùng giữ phần bằng chứng họ đã chọn.',
       closingLine: 'Về Open Chat đi. `+02` chỉ sáng khi cả hai có mặt.',
-      ready: false,
+      ready: RIN_ENDINGS_READY,
     },
     {
       id: 'authored-protocol',
@@ -318,7 +321,7 @@ export const RIN_SAO = {
         'Archive tiếp nhận một protocol do Rin và anh cùng đặt ra; từ đây Frame 12 được xử lý bằng một quy tắc cả hai có thể sửa hoặc từ chối, không theo mặc định của studio.',
       closingLine:
         'Về Open Chat đi. Lần sau archive hỏi phải làm gì, nó sẽ đọc protocol của hai đứa trước.',
-      ready: false,
+      ready: RIN_ENDINGS_READY,
     },
   ],
 

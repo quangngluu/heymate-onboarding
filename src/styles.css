@@ -601,6 +601,30 @@ html, body {
   padding-top: 2px;
 }
 .quest-freeform[hidden] { display: none; }
+.quest-ending {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 9%, rgba(6, 10, 16, 0.72));
+}
+.quest-ending[hidden] { display: none; }
+.quest-ending-kicker {
+  color: var(--accent);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+}
+.quest-ending-label { color: var(--ivory); font-size: 20px; line-height: 1.2; }
+.quest-ending-what { color: var(--ivory-dim); font-size: 13px; line-height: 1.55; }
+.quest-ending-closing {
+  padding-left: 12px;
+  border-left: 2px solid var(--accent);
+  color: var(--ivory);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.quest-ending-exit { justify-self: start; }
 .quest-action-input {
   min-width: 0;
   flex: 1;

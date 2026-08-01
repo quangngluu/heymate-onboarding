@@ -10,7 +10,8 @@ const VIEWPORTS = [
 ];
 const HOST = '127.0.0.1';
 const PORT = 5198;
-// Production path: v3 and Rin Quest must work without an internal query flag.
+// Production path: v3 is public; Rin Quest is either gated safely or playable
+// without an internal query flag, depending on the editorial ready switch.
 const ROUTE = '/';
 const captureArg = process.argv.find((arg) => arg.startsWith('--capture-dir='));
 const captureDir = captureArg ? resolve(captureArg.slice('--capture-dir='.length)) : null;
@@ -176,6 +177,19 @@ async function runModeTransitionCoverage(browser) {
     await page.waitForSelector('.step-stage:not(.is-quest-mode)', { visible: true });
   };
 
+  // E5 deliberately removes an arc from the public entry path until every
+  // ending is approved. The full transition coverage automatically resumes on
+  // the ready-flip build; before that, the only correct browser behavior is to
+  // have no enabled start control.
+  {
+    const { context, page } = await openModePage();
+    await page.click('[data-testid="quest-hub-open"]');
+    await page.waitForSelector('.quest-hub:not([hidden])', { visible: true });
+    const playable = await page.$('[data-testid="quest-start"]:not([disabled])');
+    await context.close();
+    if (!playable) return { failures, gated: true };
+  }
+
   // Open Chat request remains pending while the visitor enters Quest.
   {
     const { context, page } = await openModePage();
@@ -281,7 +295,7 @@ async function runModeTransitionCoverage(browser) {
     await context.close();
   }
 
-  return failures;
+  return { failures, gated: false };
 }
 
 async function runViewport(browser, viewport) {
@@ -346,21 +360,26 @@ async function runViewport(browser, viewport) {
   await page.waitForSelector('.quest-hub:not([hidden])', { visible: true });
 
   const start = performance.now();
-  await clickSelector(
-    page,
-    '[data-testid="quest-start"]:not([disabled])'
-  );
-  await page.waitForSelector('.step-stage.is-quest-mode .quest-strip:not([hidden])', {
-    visible: true,
-    timeout: 5_000,
-  });
-  await page.waitForSelector('.step-stage.is-quest-mode .bubble-resident', {
-    visible: true,
-    timeout: 5_000,
-  });
-  const firstBeatMs = Math.round(performance.now() - start);
+  const playable = await page.$('[data-testid="quest-start"]:not([disabled])');
+  const gatedCardVisible = await page.$eval('.quest-unavailable', (element) => {
+    const style = getComputedStyle(element);
+    return style.display !== 'none' && style.visibility !== 'hidden';
+  }).catch(() => false);
+  let firstBeatMs = null;
+  if (playable) {
+    await clickSelector(page, '[data-testid="quest-start"]:not([disabled])');
+    await page.waitForSelector('.step-stage.is-quest-mode .quest-strip:not([hidden])', {
+      visible: true,
+      timeout: 5_000,
+    });
+    await page.waitForSelector('.step-stage.is-quest-mode .bubble-resident', {
+      visible: true,
+      timeout: 5_000,
+    });
+    firstBeatMs = Math.round(performance.now() - start);
+  }
 
-  const state = await page.evaluate((settingsShape_, settingsState_) => {
+  const state = await page.evaluate((settingsShape_, settingsState_, questPlayable_, gatedCardVisible_) => {
     const visible = (element) => {
       if (!(element instanceof HTMLElement)) return false;
       const rect = element.getBoundingClientRect();
@@ -405,8 +424,10 @@ async function runViewport(browser, viewport) {
       scenarioHiddenInQuest:
         document.querySelector('[data-testid="session-scenario"]')?.closest('.session-setting-row')
           ?.hasAttribute('hidden') ?? false,
+      questPlayable: questPlayable_,
+      gatedCardVisible: gatedCardVisible_,
     };
-  }, settingsShape, settingsState);
+  }, settingsShape, settingsState, Boolean(playable), gatedCardVisible);
 
   if (captureDir) {
     mkdirSync(captureDir, { recursive: true });
@@ -442,20 +463,23 @@ async function runViewport(browser, viewport) {
   if (state.settingsState.scenario !== 'latenight') {
     failures.push(`settings scenario=${JSON.stringify(state.settingsState.scenario)}`);
   }
-  if (!state.scenarioHiddenInQuest) failures.push('scenario remains visible in Quest');
   if (state.settingsState.length !== 'expressive') {
     failures.push(`settings length=${JSON.stringify(state.settingsState.length)}`);
   }
   if (!state.settingsState.voiceActionEnabled) failures.push('voice action is unavailable');
-  if (state.questPhase !== 'threshold') {
-    failures.push(`questPhase=${state.questPhase}`);
+  if (state.questPlayable) {
+    if (!state.scenarioHiddenInQuest) failures.push('scenario remains visible in Quest');
+    if (state.questPhase !== 'threshold') failures.push(`questPhase=${state.questPhase}`);
+    if (!state.episodeLabel.includes('MOTION ARCHIVE CORRIDOR')) {
+      failures.push(`episodeLabel=${JSON.stringify(state.episodeLabel)}`);
+    }
+    if (!state.firstLine) failures.push('first authored line is empty');
+    if (!state.rosterHidden) failures.push('resident roster remains visible');
+    if (!state.exitVisible) failures.push('Quest exit is not visible');
+  } else {
+    if (!state.gatedCardVisible) failures.push('unplayable quest has no safe unavailable card');
+    if (state.questPhase) failures.push(`gated quest entered phase=${state.questPhase}`);
   }
-  if (!state.episodeLabel.includes('MOTION ARCHIVE CORRIDOR')) {
-    failures.push(`episodeLabel=${JSON.stringify(state.episodeLabel)}`);
-  }
-  if (!state.firstLine) failures.push('first authored line is empty');
-  if (!state.rosterHidden) failures.push('resident roster remains visible');
-  if (!state.exitVisible) failures.push('Quest exit is not visible');
   if (state.horizontalOverflowPx > 1) {
     failures.push(`horizontalOverflowPx=${state.horizontalOverflowPx}`);
   }
@@ -500,7 +524,7 @@ try {
       results.push(await runViewport(browser, viewport));
     }
   }
-  const modeFailures = await runModeTransitionCoverage(browser);
+  const modeCoverage = await runModeTransitionCoverage(browser);
 
   if (captureDir) {
     writeFileSync(
@@ -512,7 +536,7 @@ try {
   for (const result of results) {
     const status = result.failures.length ? 'FAIL' : 'PASS';
     process.stdout.write(
-      `${status} ${result.viewport} firstBeat=${result.firstBeatMs}ms ` +
+      `${status} ${result.viewport} firstBeat=${result.firstBeatMs === null ? 'gated' : `${result.firstBeatMs}ms`} ` +
         `overflow=${result.horizontalOverflowPx}px warnings=${result.expectedWarnings.length}\n`
     );
     for (const failure of result.failures) {
@@ -520,10 +544,13 @@ try {
     }
   }
 
-  process.stdout.write(`${modeFailures.length ? 'FAIL' : 'PASS'} mode transition/request binding\n`);
-  for (const failure of modeFailures) process.stderr.write(`  - ${failure}\n`);
+  process.stdout.write(
+    `${modeCoverage.failures.length ? 'FAIL' : modeCoverage.gated ? 'SKIP' : 'PASS'} ` +
+      `mode transition/request binding${modeCoverage.gated ? ' (ending gate closed)' : ''}\n`
+  );
+  for (const failure of modeCoverage.failures) process.stderr.write(`  - ${failure}\n`);
 
-  if (results.some((result) => result.failures.length) || modeFailures.length) process.exitCode = 1;
+  if (results.some((result) => result.failures.length) || modeCoverage.failures.length) process.exitCode = 1;
 } finally {
   await browser?.close();
   if (vite && !vite.killed) vite.kill('SIGTERM');

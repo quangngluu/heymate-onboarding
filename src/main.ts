@@ -1265,8 +1265,12 @@ class App implements UIActions {
     store.pushQuestTurn({ from: 'user', text: choice.label });
     store.completeOnboarding('first-message');
     const result = store.chooseActiveQuest(choiceId);
-    if (!result) return;
+    if (!result) {
+      store.refund('turn');
+      return;
+    }
     const reply = result.nextPrompt ?? result.choice.outcome;
+    if (result.error === 'ending-unavailable') store.refund('turn');
     store.pushQuestTurn({ from: 'resident', text: reply });
     this.showQuestOutcome(result.choice.id);
     if (!result.completed) {
@@ -1276,20 +1280,16 @@ class App implements UIActions {
     this.speak(reply);
     const turn = store.get().questChat.length - 1;
     this.streamIn(turn, reply, Promise.resolve(null), false);
-    void this.questVisuals.outcomeCommitted({
-      quest,
-      node,
-      choice: result.choice,
-      turn,
-    });
+    if (!result.error) {
+      void this.questVisuals.outcomeCommitted({
+        quest,
+        node,
+        choice: result.choice,
+        turn,
+      });
+    }
     if (result.completed) {
       this.ambience.chime(980);
-      const timer = window.setTimeout(() => {
-        if (store.get().activeQuestId === quest.id && store.get().questPhase === 'ending') {
-          this.leaveQuest();
-        }
-      }, 4200);
-      this.questTimers.push(timer);
     } else {
       this.ambience.chime(680);
     }
@@ -1309,8 +1309,12 @@ class App implements UIActions {
     store.pushQuestTurn({ from: 'user', text });
     store.completeOnboarding('first-message');
     const result = store.submitQuestAction(text);
-    if (!result) return;
+    if (!result) {
+      store.refund('turn');
+      return;
+    }
     const reply = result.nextPrompt ?? result.choice.outcome;
+    if (result.error === 'ending-unavailable') store.refund('turn');
     store.pushQuestTurn({ from: 'resident', text: reply });
     this.showQuestOutcome(result.choice.id);
     if (!result.completed) {
@@ -1320,22 +1324,16 @@ class App implements UIActions {
     this.speak(reply);
     const turn = store.get().questChat.length - 1;
     this.streamIn(turn, reply, Promise.resolve(null), false);
-    void this.questVisuals.outcomeCommitted({
-      quest,
-      node,
-      choice: result.choice,
-      turn,
-      playerAction: text,
-    });
-    this.ambience.chime(result.completed ? 980 : 720);
-    if (result.completed) {
-      const timer = window.setTimeout(() => {
-        if (store.get().activeQuestId === quest.id && store.get().questPhase === 'ending') {
-          this.leaveQuest();
-        }
-      }, 4200);
-      this.questTimers.push(timer);
+    if (!result.error) {
+      void this.questVisuals.outcomeCommitted({
+        quest,
+        node,
+        choice: result.choice,
+        turn,
+        playerAction: text,
+      });
     }
+    this.ambience.chime(result.completed ? 980 : 720);
   }
 
   /** Render a user-authored short line in the active resident's own voice. */

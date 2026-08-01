@@ -30,6 +30,8 @@ import {
 } from '../src/chat/mode';
 import { idleLine, openingLine, reply } from '../src/chat/engine';
 import { resolveSemanticBones, type BoneLike } from '../src/three/bone-map';
+import { questPlayable } from '../src/quest/endings';
+import { RIN_ENDINGS_READY } from '../src/config/rin-sao';
 
 /**
  * The story face, because reveals, the open loop and the causal bank are all
@@ -349,11 +351,22 @@ function endingCoverage(): void {
   const rinEndings = canonViewFor('rin', 'sao').endings;
   assert.equal(rinEndings.length, 5, "rin's ending count");
   for (const ending of rinEndings) {
-    assert.ok(!endingReady(ending), `${ending.id}: review copy must remain gated`);
+    assert.equal(
+      endingReady(ending),
+      RIN_ENDINGS_READY,
+      `${ending.id}: ending state drifted from the single editorial gate`
+    );
     assert.ok(!/MISSING INPUT/.test(ending.label + ending.what + ending.closingLine));
     assert.ok(ending.closingLine?.trim(), `${ending.id}: missing closing line`);
     clean(`rin ending ${ending.id}`, `${ending.label} ${ending.what} ${ending.closingLine}`);
   }
+  const rinQuest = questById('rin-twelfth-frame', 'sao');
+  assert.ok(rinQuest, 'rin quest missing');
+  assert.equal(
+    questPlayable(rinQuest, 'sao'),
+    RIN_ENDINGS_READY,
+    'rin quest playability drifted from the editorial gate'
+  );
   // Kagari and Momo's are written, and must not be gated by accident.
   for (const id of ['kagura', 'momo'] as const) {
     const endings = canonViewFor(id, 'sao').endings;
@@ -461,19 +474,17 @@ async function storeQuestCoverage(): Promise<void> {
   const { Store } = await import('../src/state/store');
   const state = new Store();
   state.set({ residentId: 'rin' });
-  assert.equal(state.startQuest('rin-twelfth-frame'), true);
-  assert.equal(state.get().questPhase, 'threshold');
-  state.completeQuestThreshold();
-  state.leaveQuest();
-  assert.equal(state.startQuest('rin-twelfth-frame'), true);
-  assert.equal(state.get().questPhase, 'episode');
-  const quest = state.questById2('rin-twelfth-frame')!;
-  const choice = quest.nodes[0].choices.find((item) => item.unlockCanonRevealId)!;
-  assert.ok(state.chooseActiveQuest(choice.id));
   assert.equal(
-    state.get().revealed,
-    canonRevealIndexFor('rin', 'sao', choice.unlockCanonRevealId!) + 1
+    state.questsFor('rin').length,
+    RIN_ENDINGS_READY ? 1 : 0,
+    'Store playable list drifted from the editorial gate'
   );
+  assert.equal(
+    state.startQuest('rin-twelfth-frame'),
+    RIN_ENDINGS_READY,
+    'Store start gate drifted from the editorial gate'
+  );
+  assert.equal(state.get().questPhase, RIN_ENDINGS_READY ? 'threshold' : 'none');
 }
 
 async function handlerCoverage(): Promise<void> {
@@ -709,6 +720,8 @@ console.log('  prompts: every reveal + every enabled route quest + safety');
 console.log('  faces: companion withholds nothing; 72 combinations carry no contradictory lead');
 console.log('  scripted fallback: 12 turns per resident');
 console.log('  quests: route lookup + checkpoint resume + stable reveal ids');
-console.log('  endings: every terminal branch resolves; rin x5 authored and gated');
+console.log(
+  `  endings: every terminal branch resolves; rin x5 authored and ${RIN_ENDINGS_READY ? 'ready' : 'gated'}`
+);
 console.log('  rig: semantic bones resolved by hierarchy; inverted spine rejected');
 console.log('  HTTP: chat memory isolation + scene route propagation');

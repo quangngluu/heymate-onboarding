@@ -33,6 +33,8 @@ import {
 } from '../config/onboarding-quests';
 import { resolveCanonRoute } from '../config/canon-route';
 import { canonRevealIndexFor } from '../config/canon-view';
+import { presentableEndingFor, questPlayable } from '../quest/endings';
+import type { V3Ending } from '../config/v3-canon';
 
 export { COST } from '../config/economy';
 export type { Spend } from '../config/economy';
@@ -155,6 +157,9 @@ export interface QuestChoiceResult {
   choice: QuestChoice;
   completed: boolean;
   nextPrompt?: string;
+  /** Present only for a valid terminal; null means the fail-closed surface. */
+  ending?: V3Ending | null;
+  error?: 'ending-unavailable';
 }
 
 function defaultSession(): SessionSetup {
@@ -223,6 +228,8 @@ export interface AppState {
   questHubOpen: boolean;
   activeQuestId: string | null;
   activeQuestNodeId: string | null;
+  /** Session-only landing being presented; the permanent id lives in questEndings. */
+  activeQuestEndingId: string | null;
   questPhase: 'none' | 'threshold' | 'episode' | 'ending';
   questInterruptible: boolean;
   saveGateOpen: boolean;
@@ -317,6 +324,7 @@ const initialState: AppState = {
   questHubOpen: false,
   activeQuestId: null,
   activeQuestNodeId: null,
+  activeQuestEndingId: null,
   questPhase: 'none',
   questInterruptible: false,
   saveGateOpen: false,
@@ -511,6 +519,7 @@ export class Store {
       questHubOpen: false,
       activeQuestId: null,
       activeQuestNodeId: null,
+      activeQuestEndingId: null,
       questPhase: 'none',
       questInterruptible: false,
       saveGateOpen: false,
@@ -833,7 +842,8 @@ export class Store {
   /** Start the next quest in a resident's ordered story path. */
   /** Exactly one authored arc per resident. */
   questsFor(id = this.state.residentId): QuestDefinition[] {
-    return questsForResident(id, resolveCanonRoute());
+    const route = resolveCanonRoute();
+    return questsForResident(id, route).filter((quest) => questPlayable(quest, route));
   }
 
   questById2(id: string): QuestDefinition | undefined {
@@ -849,6 +859,7 @@ export class Store {
   startQuest(id: string): boolean {
     const quest = this.questById2(id);
     if (!quest || quest.residentId !== this.state.residentId) return false;
+    if (!questPlayable(quest, resolveCanonRoute())) return false;
     if (this.nextQuest()?.id !== id) return false;
     const prev = this.progressFor(quest.residentId);
     const revealed = Math.max(prev.revealed, 1);
@@ -865,6 +876,7 @@ export class Store {
       revealed: Math.max(this.state.revealed, revealed),
       activeQuestId: id,
       activeQuestNodeId: checkpoint,
+      activeQuestEndingId: null,
       questChat: resumed ? this.state.questTranscripts[id] ?? [] : [],
       questPhase: quest.threshold && !resumed ? 'threshold' : 'episode',
       questInterruptible: false,
@@ -895,6 +907,7 @@ export class Store {
     this.set({
       activeQuestId: null,
       activeQuestNodeId: null,
+      activeQuestEndingId: null,
       questPhase: 'none',
       questInterruptible: false,
       questChat: [],
@@ -942,6 +955,7 @@ export class Store {
   }
 
   chooseActiveQuest(choiceId: string): QuestChoiceResult | null {
+    if (this.state.questPhase !== 'episode') return null;
     const id = this.state.activeQuestId;
     const quest = id ? this.questById2(id) : undefined;
     if (!quest || quest.residentId !== this.state.residentId) return null;
@@ -953,6 +967,7 @@ export class Store {
 
   /** Resolve and persist a player-authored action in the active scene. */
   submitQuestAction(action: string): QuestChoiceResult | null {
+    if (this.state.questPhase !== 'episode') return null;
     const id = this.state.activeQuestId;
     const quest = id ? this.questById2(id) : undefined;
     if (!quest || quest.residentId !== this.state.residentId) return null;
@@ -967,6 +982,26 @@ export class Store {
     nodeId: string,
     choice: QuestChoice
   ): QuestChoiceResult | null {
+    const prev = this.progressFor();
+    if (!choice.nextNodeId && prev.completedQuests.includes(quest.id)) return null;
+
+    const route = resolveCanonRoute();
+    const ending = choice.nextNodeId
+      ? undefined
+      : presentableEndingFor(quest, route, choice.endingId);
+    if (!choice.nextNodeId && !ending) {
+      console.error(
+        `[quest-ending] Refusing unavailable ending '${choice.endingId ?? 'missing'}' for '${quest.id}'`
+      );
+      this.set({
+        activeQuestEndingId: null,
+        questPhase: 'ending',
+        questInterruptible: false,
+        questClosedAt: this.state.turns,
+      });
+      return { quest, choice, completed: true, ending: null, error: 'ending-unavailable' };
+    }
+
     const residentFlags = this.state.storyFlags[quest.residentId] ?? [];
     const storyFlags = {
       ...this.state.storyFlags,
@@ -974,8 +1009,6 @@ export class Store {
         ? residentFlags
         : [...residentFlags, choice.flag],
     };
-    const prev = this.progressFor();
-    const route = resolveCanonRoute();
     const stableRevealIndex = choice.unlockCanonRevealId
       ? canonRevealIndexFor(quest.residentId, route, choice.unlockCanonRevealId)
       : -1;
@@ -1056,7 +1089,6 @@ export class Store {
       return { quest, choice, completed: false, nextPrompt: next.prompt };
     }
 
-    if (prev.completedQuests.includes(quest.id)) return null;
     progress[quest.residentId] = {
       ...progress[quest.residentId],
       completedQuests: [...prev.completedQuests, quest.id],
@@ -1074,6 +1106,7 @@ export class Store {
       questEndings: choice.endingId
         ? { ...this.state.questEndings, [quest.id]: choice.endingId }
         : this.state.questEndings,
+      activeQuestEndingId: ending!.id,
       questHistory,
       canonLedger,
       questCheckpoints,
@@ -1082,7 +1115,7 @@ export class Store {
       questClosedAt: this.state.turns,
     });
     this.persist();
-    return { quest, choice, completed: true };
+    return { quest, choice, completed: true, ending };
   }
 
   // ---- creator ----
