@@ -11,14 +11,14 @@ export interface CamPreset {
 const BASE_PRESETS: Record<string, CamPreset> = {
   // Gallery keeps the camera in an empty dark room; no models load yet.
   gallery: { pos: [0, 1.6, 7.2], target: [0, 1.1, 0], fov: 42 },
-  // Companion stage: hero sits right of frame center so the giant name and
-  // the waiting residents own the left side.
-  stage: { pos: [0.6, 1.5, 4.7], target: [-0.62, 0.88, 0], fov: 36 },
+  // Desktop conversation owns the right rail. Keep her full silhouette just
+  // left of it, with her feet above the bottom composer.
+  stage: { pos: [0.4, 1.5, 4.9], target: [-0.08, 0.85, 0], fov: 37 },
   // Portrait. The wide framing left her a thumbnail in the corner: a phone's
   // narrow horizontal field plus a target pushed a long way left put her at the
   // edge, with the top half of the screen empty stage. This comes in closer and
   // keeps only enough left bias to clear the column her words sit in.
-  'stage-portrait': { pos: [0.42, 1.32, 3.1], target: [-0.3, 1.0, 0], fov: 34 },
+  'stage-portrait': { pos: [0.55, 1.38, 3.8], target: [-0.42, 0.84, 0], fov: 35 },
   arrival: { pos: [0, 1.7, 9.6], target: [0, 1.35, 0], fov: 40 },
   hall: { pos: [0, 2.5, 7.4], target: [0, 1.0, -2.8], fov: 46 },
   reveal: { pos: [1.0, 1.5, 3.2], target: [-0.1, 1.05, 0], fov: 38 },

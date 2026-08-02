@@ -1448,7 +1448,7 @@ class App implements UIActions {
   private returnToFront(): void {
     this.controls.enabled = false;
     void this.rig
-      .flyTo(CAMERA_PRESETS.stage, this.engine.reducedMotion ? 0 : 0.7)
+      .flyTo(stagePreset(), this.engine.reducedMotion ? 0 : 0.7)
       .then((done) => {
         if (done && store.get().step === 'stage') this.enableStageOrbit();
       });
