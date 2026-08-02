@@ -5,10 +5,10 @@ import { EXTMeshoptCompression, KHRMeshQuantization } from '@gltf-transform/exte
 import { MeshoptDecoder } from 'meshoptimizer';
 import { describe, expect, it } from 'vitest';
 
-const assetPath = resolve('public/assets/quest/rigs/meshy-biped-placeholder.glb');
+const assetPath = resolve('public/assets/quest/rigs/meshy-walking-woman.glb');
 
 describe('Quest rig placeholder asset gate', () => {
-  it('ships one real skinned, materialized character with the required semantic bones', async () => {
+  it('ships one real skinned, materialized, animated character with the required semantic bones', async () => {
     expect(existsSync(assetPath), `Missing Quest rig at ${assetPath}`).toBe(true);
 
     await MeshoptDecoder.ready;
@@ -31,6 +31,8 @@ describe('Quest rig placeholder asset gate', () => {
 
     expect(root.listSkins().length).toBeGreaterThanOrEqual(1);
     expect(root.listMaterials().length).toBeGreaterThanOrEqual(1);
+    // The spike rig ships a real motion clip (unlike the neutral placeholder).
+    expect(root.listAnimations().length).toBeGreaterThanOrEqual(1);
     expect(required.filter((name) => !names.has(name))).toEqual([]);
   });
 });

@@ -69,6 +69,8 @@ export class WaifuStage {
   private moteMotif: MoteMotif = 'data';
   private questMode = false;
   private questRig: THREE.Group | null = null;
+  /** Drives the quest rig's walk clip; null until the animated asset loads. */
+  private questMixer: THREE.AnimationMixer | null = null;
   private archive = new THREE.Group();
   private archiveFrames: THREE.Mesh[] = [];
   private frame12: THREE.Mesh;
@@ -191,11 +193,12 @@ export class WaifuStage {
 
     setQuestRigStatus('loading');
     void loadQuestRig(maxAnisotropy)
-      .then((rig) => {
-        this.questRig = rig;
-        rig.position.set(0, this.heroY, 0);
-        rig.visible = false;
-        this.scene.add(rig);
+      .then(({ group, mixer }) => {
+        this.questRig = group;
+        this.questMixer = mixer;
+        group.position.set(0, this.heroY, 0);
+        group.visible = false;
+        this.scene.add(group);
         setQuestRigStatus('ready');
         this.applyQuestCharacterVisibility();
       })
@@ -432,6 +435,8 @@ export class WaifuStage {
     }
 
     if (this.questMode) {
+      // Advance the rig's walk clip (dt is the frame delta in seconds).
+      this.questMixer?.update(dt);
       this.archiveFrames.forEach((frame, i) => {
         const material = frame.material as THREE.MeshBasicMaterial;
         material.opacity =
@@ -525,6 +530,8 @@ export class WaifuStage {
         : [];
       for (const material of materials) material.dispose();
     });
+    this.questMixer?.stopAllAction();
+    this.questMixer = null;
     if (this.questRig) disposeQuestRig(this.questRig);
     this.questRig = null;
   }

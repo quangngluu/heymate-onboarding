@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { resolveSemanticBones, type SemanticSkeleton } from './bone-map';
 
-export const QUEST_RIG_URL = '/assets/quest/rigs/meshy-biped-placeholder.glb';
+export const QUEST_RIG_URL = '/assets/quest/rigs/meshy-walking-woman.glb';
 
 /**
  * The semantic skeleton this rig resolved to, once loaded.
@@ -41,15 +41,48 @@ export function setQuestRigStatus(status: QuestRigStatus): void {
   }
 }
 
+export interface LoadedQuestRig {
+  group: THREE.Group;
+  /** Non-null when the asset shipped a clip; drives the in-place walk. */
+  mixer: THREE.AnimationMixer | null;
+}
+
 /**
- * Load the real skinned placeholder used to validate Quest staging.
+ * Pin the hips to their starting ground position so a walk clip plays in place.
  *
- * Meshy supplies the first skin only. Its bundled rest-pose clip was removed
- * during packing and is deliberately not used: authored movement will be
- * retargeted from Mixamo, so a placeholder animation cannot silently become
- * the product motion source.
+ * The clip is a forward walk cycle: its Hips translation carries the body across
+ * the floor, which on a fixed plinth just walks her out of frame. So the X and Z
+ * of the Hips position track are held at frame 0 while Y is left as authored —
+ * the leg and spine rotation tracks still cycle, which is the motion we want to
+ * see, and the vertical bob survives. Root motion lives on Hips alone; see
+ * bone-map.ts.
  */
-export async function loadQuestRig(maxAnisotropy = 8): Promise<THREE.Group> {
+function stripRootMotion(clip: THREE.AnimationClip, hipsName: string): void {
+  const track = clip.tracks.find((t) => t.name === `${hipsName}.position`) as
+    | THREE.VectorKeyframeTrack
+    | undefined;
+  if (!track) return;
+  const values = track.values;
+  const x0 = values[0];
+  const z0 = values[2];
+  for (let i = 0; i < values.length; i += 3) {
+    values[i] = x0; // X pinned to frame 0
+    values[i + 2] = z0; // Z pinned to frame 0
+    // values[i + 1] (Y) left untouched so the vertical bob remains.
+  }
+}
+
+/**
+ * Load the skinned Quest rig and start its motion.
+ *
+ * MOTION SPIKE (not final art): this asset is a generic Meshy "walking woman"
+ * that satisfies the same semantic bone contract as the neutral placeholder but,
+ * unlike it, ships a real walk clip. It exists to prove the animation runtime end
+ * to end — mixer, retarget-shaped skeleton, in-place root-motion strip — ahead of
+ * the final rigged Rin. It must not be mistaken for product art: the shipped
+ * character motion is still a Mixamo retarget onto Rin's own rig.
+ */
+export async function loadQuestRig(maxAnisotropy = 8): Promise<LoadedQuestRig> {
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const gltf = await loader.loadAsync(QUEST_RIG_URL);
   const source = gltf.scene;
@@ -113,7 +146,7 @@ export async function loadQuestRig(maxAnisotropy = 8): Promise<THREE.Group> {
   const wrapper = new THREE.Group();
   wrapper.name = 'QuestRigPlaceholder';
   wrapper.userData.assetRole = 'skinned-placeholder';
-  wrapper.userData.motionSource = 'mixamo-pending';
+  wrapper.userData.motionSource = 'spike-walk-woman';
   wrapper.add(source);
 
   // The subtle bone overlay makes this technical prototype visibly a rig,
@@ -127,7 +160,18 @@ export async function loadQuestRig(maxAnisotropy = 8): Promise<THREE.Group> {
   skeletonMaterial.depthWrite = false;
   wrapper.add(skeleton);
 
-  return wrapper;
+  // Drive the walk clip. Root motion is pinned so she strides in place; the
+  // cycling leg and spine tracks (and the cyan skeleton overlay following them)
+  // are what read as "the rig is running".
+  let mixer: THREE.AnimationMixer | null = null;
+  const clip = gltf.animations[0] ?? null;
+  if (clip) {
+    stripRootMotion(clip, resolved?.hips ?? 'Hips');
+    mixer = new THREE.AnimationMixer(source);
+    mixer.clipAction(clip).play();
+  }
+
+  return { group: wrapper, mixer };
 }
 
 export function disposeQuestRig(rig: THREE.Group): void {
