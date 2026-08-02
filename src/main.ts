@@ -609,7 +609,7 @@ class App implements UIActions {
       : [openingTurn];
     store.set({ chat });
 
-    const voice = r.voices.find((v) => v.slot === s.session.voice) ?? r.voices[0];
+    const voice = r.voices.find((v) => v.slot === 'signature') ?? r.voices[0];
     // Only the authored signature greeting has a recording; everything else is
     // rendered, or stays text when there is no endpoint.
     this.speak(line, !resuming && !saved.memories.length ? voice.url : undefined);
@@ -709,7 +709,7 @@ class App implements UIActions {
   ): Promise<number | null> {
     if (this.ambience.isMuted) return null;
     const r = canonViewFor(residentId, resolveCanonRoute());
-    const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
+    const slot = r.voices.find((v) => v.slot === 'signature') ?? r.voices[0];
     const line = spoken(text);
     if (!line) return null;
 
@@ -781,7 +781,7 @@ class App implements UIActions {
   ): Promise<AudioBuffer | null> {
     if (this.ambience.isMuted) return Promise.resolve(null);
     const r = canonViewFor(residentId, resolveCanonRoute());
-    const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
+    const slot = r.voices.find((v) => v.slot === 'signature') ?? r.voices[0];
     if (bump) this.speechToken++;
     const line = spoken(text);
     if (!line) return Promise.resolve(null);
@@ -916,7 +916,7 @@ class App implements UIActions {
     store.set({ voicing: true });
     const speakerId = store.get().residentId;
     const r = canonViewFor(speakerId, resolveCanonRoute());
-    const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
+    const slot = r.voices.find((v) => v.slot === 'signature') ?? r.voices[0];
     const line = spoken(text);
     if (!line) {
       store.set({ voicing: false });
@@ -1391,7 +1391,7 @@ class App implements UIActions {
     const residentId = s.residentId;
     const conversation = this.conversationToken();
     const r = canonViewFor(residentId, resolveCanonRoute());
-    const slot = r.voices.find((voice) => voice.slot === s.session.voice) ?? r.voices[0];
+    const slot = r.voices.find((voice) => voice.slot === 'signature') ?? r.voices[0];
     this.cancelIdleNudge();
     store.set({ voicing: true });
     void renderSpeech(line, slot.voiceId, slot.speed, undefined, slot.vol).then(async (url) => {
@@ -1418,11 +1418,6 @@ class App implements UIActions {
   updateSession(patch: Partial<SessionSetup>): void {
     store.updateSession(patch);
     store.completeOnboarding('set-chat-config');
-    if (patch.voice) {
-      const r = canonViewFor(store.get().residentId, resolveCanonRoute());
-      const v = r.voices.find((x) => x.slot === patch.voice);
-      if (v?.url) this.ambience.playClip(v.url);
-    }
   }
 
   resetSession(): void {

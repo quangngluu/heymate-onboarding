@@ -22,11 +22,7 @@ export const COPY = {
     voiceChat: 'Gọi cho em',
     voiceChatLocked: 'Sắp mở: nói trực tiếp với em bằng giọng của anh.',
     sessionNote: 'Thiết lập này chỉ áp dụng cho lần gặp này. Con người của em không đổi.',
-    scenario: 'Hai người đang làm gì cùng nhau?',
-    mood: 'Anh muốn không khí thế nào?',
-    style: 'Em nên chủ động đến đâu?',
     length: 'Độ dài phản hồi',
-    voice: 'Giọng của em',
     identity: 'Anh muốn nhập vai ai?',
     identityPlaceholder: 'Tên nhân vật anh muốn trở thành',
     identityNote:

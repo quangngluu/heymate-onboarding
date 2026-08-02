@@ -24,7 +24,13 @@ export function effectivePromptSession(
   session: PromptSessionInput,
   mode: ConversationMode
 ): PromptSession {
-  return { ...session, face: faceForMode(mode) };
+  return {
+    persona: session.persona,
+    identity: session.identity,
+    scenario: session.scenario,
+    length: session.length,
+    face: faceForMode(mode),
+  };
 }
 
 export type ConversationScope = `chat:${ResidentId}` | `quest:${string}`;

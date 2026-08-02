@@ -347,21 +347,6 @@ html, body {
 
 /* ---------- Companion stage ---------- */
 .step-stage { --accent: var(--ivory); }
-.stage-name {
-  position: absolute;
-  left: 40px;
-  bottom: 16vh;
-  margin: 0;
-  font-size: clamp(56px, 11vw, 150px);
-  font-weight: 800;
-  line-height: 0.92;
-  letter-spacing: -0.03em;
-  color: var(--ivory);
-  opacity: 0.14;
-  user-select: none;
-  pointer-events: none;
-  max-width: 6ch;
-}
 .stage-top { position: absolute; top: 60px; left: 22px; }
 .stage-top .btn[aria-pressed='false'] { opacity: 0.6; }
 .stage-control-icon { display: none; }

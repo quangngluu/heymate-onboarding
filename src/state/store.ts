@@ -8,7 +8,7 @@ import {
   type BondDna,
   type Rapport,
 } from '../config/bond';
-import { RESIDENTS, type ResidentId, type VoiceSlot } from '../config/residents';
+import { RESIDENTS, type ResidentId } from '../config/residents';
 import {
   questById,
   questNode,
@@ -129,7 +129,6 @@ export interface SessionSetup {
   /** Open Chat context. Quest scenes ignore it and supply their own setting. */
   scenario: ScenarioId;
   length: LengthId;
-  voice: VoiceSlot;
   /** Who the visitor is entering as. Free text; never a list. */
   identity: string;
 }
@@ -182,7 +181,6 @@ function defaultSession(): SessionSetup {
     persona: '',
     scenario: 'casual',
     length: 'natural',
-    voice: 'signature',
     identity: '',
   };
 }
