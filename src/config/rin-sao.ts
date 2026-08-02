@@ -20,7 +20,7 @@
 import { RIN_V3_AUTHORED } from './v3-authored';
 
 /** K-owned editorial gate: approval changes this one line in its own commit. */
-export const RIN_ENDINGS_READY = false;
+export const RIN_ENDINGS_READY = true;
 
 export const RIN_SAO = {
   route: 'sword-art-online',
