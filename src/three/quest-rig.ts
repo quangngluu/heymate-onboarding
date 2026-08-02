@@ -33,7 +33,7 @@ export function questRigPosable(): THREE.Object3D | null {
 
 const QUEST_RIG_HEIGHT = 1.52;
 
-export type QuestRigStatus = 'loading' | 'ready' | 'fallback';
+export type QuestRigStatus = 'disabled' | 'loading' | 'ready' | 'fallback';
 
 export function setQuestRigStatus(status: QuestRigStatus): void {
   if (typeof document !== 'undefined') {

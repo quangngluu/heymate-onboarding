@@ -668,7 +668,7 @@ html, body {
   transform: translateX(50%);
   width: min(600px, calc(100vw - 32px));
 }
-html[data-quest-rig='ready'] .step-stage.is-quest-mode::after {
+html[data-quest-rig-debug='true'][data-quest-rig='ready'] .step-stage.is-quest-mode::after {
   content: 'SKINNED RIG · PROTOTYPE';
   position: absolute;
   top: calc(76px + var(--safe-t));

@@ -33,6 +33,29 @@ const FRAME12_X = 0.92;
 const HERO_HEIGHT = 1.3;
 const GHOST_HEIGHT = 1.05;
 
+interface QuestCharacterVisibilityInput {
+  questMode: boolean;
+  debugRig: boolean;
+  hasRig: boolean;
+  isHero: boolean;
+}
+
+export function questCharacterVisibility({
+  questMode,
+  debugRig,
+  hasRig,
+  isHero,
+}: QuestCharacterVisibilityInput): { resident: boolean; rig: boolean } {
+  if (!questMode) return { resident: true, rig: false };
+  if (!debugRig) return { resident: false, rig: false };
+  return { resident: !hasRig && isHero, rig: hasRig };
+}
+
+function questRigDebugEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('debugQuestRig') === '1';
+}
+
 /** Waiting spots behind and to the left of the base, matching the layout. */
 /**
  * Waiting spots. Read from the stage camera they must step back *and* across,
@@ -68,6 +91,7 @@ export class WaifuStage {
   private motes: THREE.Points;
   private moteMotif: MoteMotif = 'data';
   private questMode = false;
+  private readonly debugQuestRig: boolean;
   private questRig: THREE.Group | null = null;
   /** Drives the quest rig's walk clip; null until the animated asset loads. */
   private questMixer: THREE.AnimationMixer | null = null;
@@ -87,6 +111,8 @@ export class WaifuStage {
     baseTopY: number,
     maxAnisotropy = 8
   ) {
+    this.debugQuestRig = questRigDebugEnabled();
+    document.documentElement.dataset.questRigDebug = String(this.debugQuestRig);
     this.maxAnisotropy = maxAnisotropy;
     this.heroY = baseTopY;
     this.ringMat = new THREE.MeshBasicMaterial({
@@ -191,21 +217,25 @@ export class WaifuStage {
     this.archive.visible = false;
     scene.add(this.archive);
 
-    setQuestRigStatus('loading');
-    void loadQuestRig(maxAnisotropy)
-      .then(({ group, mixer }) => {
-        this.questRig = group;
-        this.questMixer = mixer;
-        group.position.set(0, this.heroY, 0);
-        group.visible = false;
-        this.scene.add(group);
-        setQuestRigStatus('ready');
-        this.applyQuestCharacterVisibility();
-      })
-      .catch((error) => {
-        setQuestRigStatus('fallback');
-        console.warn('Quest rig failed to load; keeping the static resident fallback.', error);
-      });
+    if (this.debugQuestRig) {
+      setQuestRigStatus('loading');
+      void loadQuestRig(maxAnisotropy)
+        .then(({ group, mixer }) => {
+          this.questRig = group;
+          this.questMixer = mixer;
+          group.position.set(0, this.heroY, 0);
+          group.visible = false;
+          this.scene.add(group);
+          setQuestRigStatus('ready');
+          this.applyQuestCharacterVisibility();
+        })
+        .catch((error) => {
+          setQuestRigStatus('fallback');
+          console.warn('Quest debug rig failed to load; keeping it out of the live view.', error);
+        });
+    } else {
+      setQuestRigStatus('disabled');
+    }
   }
 
   setBaseTop(y: number): void {
@@ -278,7 +308,12 @@ export class WaifuStage {
   private place(id: string, isHero: boolean, ghostIdx = 0): void {
     const e = this.entries.get(id);
     if (!e) return;
-    e.group.visible = !this.questMode || (isHero && !this.questRig);
+    e.group.visible = questCharacterVisibility({
+      questMode: this.questMode,
+      debugRig: this.debugQuestRig,
+      hasRig: this.questRig !== null,
+      isHero,
+    }).resident;
     // Models arrive normalized to 1.45 tall by the shared character loader.
     const scale = (isHero ? HERO_HEIGHT : GHOST_HEIGHT) / 1.45;
     e.group.scale.setScalar(scale);
@@ -354,10 +389,21 @@ export class WaifuStage {
   private applyQuestCharacterVisibility(): void {
     const hasRig = this.questRig !== null;
     for (const [id, entry] of this.entries) {
-      entry.group.visible =
-        !this.questMode || (!hasRig && id === this.heroId);
+      entry.group.visible = questCharacterVisibility({
+        questMode: this.questMode,
+        debugRig: this.debugQuestRig,
+        hasRig,
+        isHero: id === this.heroId,
+      }).resident;
     }
-    if (this.questRig) this.questRig.visible = this.questMode;
+    if (this.questRig) {
+      this.questRig.visible = questCharacterVisibility({
+        questMode: this.questMode,
+        debugRig: this.debugQuestRig,
+        hasRig,
+        isHero: true,
+      }).rig;
+    }
   }
 
   setQuestVisual(
@@ -426,7 +472,7 @@ export class WaifuStage {
     for (const [id, e] of this.entries) {
       const isHero = id === this.heroId;
       e.group.rotation.y += (e.targetYaw - e.group.rotation.y) * Math.min(1, dt * 4);
-      if (isHero && !(this.questMode && this.questRig)) {
+      if (isHero && e.group.visible) {
         // Breathing sway, slightly stronger while talking.
         const amp = 0.006 + this.speakingLevel * 0.006;
         e.group.position.y = this.heroY + Math.sin(t * 1.15) * amp;
@@ -436,7 +482,7 @@ export class WaifuStage {
 
     if (this.questMode) {
       // Advance the rig's walk clip (dt is the frame delta in seconds).
-      this.questMixer?.update(dt);
+      if (this.debugQuestRig) this.questMixer?.update(dt);
       this.archiveFrames.forEach((frame, i) => {
         const material = frame.material as THREE.MeshBasicMaterial;
         material.opacity =

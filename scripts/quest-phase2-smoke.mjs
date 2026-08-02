@@ -538,7 +538,7 @@ async function runViewport(browser, viewport) {
   await page.click('[data-testid="universe-waifu-universe"]');
   await page.waitForSelector('.step-stage', { visible: true });
   await page.waitForFunction(
-    () => document.documentElement.dataset.questRig === 'ready',
+    () => ['disabled', 'ready', 'fallback'].includes(document.documentElement.dataset.questRig ?? ''),
     { timeout: 30_000 }
   );
   await page.waitForFunction(
@@ -675,6 +675,7 @@ async function runViewport(browser, viewport) {
       route: localStorage.getItem('heymate.canonRoute'),
       prototype: localStorage.getItem('heymate.questPrototype'),
       rig: document.documentElement.dataset.questRig ?? null,
+      rigDebug: document.documentElement.dataset.questRigDebug ?? null,
       series: series?.textContent?.trim() ?? '',
       questPhase: stage?.getAttribute('data-quest-phase') ?? null,
       episodeLabel: label?.textContent?.trim() ?? '',
@@ -715,7 +716,9 @@ async function runViewport(browser, viewport) {
   const failures = [];
   if (state.route !== 'sao') failures.push(`route=${state.route}`);
   if (state.prototype) failures.push(`unexpected prototype=${state.prototype}`);
-  if (state.rig !== 'ready') failures.push(`rig=${state.rig}`);
+  if (state.rig !== 'disabled' || state.rigDebug !== 'false') {
+    failures.push(`shipping rig=${JSON.stringify({ rig: state.rig, debug: state.rigDebug })}`);
+  }
   if (!state.series.includes('SWORD ART ONLINE')) {
     failures.push(`series=${JSON.stringify(state.series)}`);
   }
