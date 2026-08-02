@@ -215,39 +215,53 @@ export default async function handler(req: Request): Promise<Response> {
     subject && body.perspective === 'first-person' ? 'first-person' : 'observed';
 
   try {
-    const brief = await fetch(WRITER, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${writerKey}` },
-      body: JSON.stringify({
-        model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
-        max_tokens: 90,
-        temperature: 0.7,
-        messages: [
-          {
-            role: 'system',
-            content: [
-              perspective === 'first-person'
-                ? BRIEF_FIRST_PERSON
-                : subject
-                  ? BRIEF_WITH_SUBJECT
-                  : BRIEF_EMPTY,
-              '',
-              sceneBriefFor(resident.id, route, body.scene ?? text, perspective),
-            ].join('\n'),
-          },
-          {
-            role: 'user',
-            content: body.scene ? `Cảnh: ${body.scene}\nVừa xảy ra: ${text}` : text,
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(12000),
-    });
-    if (!brief.ok) return Response.json({ error: 'writer' }, { status: 502 });
-
-    const briefData = (await brief.json()) as { choices?: { message?: { content?: string } }[] };
-    const sceneBrief = (briefData.choices?.[0]?.message?.content ?? '').trim().replace(/^["']|["']$/g, '');
-    if (!sceneBrief) return Response.json({ error: 'no-brief' }, { status: 502 });
+    const authoredBrief = sceneBriefFor(
+      resident.id,
+      route,
+      body.scene ?? text,
+      perspective
+    ).replace(/\n+/g, '. ');
+    let sceneBrief = authoredBrief;
+    try {
+      const brief = await fetch(WRITER, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${writerKey}` },
+        body: JSON.stringify({
+          model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
+          max_tokens: 90,
+          temperature: 0.7,
+          messages: [
+            {
+              role: 'system',
+              content: [
+                perspective === 'first-person'
+                  ? BRIEF_FIRST_PERSON
+                  : subject
+                    ? BRIEF_WITH_SUBJECT
+                    : BRIEF_EMPTY,
+                '',
+                sceneBriefFor(resident.id, route, body.scene ?? text, perspective),
+              ].join('\n'),
+            },
+            {
+              role: 'user',
+              content: body.scene ? `Cảnh: ${body.scene}\nVừa xảy ra: ${text}` : text,
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(12000),
+      });
+      if (brief.ok) {
+        const briefData = (await brief.json()) as { choices?: { message?: { content?: string } }[] };
+        const written = (briefData.choices?.[0]?.message?.content ?? '')
+          .trim()
+          .replace(/^["']|["']$/g, '');
+        if (written) sceneBrief = written;
+      }
+    } catch {
+      // Authored Places/Props/Atmosphere are the safe fallback; image delivery
+      // must not depend on a second model returning within the story beat.
+    }
 
     const look = `${resident.setting}. ${resident.keyVisual.palette} cinematic still, shallow depth of field`;
 
@@ -279,7 +293,11 @@ export default async function handler(req: Request): Promise<Response> {
             guidance_scale: 3.5,
             num_images: 1,
             output_format: 'jpeg',
-            safety_tolerance: '2',
+            // Match the reviewed Open Chat Kontext generation contract. Level
+            // 2 rejects the same approved Rin source art before composition;
+            // level 3 still keeps fal's checker on and lets the result-level
+            // `has_nsfw_concepts` gate below make the final ship decision.
+            safety_tolerance: '3',
           },
         ]
       : [
