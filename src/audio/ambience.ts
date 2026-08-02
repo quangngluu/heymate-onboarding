@@ -107,7 +107,7 @@ export class Ambience {
   }
 
   private clipCache = new Map<string, Promise<AudioBuffer>>();
-  private clipSource: AudioBufferSourceNode | null = null;
+  private clipSources = new Set<AudioBufferSourceNode>();
   private clipGain: GainNode | null = null;
   private questGain: GainNode | null = null;
   private questSources: AudioScheduledSourceNode[] = [];
@@ -172,8 +172,7 @@ export class Ambience {
     const ctx = this.ctx;
     this.clipToken = (this.clipToken + 1) | 0;
     const token = this.clipToken;
-    this.clipSource?.stop();
-    this.clipSource = null;
+    this.stopClipSources();
     if (!ctx) return { push: () => {}, end: () => 0, playedFrom: () => null };
 
     this.resumeIfNeeded();
@@ -201,7 +200,7 @@ export class Ambience {
         src.start(at);
         if (started === null) started = at;
         next = at + buf.duration;
-        this.clipSource = src;
+        this.trackClipSource(src);
       },
       end: () => (started === null ? 0 : Math.max(0, next - ctx.currentTime)),
       playedFrom: () => started,
@@ -211,7 +210,7 @@ export class Ambience {
   private startBuffer(buffer: AudioBuffer): void {
     const ctx = this.ctx;
     if (!ctx) return;
-    this.clipSource?.stop();
+    this.stopClipSources();
     if (!this.clipGain) {
       this.clipGain = ctx.createGain();
       this.clipGain.connect(ctx.destination);
@@ -221,14 +220,29 @@ export class Ambience {
     src.buffer = buffer;
     src.connect(this.clipGain);
     src.start();
-    this.clipSource = src;
+    this.trackClipSource(src);
   }
   private clipToken = 0;
 
+  private trackClipSource(source: AudioBufferSourceNode): void {
+    this.clipSources.add(source);
+    source.onended = () => this.clipSources.delete(source);
+  }
+
+  private stopClipSources(): void {
+    for (const source of this.clipSources) {
+      try {
+        source.stop();
+      } catch {
+        // Already ended.
+      }
+    }
+    this.clipSources.clear();
+  }
+
   stopClip(): void {
     this.clipToken++;
-    this.clipSource?.stop();
-    this.clipSource = null;
+    this.stopClipSources();
   }
 
   /** Authored Rin archive layers: hum, rain texture and electrical air. */

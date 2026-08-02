@@ -986,6 +986,12 @@ class App implements UIActions {
     const mode: ConversationMode = s.activeQuestId ? 'quest' : 'open-chat';
     const conversation = this.conversationToken();
     this.cancelIdleNudge();
+    this.speechToken++;
+    window.clearTimeout(this.speakTimer);
+    cancelSpeech();
+    this.ambience.stopClip();
+    store.set({ speaking: false, voicing: false });
+    this.residentStage?.setSpeaking(false);
     if (mode === 'quest') store.pushQuestTurn({ from: 'user', text });
     else store.pushTurn({ from: 'user', text });
     store.completeOnboarding('first-message');

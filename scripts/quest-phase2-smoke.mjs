@@ -432,6 +432,83 @@ async function runMuteTtsCoverage(browser) {
   return { failures };
 }
 
+async function runTurnOverlapCoverage(browser) {
+  const failures = [];
+  const context = await browser.createBrowserContext();
+  try {
+    const page = await context.newPage();
+    await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true });
+    await page.evaluateOnNewDocument(() => {
+      const realFetch = window.fetch.bind(window);
+      const probe = { chats: 0, streamStarts: 0, stops: 0 };
+      window.__heymateOverlapSmoke = probe;
+      const sourcePrototype = AudioBufferSourceNode.prototype;
+      const realStart = sourcePrototype.start;
+      const realStop = sourcePrototype.stop;
+      sourcePrototype.start = function (...args) {
+        probe.streamStarts++;
+        return realStart.apply(this, args);
+      };
+      sourcePrototype.stop = function (...args) {
+        probe.stops++;
+        return realStop.apply(this, args);
+      };
+      window.fetch = (input, init) => {
+        const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+        if (url.includes('/api/chat')) {
+          probe.chats++;
+          if (probe.chats === 2) return new Promise(() => {});
+          return Promise.resolve(
+            new Response(JSON.stringify({ text: 'Lượt đầu vẫn còn đang phát.' }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          );
+        }
+        if (url.includes('/api/tts')) {
+          const body = JSON.parse(String(init?.body ?? '{}'));
+          if (!body.stream) return Promise.resolve(new Response('', { status: 503 }));
+          const pcm = new Int16Array(64_000);
+          pcm.fill(320);
+          return Promise.resolve(
+            new Response(new Uint8Array(pcm.buffer), {
+              status: 200,
+              headers: { 'X-Sample-Rate': '32000', 'Content-Type': 'application/octet-stream' },
+            })
+          );
+        }
+        return realFetch(input, init);
+      };
+    });
+    await page.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.click('[data-testid="universe-waifu-universe"]');
+    await page.waitForSelector('.step-stage', { visible: true });
+    await page.waitForSelector('.dock-bar .chat-input:not([disabled])', { visible: true });
+    await page.evaluate(() => {
+      window.__heymateOverlapSmoke.chats = 0;
+      window.__heymateOverlapSmoke.streamStarts = 0;
+      window.__heymateOverlapSmoke.stops = 0;
+    });
+
+    await fillInput(page, '.dock-bar .chat-input', 'FIRST TURN');
+    await clickSelector(page, '.dock-bar .btn-primary');
+    await page.waitForFunction(
+      () => window.__heymateOverlapSmoke.streamStarts > 0 && !document.querySelector('.dock-bar .chat-input')?.disabled,
+      { timeout: 15_000 }
+    );
+    await page.evaluate(() => { window.__heymateOverlapSmoke.stops = 0; });
+    await fillInput(page, '.dock-bar .chat-input', 'SECOND TURN');
+    await clickSelector(page, '.dock-bar .btn-primary');
+    await page.waitForFunction(() => window.__heymateOverlapSmoke.chats === 2);
+    await new Promise((done) => setTimeout(done, 80));
+    const stopsAtSubmit = await page.evaluate(() => window.__heymateOverlapSmoke.stops);
+    if (stopsAtSubmit < 1) failures.push('turn 2 submit did not stop turn 1 playback');
+  } finally {
+    await context.close();
+  }
+  return { failures };
+}
+
 async function runViewport(browser, viewport) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
@@ -707,6 +784,7 @@ try {
   const modeCoverage = await runModeTransitionCoverage(browser);
   const openChatVisualCoverage = await runOpenChatVisualRewardCoverage(browser);
   const muteTtsCoverage = await runMuteTtsCoverage(browser);
+  const turnOverlapCoverage = await runTurnOverlapCoverage(browser);
 
   if (captureDir) {
     writeFileSync(
@@ -742,11 +820,17 @@ try {
   );
   for (const failure of muteTtsCoverage.failures) process.stderr.write(`  - ${failure}\n`);
 
+  process.stdout.write(
+    `${turnOverlapCoverage.failures.length ? 'FAIL' : 'PASS'} turn submit stops prior playback\n`
+  );
+  for (const failure of turnOverlapCoverage.failures) process.stderr.write(`  - ${failure}\n`);
+
   if (
     results.some((result) => result.failures.length) ||
     modeCoverage.failures.length ||
     openChatVisualCoverage.failures.length ||
-    muteTtsCoverage.failures.length
+    muteTtsCoverage.failures.length ||
+    turnOverlapCoverage.failures.length
   ) process.exitCode = 1;
 } finally {
   await browser?.close();
