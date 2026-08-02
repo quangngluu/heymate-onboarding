@@ -198,7 +198,8 @@ class App implements UIActions {
       this.engine.scene,
       [this.stage.skyline],
       undefined,
-      this.engine.reducedMotion
+      this.engine.reducedMotion,
+      this.engine.camera
     );
     this.questVisuals = new QuestVisualRuntime(store, undefined, (url) => {
       void this.backdrop.showScene(url);
