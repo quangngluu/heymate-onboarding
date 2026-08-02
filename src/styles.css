@@ -827,20 +827,6 @@ html[data-quest-rig='ready'] .step-stage.is-quest-mode::after {
 /* A beat is what she is doing. It sits between her bubbles rather than inside
    one, so it never reads as speech, and it is the half the voice engine never
    receives. */
-.scene-shot {
-  align-self: flex-start;
-  width: 100%;
-  max-width: 94%;
-  aspect-ratio: 4 / 3;
-  object-fit: cover;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3);
-  animation: shot-in 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-@keyframes shot-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .scene-shot { animation: none; } }
-
 /* An Open Chat image is a thing she deliberately shows, not a Quest camera
    cut. It carries its own context and gives the visitor a way back into the
    conversation instead of becoming a decorative dead end. */
@@ -1965,7 +1951,6 @@ html[data-quest-rig='ready'] .step-stage.is-quest-mode::after {
     border-radius: 11px;
     max-width: 100%;
   }
-  .speech-log .scene-shot { pointer-events: auto; }
   .speech-log:has(.open-chat-visual) {
     width: calc(100vw - 20px);
     max-width: 410px;

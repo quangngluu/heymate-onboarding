@@ -112,7 +112,7 @@ class App implements UIActions {
   private stage: StageHandles;
   private picker: Picker;
   private ambience = new Ambience();
-  private questVisuals = new QuestVisualRuntime(store);
+  private questVisuals: QuestVisualRuntime;
   private conversation = new ConversationLifetime();
   private nameplate: Nameplate;
   private backdrop!: FactionBackdrop;
@@ -195,6 +195,9 @@ class App implements UIActions {
     );
     this.nameplate = new Nameplate(this.engine.scene);
     this.backdrop = new FactionBackdrop(this.engine.scene, [this.stage.skyline]);
+    this.questVisuals = new QuestVisualRuntime(store, undefined, (url) => {
+      void this.backdrop.showScene(url);
+    });
 
     // Selection rim rig: two colored back-side lights that follow whatever is
     // in focus (selected plinth, then the Mate) so figures pop off the pano.

@@ -40,8 +40,6 @@ import {
   COST,
   chatConversationScope,
   questConversationScope,
-  shotAssignmentsSignature,
-  shotOwnerKey,
   store,
 } from '../state/store';
 import { extractMemories } from '../chat/memory';
@@ -1020,7 +1018,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   let lastChatScope = '';
   let lastWaiting = false;
   let lastRevealKey = '';
-  let lastShotKeys = '';
   let lastGateOpen = false;
   watchDock.observe(dock);
 
@@ -1258,15 +1255,12 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       const lastTurn = visibleChat[visibleChat.length - 1];
       const waiting = s.thinking || (s.voicing && lastTurn?.from === 'user');
       const revealKey = s.reveal ? `${s.reveal.turn}:${s.reveal.words}` : '';
-      const shotKeys = shotAssignmentsSignature(s.turnShots);
       if (
         visibleChat.length !== lastChatLen ||
         chatScope !== lastChatScope ||
         waiting !== lastWaiting ||
-        revealKey !== lastRevealKey ||
-        shotKeys !== lastShotKeys
+        revealKey !== lastRevealKey
       ) {
-        lastShotKeys = shotKeys;
         lastChatLen = visibleChat.length;
         lastChatScope = chatScope;
         lastWaiting = waiting;
@@ -1278,11 +1272,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
             if (t.from !== 'resident') return [h('p', { class: 'bubble bubble-user' }, t.text)];
             const partial = s.reveal?.turn === i;
             const parts = partial ? segmentsUpTo(t.text, s.reveal!.words) : segments(t.text);
-            const shotKey = s.turnShots[shotOwnerKey(chatScope, i)];
-            const shotUrl = shotKey ? s.sceneShots[shotKey] : undefined;
-            const shot: HTMLElement[] = shotUrl
-              ? [h('img', { class: 'scene-shot', src: shotUrl, alt: '', loading: 'lazy' })]
-              : [];
             const dialogue = dialogueBlocksFromSegments(
               parts,
               openQuest ? undefined : t.visualId,
@@ -1293,7 +1282,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
               (last, block, index) => (block.kind === 'visual' ? last : index),
               -1
             );
-            return shot.concat(dialogue.flatMap((seg, k) => {
+            return dialogue.flatMap((seg, k) => {
               if (seg.kind === 'visual') {
                 const card = openChatVisualCard(seg.visualId, s);
                 return card ? [card] : [];
@@ -1302,7 +1291,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
               return seg.kind === 'beat'
                 ? [h('p', { class: `beat-line${tail}` }, seg.text)]
                 : [h('p', { class: `bubble bubble-resident${tail}` }, seg.text)];
-            }));
+            });
           }),
           ...(waiting
             ? [

@@ -60,6 +60,9 @@ function loadPano(url: string): Promise<THREE.Texture> {
       t.colorSpace = THREE.SRGBColorSpace;
       t.mapping = THREE.EquirectangularReflectionMapping;
       return t;
+    }).catch((error) => {
+      cache.delete(url);
+      throw error;
     });
     cache.set(url, p);
   }
@@ -87,11 +90,13 @@ export class FactionBackdrop {
   private back = makeDome();
   private fadeIn = 0; // target opacity of front dome
   private activeFaction: string | null = null;
+  private requestedBackdrop: string | null = null;
 
   constructor(
     private scene: THREE.Scene,
     /** Objects to hide while a panorama is active (placeholder skyline). */
-    private hideWhenActive: THREE.Object3D[]
+    private hideWhenActive: THREE.Object3D[],
+    private readonly imageLoader: (url: string) => Promise<THREE.Texture> = loadPano
   ) {
     scene.add(this.front, this.back);
   }
@@ -100,6 +105,7 @@ export class FactionBackdrop {
   showStudio(top: number, bottom: number, intensity: number): void {
     const key = `studio:${top}:${bottom}`;
     if (this.activeFaction === key) return;
+    this.requestedBackdrop = key;
     this.activeFaction = key;
     this.applyTexture(studioTexture(top, bottom), intensity);
   }
@@ -108,10 +114,29 @@ export class FactionBackdrop {
     if (this.activeFaction === factionId) return;
     const url = FACTION_ENVS[factionId];
     if (!url) return;
+    this.requestedBackdrop = factionId;
+    const tex = await this.imageLoader(url);
+    if (this.requestedBackdrop !== factionId) return; // superseded meanwhile
     this.activeFaction = factionId;
-    const tex = await loadPano(url);
-    if (this.activeFaction !== factionId) return; // superseded meanwhile
     this.applyTexture(tex, 0.55);
+  }
+
+  /** Quest scenes load off-path; a failed replacement leaves the prior dome intact. */
+  async showScene(url: string): Promise<boolean> {
+    const key = `scene:${url}`;
+    if (this.activeFaction === key) return true;
+    this.requestedBackdrop = key;
+    let tex: THREE.Texture;
+    try {
+      tex = await this.imageLoader(url);
+    } catch {
+      if (this.requestedBackdrop === key) this.requestedBackdrop = null;
+      return false;
+    }
+    if (this.requestedBackdrop !== key) return false;
+    this.activeFaction = key;
+    this.applyTexture(tex, 0.28);
+    return true;
   }
 
   private applyTexture(tex: THREE.Texture, intensity: number): void {
@@ -132,6 +157,7 @@ export class FactionBackdrop {
 
   hide(): void {
     this.activeFaction = null;
+    this.requestedBackdrop = null;
     this.fadeIn = 0;
     this.scene.environment = null;
     for (const o of this.hideWhenActive) o.visible = true;

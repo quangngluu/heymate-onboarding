@@ -84,7 +84,8 @@ describe('Quest visual runtime', () => {
     owner.set({ activeQuestId: 'A', step: 'stage' });
     let finish!: (result: SceneDrawResult) => void;
     const drawer = vi.fn(() => new Promise<SceneDrawResult>((resolve) => { finish = resolve; }));
-    const runtime = new QuestVisualRuntime(owner, drawer);
+    const presentScene = vi.fn();
+    const runtime = new QuestVisualRuntime(owner, drawer, presentScene);
 
     const pending = runtime.outcomeCommitted(event);
     owner.set({ activeQuestId: null, questPhase: 'none' });
@@ -99,6 +100,25 @@ describe('Quest visual runtime', () => {
     const key = resolveQuestVisual(visualContext()).cacheKey;
     expect(owner.get().sceneShots[key]).toBe('https://images.example/frame.jpg');
     expect(owner.get().turnShots[shotOwnerKey(questConversationScope('A'), 4)]).toBeUndefined();
+    expect(presentScene).not.toHaveBeenCalled();
+  });
+
+  it('presents a valid active shot through the stage backdrop seam', async () => {
+    const owner = new Store();
+    owner.set({ activeQuestId: 'A', step: 'stage' });
+    const drawer = vi.fn(async () => ({
+      ok: true as const,
+      url: 'https://images.example/frame.jpg',
+      perspective: 'observed' as const,
+      withSubject: true,
+    }));
+    const presentScene = vi.fn();
+    const runtime = new QuestVisualRuntime(owner, drawer, presentScene);
+
+    await runtime.outcomeCommitted(event);
+
+    expect(presentScene).toHaveBeenCalledOnce();
+    expect(presentScene).toHaveBeenCalledWith('https://images.example/frame.jpg');
   });
 
   it('draws again after a visual contract version bump instead of reusing old cache', async () => {

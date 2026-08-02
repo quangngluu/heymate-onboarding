@@ -29,6 +29,7 @@ type VisualStore = Pick<
 >;
 
 type SceneDrawer = typeof drawScene;
+type ScenePresenter = (url: string) => void;
 
 /**
  * Owns the asynchronous lifetime of a Quest drawing.
@@ -40,8 +41,18 @@ type SceneDrawer = typeof drawScene;
 export class QuestVisualRuntime {
   constructor(
     private readonly owner: VisualStore,
-    private readonly drawer: SceneDrawer = drawScene
+    private readonly drawer: SceneDrawer = drawScene,
+    private readonly presentScene: ScenePresenter = () => {}
   ) {}
+
+  private attach(
+    scope: ReturnType<typeof questConversationScope>,
+    turn: number,
+    cacheKey: string,
+    url: string
+  ): void {
+    if (this.owner.showShot(scope, turn, cacheKey)) this.presentScene(url);
+  }
 
   async outcomeCommitted(event: QuestOutcomeCommitted): Promise<void> {
     const imageKey = event.choice.imageKey;
@@ -69,7 +80,7 @@ export class QuestVisualRuntime {
     const scope = questConversationScope(event.quest.id);
     const cached = this.owner.get().sceneShots[spec.cacheKey];
     if (cached) {
-      this.owner.showShot(scope, event.turn, spec.cacheKey);
+      this.attach(scope, event.turn, spec.cacheKey, cached);
       return;
     }
     if (!this.owner.spend('sceneImage')) return;
@@ -99,6 +110,6 @@ export class QuestVisualRuntime {
     // Valid generated work remains reusable even if navigation made its former
     // turn ineligible to receive it.
     this.owner.keepShot(spec.cacheKey, result.url);
-    this.owner.showShot(scope, event.turn, spec.cacheKey);
+    this.attach(scope, event.turn, spec.cacheKey, result.url);
   }
 }
