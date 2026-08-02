@@ -96,7 +96,8 @@ export class FactionBackdrop {
     private scene: THREE.Scene,
     /** Objects to hide while a panorama is active (placeholder skyline). */
     private hideWhenActive: THREE.Object3D[],
-    private readonly imageLoader: (url: string) => Promise<THREE.Texture> = loadPano
+    private readonly imageLoader: (url: string) => Promise<THREE.Texture> = loadPano,
+    private readonly reducedMotion = false
   ) {
     scene.add(this.front, this.back);
   }
@@ -135,11 +136,12 @@ export class FactionBackdrop {
     }
     if (this.requestedBackdrop !== key) return false;
     this.activeFaction = key;
-    this.applyTexture(tex, 0.28);
+    const direction = [...url].reduce((hash, char) => hash + char.charCodeAt(0), 0) % 2 ? 1 : -1;
+    this.applyTexture(tex, 0.28, direction);
     return true;
   }
 
-  private applyTexture(tex: THREE.Texture, intensity: number): void {
+  private applyTexture(tex: THREE.Texture, intensity: number, motionDirection = 0): void {
     // Current front becomes the fading back layer.
     const prev = this.front;
     this.front = this.back;
@@ -147,6 +149,15 @@ export class FactionBackdrop {
     const mat = this.front.material as THREE.MeshBasicMaterial;
     mat.map = tex;
     mat.needsUpdate = true;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.repeat.set(1, 1);
+    tex.offset.set(0, 0);
+    tex.needsUpdate = true;
+    this.front.rotation.set(0, Math.PI, 0);
+    this.front.userData.sceneMotion = motionDirection
+      ? { elapsed: 0, direction: motionDirection }
+      : null;
     this.front.renderOrder = -2;
     this.back.renderOrder = -3;
     this.fadeIn = 1;
@@ -170,5 +181,18 @@ export class FactionBackdrop {
     b.opacity += (0 - b.opacity) * Math.min(1, dt * 3);
     this.front.visible = f.opacity > 0.004;
     this.back.visible = b.opacity > 0.004;
+
+    const motion = this.front.userData.sceneMotion as
+      | { elapsed: number; direction: number }
+      | null;
+    if (!motion || this.reducedMotion || !f.map) return;
+    motion.elapsed += dt;
+    const travel = Math.min(1, motion.elapsed / 18);
+    const zoom = 1 - 0.035 * travel;
+    const pan = motion.direction * 0.006 * travel;
+    this.front.rotation.y = Math.PI + motion.direction * 0.018 * travel;
+    this.front.rotation.x = Math.sin(motion.elapsed * 0.12) * 0.003;
+    f.map.repeat.set(zoom, zoom);
+    f.map.offset.set((1 - zoom) / 2 + pan, (1 - zoom) / 2);
   }
 }

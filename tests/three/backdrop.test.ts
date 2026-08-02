@@ -21,4 +21,44 @@ describe('Quest scene backdrop', () => {
     expect(scene.environment).toBe(first);
     expect(skyline.visible).toBe(false);
   });
+
+  it('crossfades into a slow pan and crop-zoom after the scene arrives', async () => {
+    const scene = new THREE.Scene();
+    const texture = new THREE.Texture();
+    const backdrop = new FactionBackdrop(scene, [], vi.fn(async () => texture));
+
+    await backdrop.showScene('https://images.example/moving.jpg');
+    const dome = scene.children.find((object) => {
+      const mesh = object as THREE.Mesh;
+      return (mesh.material as THREE.MeshBasicMaterial | undefined)?.map === texture;
+    }) as THREE.Mesh;
+    const material = dome.material as THREE.MeshBasicMaterial;
+    const startYaw = dome.rotation.y;
+
+    backdrop.update(1);
+    backdrop.update(1);
+
+    expect(material.opacity).toBeGreaterThan(0.9);
+    expect(dome.rotation.y).not.toBe(startYaw);
+    expect(texture.repeat.x).toBeLessThan(1);
+    expect(texture.repeat.y).toBeLessThan(1);
+  });
+
+  it('keeps scene motion still when reduced motion is active', async () => {
+    const scene = new THREE.Scene();
+    const texture = new THREE.Texture();
+    const backdrop = new FactionBackdrop(scene, [], vi.fn(async () => texture), true);
+
+    await backdrop.showScene('https://images.example/still.jpg');
+    const dome = scene.children.find((object) => {
+      const mesh = object as THREE.Mesh;
+      return (mesh.material as THREE.MeshBasicMaterial | undefined)?.map === texture;
+    }) as THREE.Mesh;
+    const startYaw = dome.rotation.y;
+    backdrop.update(2);
+
+    expect(dome.rotation.y).toBe(startYaw);
+    expect(texture.repeat.x).toBe(1);
+    expect(texture.repeat.y).toBe(1);
+  });
 });

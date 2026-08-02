@@ -194,7 +194,12 @@ class App implements UIActions {
       CHARACTERS.map((c) => factionById(c.factionId).accentColor)
     );
     this.nameplate = new Nameplate(this.engine.scene);
-    this.backdrop = new FactionBackdrop(this.engine.scene, [this.stage.skyline]);
+    this.backdrop = new FactionBackdrop(
+      this.engine.scene,
+      [this.stage.skyline],
+      undefined,
+      this.engine.reducedMotion
+    );
     this.questVisuals = new QuestVisualRuntime(store, undefined, (url) => {
       void this.backdrop.showScene(url);
     });
