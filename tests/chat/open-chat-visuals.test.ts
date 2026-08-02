@@ -1,5 +1,9 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  OPEN_CHAT_VISUALS,
   dialogueBlocks,
   composeRewardReply,
   nextOpenChatRewardTurn,
@@ -7,6 +11,13 @@ import {
   selectOpenChatReward,
 } from '../../src/chat/open-chat-visuals';
 import { Store } from '../../src/state/store';
+
+interface FalAssetRecord {
+  filename: string;
+  requestId: string;
+  seed: number;
+  sha256: string;
+}
 
 beforeEach(() => {
   const values = new Map<string, string>();
@@ -102,5 +113,26 @@ describe('Open Chat visual rewards', () => {
       'speech',
       'speech',
     ]);
+  });
+});
+
+describe('Open Chat visual provenance', () => {
+  it('ships only FAL-generated assets whose bytes match the audited manifest', () => {
+    const provenance = JSON.parse(
+      readFileSync(resolve('scripts/open-chat-fal-provenance.json'), 'utf8')
+    ) as { endpoint: string; assets: FalAssetRecord[] };
+
+    expect(provenance.endpoint).toBe('fal-ai/flux-pro/kontext');
+    expect(provenance.assets).toHaveLength(OPEN_CHAT_VISUALS.length);
+
+    for (const visual of OPEN_CHAT_VISUALS) {
+      const filename = visual.src.split('/').at(-1)!;
+      const record = provenance.assets.find((asset) => asset.filename === filename);
+      expect(record?.requestId).toMatch(/^[0-9a-f-]{36}$/u);
+      expect(record?.seed).toBeTypeOf('number');
+
+      const bytes = readFileSync(resolve('public', visual.src));
+      expect(createHash('sha256').update(bytes).digest('hex')).toBe(record?.sha256);
+    }
   });
 });

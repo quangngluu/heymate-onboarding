@@ -1,0 +1,201 @@
+{
+  "generatedAt": "2026-08-02T09:18:20.067Z",
+  "acceptedAt": "2026-08-02T09:18:47.753Z",
+  "endpoint": "fal-ai/flux-pro/kontext",
+  "officialApi": "https://fal.ai/models/fal-ai/flux-pro/kontext/api",
+  "parameters": {
+    "guidance_scale": 3.5,
+    "num_images": 1,
+    "output_format": "png",
+    "safety_tolerance": "3",
+    "enhance_prompt": false,
+    "aspect_ratio": "4:3"
+  },
+  "assets": [
+    {
+      "id": "rin-reward-afterimage",
+      "filename": "rin-reward-afterimage.webp",
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "requestId": "019fc1a5-4aaf-7dc2-9e28-101ca78c5425",
+      "seed": 820202,
+      "prompt": "Edit Input 1. It contains one adult fictional woman and is the sole identity and wardrobe reference. Preserve her exact brown eyes, short dark-brown bob, white-and-black futuristic outfit and headset, facial features, hair shape and colour, outfit, body proportions, pose, expression, and weapon when present. Do not redesign or beautify her. Keep exactly one character. Remove the rectangular colour border, empty black panel, circular pedestal, base and display stand. Integrate her naturally into the new environment with coherent contact shadows. Polished semi-realistic 3D illustration, cinematic restrained lighting, landscape 4:3. No readable text, logo, watermark, second person, duplicate body, extra face, extra hand, extra finger, extra limb, cropped head, or cropped feet. Scene: Rin is held inside a tilted translucent cyan diagnostic display in a quiet memory archive. A faint electronic afterimage trails only the screen edges, not her body. Cold blue data glow, glass reflections, surrounding darkness.",
+      "sourceFile": "scripts/open-chat-fal-refs/rin-reward-afterimage.webp",
+      "sourceSha256": "a2ee152e2b4ecd6a2845495da849d49d4f88f55f827096d8de62d459646259e5",
+      "sha256": "9079634dbdef1db570ab77f5267e9e33d8d0e819fc67ab80aeea8e31169c2ba6",
+      "width": 960,
+      "height": 720,
+      "hasNsfwConcepts": [
+        false
+      ],
+      "remoteUrl": "https://v3b.fal.media/files/b/0aa4b38d/dL3KVZhSHHuC7kDNx4ZPn_fb8b9d54e3864a64af4345fd201032fb.png",
+      "startedAt": "2026-08-02T08:44:22.111Z",
+      "completedAt": "2026-08-02T08:44:52.344Z",
+      "durationMs": 30233
+    },
+    {
+      "id": "rin-reward-held-frame",
+      "filename": "rin-reward-held-frame.webp",
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "requestId": "019fc1a5-bdc7-7e70-8be7-d358f3e6748e",
+      "seed": 820203,
+      "prompt": "Edit Input 1. It contains one adult fictional woman and is the sole identity and wardrobe reference. Preserve her exact brown eyes, short dark-brown bob, white-and-black futuristic outfit and headset, facial features, hair shape and colour, outfit, body proportions, pose, expression, and weapon when present. Do not redesign or beautify her. Keep exactly one character. Remove the rectangular colour border, empty black panel, circular pedestal, base and display stand. Integrate her naturally into the new environment with coherent contact shadows. Polished semi-realistic 3D illustration, cinematic restrained lighting, landscape 4:3. No readable text, logo, watermark, second person, duplicate body, extra face, extra hand, extra finger, extra limb, cropped head, or cropped feet. Scene: Rin occupies one intact frozen video frame floating among dim broken archive panes. Her frame remains sharp and cyan-lit while the other panes dissolve into darkness. Quiet, intimate, no destruction touching her.",
+      "sourceFile": "scripts/open-chat-fal-refs/rin-reward-held-frame.webp",
+      "sourceSha256": "172147117c2c8cabca9854468d0ecf783cc95927630b8f7eda85839d5a30a929",
+      "sha256": "923bc27f505386e6069cf64d3f231d438c6edc66a827ac067851dec5f9c258a9",
+      "width": 960,
+      "height": 720,
+      "hasNsfwConcepts": [
+        false
+      ],
+      "remoteUrl": "https://v3b.fal.media/files/b/0aa4b390/N49_ivOqgTSshGTOXKfxI_19c24569be294f638ebbee517c6127e5.png",
+      "startedAt": "2026-08-02T08:44:52.344Z",
+      "completedAt": "2026-08-02T08:45:23.625Z",
+      "durationMs": 31281
+    },
+    {
+      "id": "momo-opening-page",
+      "filename": "momo-opening-page.webp",
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "requestId": "019fc1a6-7e36-7061-855b-701851c557da",
+      "seed": 820207,
+      "prompt": "Edit Input 1. It contains one adult fictional woman and is the sole identity and wardrobe reference. Preserve her exact light eyes, long peach-blonde hair, glossy black outfit and black mantle, facial features, hair shape and colour, outfit, body proportions, pose, expression, and weapon when present. Do not redesign or beautify her. Keep exactly one character. Remove the rectangular colour border, empty black panel, circular pedestal, base and display stand. Integrate her naturally into the new environment with coherent contact shadows. Polished semi-realistic 3D illustration, cinematic restrained lighting, landscape 4:3. No readable text, logo, watermark, second person, duplicate body, extra face, extra hand, extra finger, extra limb, cropped head, or cropped feet. Scene: Momo appears as a living illustration inside an open oversized Route Zero book on a dark station desk. One luminous violet page is turning behind her, paper fibres and warm lamp light visible, mysterious but inviting.",
+      "sourceFile": "scripts/open-chat-fal-refs/momo-opening-page.webp",
+      "sourceSha256": "0b48136f060f568d4223aeb6c8e4af5edc0a4dbc96eed2fa8e21c27486b1bb1e",
+      "sha256": "1dd3f781f2066b55eeed3b983961c389165d5faf466dcec22116bb5a544f6905",
+      "width": 960,
+      "height": 720,
+      "hasNsfwConcepts": [
+        false
+      ],
+      "remoteUrl": "https://v3b.fal.media/files/b/0aa4b393/h515VjuxykgtEz4ff5dF4_597a126f0c2841499d4997ba00da2eb3.png",
+      "startedAt": "2026-08-02T08:45:41.512Z",
+      "completedAt": "2026-08-02T08:46:01.587Z",
+      "durationMs": 20075
+    },
+    {
+      "id": "momo-reward-first-train",
+      "filename": "momo-reward-first-train.webp",
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "requestId": "019fc1a6-7e3a-7442-bdcd-a162e3bd85bb",
+      "seed": 820208,
+      "prompt": "Edit Input 1. It contains one adult fictional woman and is the sole identity and wardrobe reference. Preserve her exact light eyes, long peach-blonde hair, glossy black outfit and black mantle, facial features, hair shape and colour, outfit, body proportions, pose, expression, and weapon when present. Do not redesign or beautify her. Keep exactly one character. Remove the rectangular colour border, empty black panel, circular pedestal, base and display stand. Integrate her naturally into the new environment with coherent contact shadows. Polished semi-realistic 3D illustration, cinematic restrained lighting, landscape 4:3. No readable text, logo, watermark, second person, duplicate body, extra face, extra hand, extra finger, extra limb, cropped head, or cropped feet. Scene: Momo is framed by a nearly blank violet-edged book page beside the window of an empty first train before sunrise. Soft platform lights pass behind the glass, paper texture and quiet dawn haze.",
+      "sourceFile": "scripts/open-chat-fal-refs/momo-reward-first-train.webp",
+      "sourceSha256": "6aa63164195828728cb5a9723b26e38346751561dc472c1deaadd021f14b832d",
+      "sha256": "167415fdc2fae317507000d91d8882188e376992cc9d6c3a838cf57923324b02",
+      "width": 960,
+      "height": 720,
+      "hasNsfwConcepts": [
+        false
+      ],
+      "remoteUrl": "https://v3b.fal.media/files/b/0aa4b393/W1asINxOyIZcQKXvwzqnW_396d8703d3124d449ac348b6ad55c6c3.png",
+      "startedAt": "2026-08-02T08:45:41.513Z",
+      "completedAt": "2026-08-02T08:46:00.348Z",
+      "durationMs": 18835
+    },
+    {
+      "id": "kagura-opening-reflection",
+      "filename": "kagura-opening-reflection.webp",
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "requestId": "019fc1c2-68c0-7972-9956-1d70463027cb",
+      "seed": 820204,
+      "prompt": "Remove only the red circular sculpture base and red support under Kagari and continue the dark corridor floor naturally beneath her. Keep Kagari, her exact face, long black hair, red armour, enormous Akagane sword, pose, proportions, corridor and lighting unchanged. No base, plinth, stand, extra limb, text, logo or watermark.",
+      "sourceFile": ".tmp-open-chat-fal/candidates/kagura-opening-reflection.webp",
+      "sourceSha256": "cb27b1826b3c6c398e3f3820dc592b52d8b3f64bc9f388e7e15539a58d5a49fe",
+      "sourceTransform": "none",
+      "sha256": "578b0aba18fd08ce7b5c9c1a7ea187f402f59159944f70120c36bc1f8212f825",
+      "width": 960,
+      "height": 720,
+      "hasNsfwConcepts": [
+        false
+      ],
+      "remoteUrl": "https://v3b.fal.media/files/b/0aa4b44a/7-D_1CW_IQS-LM5R-_fif_9a0f91eb219c4fb1b01ceb95c81b0f8c.png",
+      "startedAt": "2026-08-02T09:16:10.312Z",
+      "completedAt": "2026-08-02T09:16:23.793Z",
+      "durationMs": 13480
+    },
+    {
+      "id": "kagura-reward-vigil",
+      "filename": "kagura-reward-vigil.webp",
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "requestId": "019fc1c2-a13c-7943-ae04-137ae9dcf1d0",
+      "seed": 820205,
+      "prompt": "Keep the exact Kagari character and Akagane sword from Input 1 unchanged: same face, black eyes, long black hair, red armour, body, weapon, pose and proportions. Replace only the corridor background with a sealed black industrial door and two dim red signal lights. Remove the circular base and red support beneath her, placing her naturally on the floor. No redesign, second person, extra limb, text, logo or watermark.",
+      "sourceFile": ".tmp-open-chat-fal/candidates/kagura-opening-reflection.webp",
+      "sourceSha256": "3302d680dbfa0c4467af7b23fa71cc49d05ab6d2fef060afbd97d2a18a45595f",
+      "sourceTransform": "crop-face-hair-akagane",
+      "sha256": "23149847d9fde2219edac9ef57a24edbe4d5edbcbd0b3b38422df88386c08fad",
+      "width": 960,
+      "height": 720,
+      "hasNsfwConcepts": [
+        false
+      ],
+      "remoteUrl": "https://v3b.fal.media/files/b/0aa4b44b/wn99hLSm4t8oA2CdkZTGH_46c44c57b64943a5a8bbc23bfd760f8d.png",
+      "startedAt": "2026-08-02T09:16:24.446Z",
+      "completedAt": "2026-08-02T09:16:39.333Z",
+      "durationMs": 14886
+    },
+    {
+      "id": "kagura-reward-rest",
+      "filename": "kagura-reward-rest.webp",
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "requestId": "019fc1c2-dc84-7fb2-9023-9cf2cda3faac",
+      "seed": 820206,
+      "prompt": "Remove only the red circular sculpture base and red support under Kagari and continue the armoury floor naturally beneath her. Keep Kagari, her exact face, long black hair, red armour, enormous Akagane sword, pose, proportions, room and lighting unchanged. No base, plinth, stand, extra limb, text, logo or watermark.",
+      "sourceFile": ".tmp-open-chat-fal/candidates/kagura-reward-rest.webp",
+      "sourceSha256": "8bb74233c355fd926253dd70f57613434c6a6a53919db0ac70ce4dade6f98e45",
+      "sourceTransform": "none",
+      "sha256": "da0104ea02387d619f2469f78c9ee56a20cce2d09d10e28421cf9bd751f66f27",
+      "width": 960,
+      "height": 720,
+      "hasNsfwConcepts": [
+        false
+      ],
+      "remoteUrl": "https://v3b.fal.media/files/b/0aa4b44d/vIAsCwyvaog_ojwxrAMq-_8c0c8b39863c4fc1832055a1fb79567e.png",
+      "startedAt": "2026-08-02T09:16:39.922Z",
+      "completedAt": "2026-08-02T09:16:53.338Z",
+      "durationMs": 13415
+    },
+    {
+      "id": "momo-reward-no-price",
+      "filename": "momo-reward-no-price.webp",
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "requestId": "019fc1c3-13e9-73c3-9d15-e8d53b92c331",
+      "seed": 820209,
+      "prompt": "Remove only the small black oval pedestal beneath Momo and continue the violet archive floor naturally beneath her black mantle. Keep Momo, her exact face, peach-blonde hair, glossy black outfit, expression, pose, proportions, background and lighting unchanged. No base, plinth, stand, extra limb, text, logo or watermark.",
+      "sourceFile": ".tmp-open-chat-fal/candidates/momo-reward-no-price.webp",
+      "sourceSha256": "f68968b70169083851d449f816ce272cfa362ab104a5287e87b386015c037b8c",
+      "sourceTransform": "none",
+      "sha256": "d4e5c35c9095962d06132e89441bf61f97ec0b15e1bd8721f87f63d783b81692",
+      "width": 960,
+      "height": 720,
+      "hasNsfwConcepts": [
+        false
+      ],
+      "remoteUrl": "https://v3b.fal.media/files/b/0aa4b45e/T8wrbHWxXLeK4VdlzfuAM_36cedaeb26ff48228bbd997ad3e8bc47.png",
+      "startedAt": "2026-08-02T09:16:53.900Z",
+      "completedAt": "2026-08-02T09:17:06.416Z",
+      "durationMs": 12515
+    },
+    {
+      "id": "rin-opening-signal",
+      "filename": "rin-opening-signal.webp",
+      "endpoint": "fal-ai/flux-pro/kontext",
+      "requestId": "019fc1c4-2ab1-7190-abb2-335fc6dd2042",
+      "seed": 820201,
+      "prompt": "Edit Input 1. It contains one adult fictional woman and is the sole identity and wardrobe reference. Preserve her exact brown eyes, short dark-brown bob, white-and-black futuristic outfit and headset, facial features, hair shape and colour, outfit, body proportions, pose, expression, and weapon when present. Do not redesign or beautify her. Keep exactly one character. Remove the rectangular colour border, empty black panel, circular pedestal, base and display stand. Integrate her naturally into the new environment with coherent contact shadows. Polished semi-realistic 3D illustration, cinematic restrained lighting, landscape 4:3. No readable text, logo, watermark, second person, duplicate body, extra face, extra hand, extra finger, extra limb, cropped head, or cropped feet. Scene: Rin appears inside a physical cold-cyan LCD monitor embedded in a dark memory-archive wall. Visible LCD pixel grid, subtle horizontal flicker, cyan diagnostic light, dark room around the screen. The monitor is the clear diegetic object showing her.",
+      "sourceFile": "scripts/open-chat-fal-refs/rin-opening-signal.webp",
+      "sourceSha256": "819f39cd87d3de5fab8a0d245f312df86923c728c8a344193612f84fce2e0617",
+      "sourceTransform": "none",
+      "sha256": "1b1526234f5501af50ee5632e5c8b08d7f0c44fe80fe50281c085ec33c5ebeaf",
+      "width": 960,
+      "height": 720,
+      "hasNsfwConcepts": [
+        false
+      ],
+      "remoteUrl": "https://v3b.fal.media/files/b/0aa4b455/6IclqnXL9SBRK5eXUaT5P_e86a546b91c746e6a9c5a70c618153d8.png",
+      "startedAt": "2026-08-02T09:18:05.458Z",
+      "completedAt": "2026-08-02T09:18:20.066Z",
+      "durationMs": 14607
+    }
+  ]
+}

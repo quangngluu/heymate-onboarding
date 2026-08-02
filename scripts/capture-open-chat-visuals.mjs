@@ -7,7 +7,9 @@ import sharp from 'sharp';
 const HOST = '127.0.0.1';
 const PORT = 5197;
 const BASE_URL = `http://${HOST}:${PORT}`;
-const OUTPUT = resolve('public/assets/open-chat');
+// These exact GLB renders are FAL identity inputs. Production Open Chat images
+// are generated separately and must never be overwritten by this capture step.
+const OUTPUT = resolve('scripts/open-chat-fal-refs');
 
 const residents = [
   {

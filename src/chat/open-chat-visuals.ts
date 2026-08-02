@@ -31,8 +31,9 @@ const ALL_SCENARIOS: readonly ScenarioId[] = [
 ];
 
 /**
- * Authored, locally shipped frames only. These are exact renders of the GLBs
- * already used on stage, not image-model guesses and not Quest branch shots.
+ * Authored, locally shipped FAL Kontext frames. Generation happens offline
+ * from frozen renders of the stage GLBs; Open Chat never calls FAL at runtime.
+ * `scripts/open-chat-fal-provenance.json` binds every file to its request and hash.
  */
 export const OPEN_CHAT_VISUALS: readonly OpenChatVisual[] = [
   {
