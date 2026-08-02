@@ -575,6 +575,13 @@ async function runViewport(browser, viewport) {
   const settingsShape = await page.evaluate(() => ({
     primaryRows: document.querySelectorAll('.session-primary .session-setting-row').length,
     advancedOpen: document.querySelector('.session-advanced')?.hasAttribute('open') ?? null,
+    identityLabel: document
+      .querySelector('[data-testid="session-identity"]')
+      ?.closest('.session-setting-row')
+      ?.querySelector('.session-setting-label')
+      ?.textContent?.trim() ?? '',
+    identityOptions: [...(document.querySelector('[data-testid="session-identity"]')?.children ?? [])]
+      .map((option) => option.textContent?.trim() ?? ''),
     composerFontPx: Number.parseFloat(
       getComputedStyle(document.querySelector('.dock-bar .chat-input')).fontSize
     ),
@@ -703,6 +710,13 @@ async function runViewport(browser, viewport) {
   }
   if (state.settingsShape.primaryRows !== 2) {
     failures.push(`settings primary rows=${state.settingsShape.primaryRows}`);
+  }
+  if (
+    state.settingsShape.identityLabel !== 'Anh muốn nhập vai ai?' ||
+    JSON.stringify(state.settingsShape.identityOptions) !==
+      JSON.stringify(['Là chính anh', 'Nhập vai một nhân vật…'])
+  ) {
+    failures.push(`settings identity copy=${JSON.stringify(state.settingsShape)}`);
   }
   if (state.settingsShape.advancedOpen !== false) {
     failures.push(`settings advancedOpen=${state.settingsShape.advancedOpen}`);

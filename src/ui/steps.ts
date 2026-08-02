@@ -574,10 +574,10 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
 
   let identityCustomActive = false;
   const identityMode = selectField(
-    'Vai của anh',
+    'Anh muốn nhập vai ai?',
     [
-      { id: 'self', label: 'Chính anh' },
-      { id: 'character', label: 'Nhân vật khác…' },
+      { id: 'self', label: 'Là chính anh' },
+      { id: 'character', label: 'Nhập vai một nhân vật…' },
     ] as const,
     (id) => {
       identityCustomActive = id === 'character';
@@ -589,6 +589,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       if (id === 'character') requestAnimationFrame(() => identityInput.focus());
     }
   );
+  identityMode.select.dataset.testid = 'session-identity';
   const identityCustom = h(
     'div',
     { class: 'session-inline-custom', hidden: true },
@@ -1079,7 +1080,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       // control disappears rather than pretending it can tune the story face.
       scen.el.hidden = s.activeQuestId !== null;
       const scenarioLabel = scen.select.selectedOptions[0]?.text ?? 'Thường ngày';
-      const identityLabel = s.session.identity || 'Chính anh';
+      const identityLabel = s.session.identity || 'Là chính anh';
       const sessionSummary = s.activeQuestId
         ? `${identityLabel} · Câu chuyện`
         : `${identityLabel} · Đồng hành · ${scenarioLabel}`;

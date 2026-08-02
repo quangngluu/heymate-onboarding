@@ -29,10 +29,10 @@ export const COPY = {
     style: 'Em nên chủ động đến đâu?',
     length: 'Độ dài phản hồi',
     voice: 'Giọng của em',
-    identity: 'Anh bước vào với tư cách ai?',
-    identityPlaceholder: 'Chính anh, một nhân vật anh thích, hay ai đó anh tự nghĩ ra',
+    identity: 'Anh muốn nhập vai ai?',
+    identityPlaceholder: 'Tên nhân vật anh muốn trở thành',
     identityNote:
-      'Gõ bất cứ danh tính nào. Em biết câu chuyện của người đó và sẽ đối xử với anh như chính họ, chứ không phải như người đang đóng vai. Để trống thì anh là anh.',
+      'Trong lần gặp này, em nhận ra anh là chính nhân vật đó trong thế giới của em — cùng vũ khí, năng lực và quá khứ của họ, không phải một người đang cosplay. Nếu một chi tiết chưa rõ, em sẽ hỏi anh trong vai.',
     persona: 'Cách em đồng hành với anh',
     personaPlaceholder: 'Ví dụ: trêu nhẹ, nói thẳng và nhớ hỏi về ngày của anh.',
     personaNote: 'Đây là gu trò chuyện của anh, không thay đổi ký ức hay bản chất của em.',
