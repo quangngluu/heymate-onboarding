@@ -31,9 +31,9 @@ export const COPY = {
     identityPlaceholder: 'Tên nhân vật anh muốn trở thành',
     identityNote:
       'Trong lần gặp này, em nhận ra anh là chính nhân vật đó trong thế giới của em — cùng vũ khí, năng lực và quá khứ của họ, không phải một người đang cosplay. Nếu một chi tiết chưa rõ, em sẽ hỏi anh trong vai.',
-    persona: 'Cách em đồng hành với anh',
+    persona: 'Lần này anh muốn em ở bên anh thế nào?',
     personaPlaceholder: 'Ví dụ: trêu nhẹ, nói thẳng và nhớ hỏi về ngày của anh.',
-    personaNote: 'Đây là gu trò chuyện của anh, không thay đổi ký ức hay bản chất của em.',
+    personaNote: 'Mô tả tự do; các gợi ý bối cảnh bên dưới chỉ giúp đặt nhịp cho lần gặp này.',
     resetSession: 'Đặt lại',
     applySession: 'Xong',
 

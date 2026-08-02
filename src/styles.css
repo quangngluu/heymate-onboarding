@@ -1216,6 +1216,19 @@ html[data-quest-rig='ready'] .step-stage.is-quest-mode::after {
 .session-inline-custom .name-input {
   width: 100%;
 }
+.session-context-field {
+  display: grid;
+  gap: 8px;
+  padding: 12px 13px 13px;
+  border-top: 1px solid var(--line);
+}
+.session-context-field .persona-input {
+  min-height: 68px;
+}
+.session-scenario-chips {
+  padding-top: 3px;
+}
+.session-scenario-chips[hidden] { display: none; }
 .session-advanced {
   flex-shrink: 0;
   border-top: 1px solid var(--line);

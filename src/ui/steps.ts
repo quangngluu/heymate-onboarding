@@ -507,6 +507,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     rows: '3',
     placeholder: COPY.stage.personaPlaceholder,
     'aria-label': COPY.stage.persona,
+    'data-testid': 'session-persona',
     maxlength: '180',
   }) as HTMLTextAreaElement;
   personaInput.addEventListener('input', () => actions.updateSession({ persona: personaInput.value }));
@@ -588,10 +589,26 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     identityInput,
     h('p', { class: 'hint faint' }, COPY.stage.identityNote)
   );
-  const scen = selectField('Bối cảnh', SCENARIOS, (id) =>
+  const scenarioSeg = segment('Bối cảnh gợi ý', SCENARIOS, (id) =>
     actions.updateSession({ scenario: id })
   );
-  scen.select.dataset.testid = 'session-scenario';
+  scenarioSeg.el.classList.add('session-scenario-chips');
+  scenarioSeg.el.setAttribute('role', 'radiogroup');
+  scenarioSeg.el.setAttribute('aria-label', 'Bối cảnh gợi ý');
+  scenarioSeg.el.dataset.testid = 'session-scenario';
+  const scenarioHeading = scenarioSeg.el.querySelector('.group-label');
+  if (scenarioHeading) scenarioHeading.textContent = 'Bối cảnh gợi ý · không bắt buộc';
+  scenarioSeg.btns.forEach((button, index) => {
+    button.dataset.testid = `session-scenario-${SCENARIOS[index].id}`;
+  });
+  const sessionContext = h(
+    'div',
+    { class: 'session-context-field', 'data-testid': 'session-context' },
+    h('span', { class: 'session-setting-label' }, COPY.stage.persona),
+    personaInput,
+    h('p', { class: 'hint faint' }, COPY.stage.personaNote),
+    scenarioSeg.el
+  );
   const lengthValue = h(
     'output',
     { class: 'session-length-value', 'data-testid': 'session-length-label' },
@@ -683,13 +700,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       'div',
       { class: 'session-advanced-body' },
       lengthField,
-      h(
-        'div',
-        { class: 'custom-group' },
-        h('h3', { class: 'group-label' }, COPY.stage.persona),
-        personaInput,
-        h('p', { class: 'hint faint' }, COPY.stage.personaNote)
-      ),
       h('div', { class: 'bond-divider' }),
       h(
         'p',
@@ -753,7 +763,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         { class: 'session-primary' },
         identityMode.el,
         identityCustom,
-        scen.el
+        sessionContext
       ),
       sessionAdvanced
     ),
@@ -1063,12 +1073,14 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       }
       identityMode.select.value = identityCustomActive ? 'character' : 'self';
       identityCustom.hidden = !identityCustomActive;
-      scen.select.value = s.session.scenario;
+      scenarioSeg.btns.forEach((button, index) => {
+        button.setAttribute('aria-checked', String(SCENARIOS[index].id === s.session.scenario));
+      });
       syncLength(s.session.length);
       // Scenario belongs to Open Chat. Quest owns its authored scene, so this
       // control disappears rather than pretending it can tune the story face.
-      scen.el.hidden = s.activeQuestId !== null;
-      const scenarioLabel = scen.select.selectedOptions[0]?.text ?? 'Thường ngày';
+      scenarioSeg.el.hidden = s.activeQuestId !== null;
+      const scenarioLabel = SCENARIOS.find((option) => option.id === s.session.scenario)?.label ?? 'Thường ngày';
       const identityLabel = s.session.identity || 'Là chính anh';
       const sessionSummary = s.activeQuestId
         ? `${identityLabel} · Câu chuyện`

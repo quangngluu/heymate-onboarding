@@ -396,7 +396,8 @@ async function runMuteTtsCoverage(browser) {
           );
         }
         if (url.includes('/api/tts')) {
-          window.__heymateMuteSmoke.tts++;
+          const body = JSON.parse(String(init?.body ?? '{}'));
+          if (String(body.text).includes('lượt kiểm thử này')) window.__heymateMuteSmoke.tts++;
           return Promise.resolve(new Response('', { status: 503 }));
         }
         return realFetch(input, init);
@@ -575,6 +576,11 @@ async function runViewport(browser, viewport) {
   const settingsShape = await page.evaluate(() => ({
     primaryRows: document.querySelectorAll('.session-primary .session-setting-row').length,
     advancedOpen: document.querySelector('.session-advanced')?.hasAttribute('open') ?? null,
+    contextLabel: document
+      .querySelector('[data-testid="session-context"] .session-setting-label')
+      ?.textContent?.trim() ?? '',
+    scenarioLabels: [...document.querySelectorAll('[data-testid^="session-scenario-"]')]
+      .map((button) => button.textContent?.trim() ?? ''),
     identityLabel: document
       .querySelector('[data-testid="session-identity"]')
       ?.closest('.session-setting-row')
@@ -589,7 +595,8 @@ async function runViewport(browser, viewport) {
       getComputedStyle(document.querySelector('.session-select')).fontSize
     ),
   }));
-  await page.select('[data-testid="session-scenario"]', 'latenight');
+  await page.type('[data-testid="session-persona"]', 'Trêu nhẹ và hỏi về ngày của anh.');
+  await page.click('[data-testid="session-scenario-latenight"]');
   await page.click('[data-testid="session-advanced"] summary');
   await page.$eval('[data-testid="session-length"]', (element) => {
     if (!(element instanceof HTMLInputElement) || element.type !== 'range') {
@@ -604,7 +611,12 @@ async function runViewport(browser, viewport) {
     const lengthLabel = document.querySelector('[data-testid="session-length-label"]');
     const voiceAction = document.querySelector('[data-testid="voice-speak-as"]');
     return {
-      scenario: scenario instanceof HTMLSelectElement ? scenario.value : null,
+      scenario: window.__hm?.store?.get?.().session.scenario ?? null,
+      scenarioRole: scenario?.getAttribute('role') ?? null,
+      scenarioSelected: document
+        .querySelector('[data-testid="session-scenario-latenight"]')
+        ?.getAttribute('aria-checked') ?? null,
+      persona: window.__hm?.store?.get?.().session.persona ?? null,
       length: window.__hm?.store?.get?.().session.length ?? null,
       lengthType: length instanceof HTMLInputElement ? length.type : null,
       lengthValue: length instanceof HTMLInputElement ? length.value : null,
@@ -680,8 +692,7 @@ async function runViewport(browser, viewport) {
       settingsShape: settingsShape_,
       settingsState: settingsState_,
       scenarioHiddenInQuest:
-        document.querySelector('[data-testid="session-scenario"]')?.closest('.session-setting-row')
-          ?.hasAttribute('hidden') ?? false,
+        document.querySelector('[data-testid="session-scenario"]')?.hasAttribute('hidden') ?? false,
       questPlayable: questPlayable_,
       gatedCardVisible: gatedCardVisible_,
       openingVisual: openingVisualState_,
@@ -708,8 +719,15 @@ async function runViewport(browser, viewport) {
   if (!state.series.includes('SWORD ART ONLINE')) {
     failures.push(`series=${JSON.stringify(state.series)}`);
   }
-  if (state.settingsShape.primaryRows !== 2) {
+  if (state.settingsShape.primaryRows !== 1) {
     failures.push(`settings primary rows=${state.settingsShape.primaryRows}`);
+  }
+  if (
+    state.settingsShape.contextLabel !== 'Lần này anh muốn em ở bên anh thế nào?' ||
+    JSON.stringify(state.settingsShape.scenarioLabels) !==
+      JSON.stringify(['Thường ngày', 'Đêm riêng tư', 'Ở bên nhau', 'Chúc ngủ ngon'])
+  ) {
+    failures.push(`settings context shape=${JSON.stringify(state.settingsShape)}`);
   }
   if (
     state.settingsShape.identityLabel !== 'Anh muốn nhập vai ai?' ||
@@ -728,6 +746,13 @@ async function runViewport(browser, viewport) {
   }
   if (state.settingsState.scenario !== 'latenight') {
     failures.push(`settings scenario=${JSON.stringify(state.settingsState.scenario)}`);
+  }
+  if (
+    state.settingsState.scenarioRole !== 'radiogroup' ||
+    state.settingsState.scenarioSelected !== 'true' ||
+    state.settingsState.persona !== 'Trêu nhẹ và hỏi về ngày của anh.'
+  ) {
+    failures.push(`settings context state=${JSON.stringify(state.settingsState)}`);
   }
   if (state.settingsState.length !== 'expressive') {
     failures.push(`settings length=${JSON.stringify(state.settingsState.length)}`);
