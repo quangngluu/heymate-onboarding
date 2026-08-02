@@ -599,10 +599,50 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     actions.updateSession({ scenario: id })
   );
   scen.select.dataset.testid = 'session-scenario';
-  const len = selectField(COPY.stage.length, LENGTHS, (id) =>
-    actions.updateSession({ length: id })
+  const lengthValue = h(
+    'output',
+    { class: 'session-length-value', 'data-testid': 'session-length-label' },
+    LENGTHS[1].label
+  ) as HTMLOutputElement;
+  const lengthSlider = h('input', {
+    type: 'range',
+    class: 'session-length-slider',
+    min: '0',
+    max: String(LENGTHS.length - 1),
+    step: '1',
+    value: '1',
+    'data-testid': 'session-length',
+    'aria-label': COPY.stage.length,
+    'aria-valuetext': LENGTHS[1].label,
+  }) as HTMLInputElement;
+  const syncLength = (id: (typeof LENGTHS)[number]['id']) => {
+    const index = Math.max(0, LENGTHS.findIndex((option) => option.id === id));
+    const option = LENGTHS[index];
+    lengthSlider.value = String(index);
+    lengthSlider.setAttribute('aria-valuetext', option.label);
+    lengthValue.textContent = option.label;
+  };
+  lengthSlider.addEventListener('input', () => {
+    const option = LENGTHS[Number(lengthSlider.value)] ?? LENGTHS[1];
+    syncLength(option.id);
+    actions.updateSession({ length: option.id });
+  });
+  const lengthField = h(
+    'div',
+    { class: 'session-length-field' },
+    h(
+      'div',
+      { class: 'session-length-head' },
+      h('span', { class: 'session-setting-label' }, COPY.stage.length),
+      lengthValue
+    ),
+    lengthSlider,
+    h(
+      'div',
+      { class: 'session-length-marks', 'aria-hidden': 'true' },
+      ...LENGTHS.map((option) => h('span', {}, option.label))
+    )
   );
-  len.select.dataset.testid = 'session-length';
 
   // --- the bond: how she is with him, not who she is ---
   //
@@ -649,7 +689,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h(
       'div',
       { class: 'session-advanced-body' },
-      len.el,
+      lengthField,
       h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, COPY.stage.nickname), nickInput),
       h(
         'div',
@@ -1034,7 +1074,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       identityMode.select.value = identityCustomActive ? 'character' : 'self';
       identityCustom.hidden = !identityCustomActive;
       scen.select.value = s.session.scenario;
-      len.select.value = s.session.length;
+      syncLength(s.session.length);
       // Scenario belongs to Open Chat. Quest owns its authored scene, so this
       // control disappears rather than pretending it can tune the story face.
       scen.el.hidden = s.activeQuestId !== null;

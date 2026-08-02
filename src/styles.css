@@ -1251,6 +1251,37 @@ html[data-quest-rig='ready'] .step-stage.is-quest-mode::after {
   border: 1px solid var(--line);
   border-radius: 10px;
 }
+.session-length-field {
+  display: grid;
+  gap: 8px;
+  padding: 10px 11px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.session-length-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.session-length-value {
+  color: var(--accent);
+  font-size: 12px;
+}
+.session-length-slider {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.session-length-marks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  color: var(--ivory-dim);
+  font-size: 9.5px;
+  line-height: 1.2;
+}
+.session-length-marks span:nth-child(2) { text-align: center; }
+.session-length-marks span:last-child { text-align: right; }
 .persona-input {
   width: 100%;
   resize: vertical;

@@ -584,14 +584,24 @@ async function runViewport(browser, viewport) {
   }));
   await page.select('[data-testid="session-scenario"]', 'latenight');
   await page.click('[data-testid="session-advanced"] summary');
-  await page.select('[data-testid="session-length"]', 'expressive');
+  await page.$eval('[data-testid="session-length"]', (element) => {
+    if (!(element instanceof HTMLInputElement) || element.type !== 'range') {
+      throw new Error('response length is not a range input');
+    }
+    element.value = '2';
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   const settingsState = await page.evaluate(() => {
     const scenario = document.querySelector('[data-testid="session-scenario"]');
     const length = document.querySelector('[data-testid="session-length"]');
+    const lengthLabel = document.querySelector('[data-testid="session-length-label"]');
     const voiceAction = document.querySelector('[data-testid="voice-speak-as"]');
     return {
       scenario: scenario instanceof HTMLSelectElement ? scenario.value : null,
-      length: length instanceof HTMLSelectElement ? length.value : null,
+      length: window.__hm?.store?.get?.().session.length ?? null,
+      lengthType: length instanceof HTMLInputElement ? length.type : null,
+      lengthValue: length instanceof HTMLInputElement ? length.value : null,
+      lengthLabel: lengthLabel?.textContent?.trim() ?? '',
       voiceActionEnabled: voiceAction instanceof HTMLButtonElement && !voiceAction.disabled,
     };
   });
@@ -707,6 +717,13 @@ async function runViewport(browser, viewport) {
   }
   if (state.settingsState.length !== 'expressive') {
     failures.push(`settings length=${JSON.stringify(state.settingsState.length)}`);
+  }
+  if (
+    state.settingsState.lengthType !== 'range' ||
+    state.settingsState.lengthValue !== '2' ||
+    state.settingsState.lengthLabel !== 'Nhiều cảm xúc'
+  ) {
+    failures.push(`settings length slider=${JSON.stringify(state.settingsState)}`);
   }
   if (!state.settingsState.voiceActionEnabled) failures.push('voice action is unavailable');
   if (state.openingVisual.id !== 'rin-opening-signal') {
