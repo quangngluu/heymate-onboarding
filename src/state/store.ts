@@ -35,6 +35,12 @@ import { resolveCanonRoute } from '../config/canon-route';
 import { canonRevealIndexFor } from '../config/canon-view';
 import { presentableEndingFor, questPlayable } from '../quest/endings';
 import type { V3Ending } from '../config/v3-canon';
+import {
+  nextOpenChatRewardTurn,
+  selectOpenChatReward,
+  visualById,
+  type OpenChatVisual,
+} from '../chat/open-chat-visuals';
 
 export { COST } from '../config/economy';
 export type { Spend } from '../config/economy';
@@ -61,6 +67,15 @@ export type GenPhase = 'idle' | 'processing' | 'done';
 export interface ChatTurn {
   from: 'user' | 'resident';
   text: string;
+  /** Open Chat only: an authored character frame inserted inside this reply. */
+  visualId?: string;
+  /** Spoken sentence boundary after which the visual becomes visible. */
+  visualAfterSentence?: number;
+}
+
+export interface OpenChatRewardProgress {
+  seenIds: string[];
+  nextTurn: number;
 }
 
 export type ConversationScope = `chat:${ResidentId}` | `quest:${string}`;
@@ -268,6 +283,8 @@ export interface AppState {
   sceneShots: Record<string, string>;
   /** Which cached shot belongs to a scoped conversation turn. Session only. */
   turnShots: Record<string, string>;
+  /** Per-resident authored reward deck progress; Open Chat only. */
+  openChatRewards: Record<string, OpenChatRewardProgress>;
 
   // --- creator universe ---
   characterId: string;
@@ -344,6 +361,7 @@ const initialState: AppState = {
   questClosedAt: -99,
   sceneShots: {},
   turnShots: {},
+  openChatRewards: {},
 
   characterId: CHARACTERS[0].id,
   gen: { mode: 'text', text: '', photoUrl: null, photoName: null },
@@ -365,7 +383,7 @@ export class Store {
   private state: AppState = initialState;
   private listeners = new Set<Listener>();
 
-  constructor() {
+  constructor(private random: () => number = Math.random) {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -385,6 +403,7 @@ export class Store {
           canonLedger?: CanonLedgerEntry[];
           crossModeMemory?: CrossModeMemory[];
           questCheckpoints?: Record<string, string>;
+          openChatRewards?: Record<string, OpenChatRewardProgress>;
         };
         this.state = {
           ...this.state,
@@ -403,6 +422,7 @@ export class Store {
           canonLedger: saved.canonLedger ?? [],
           crossModeMemory: saved.crossModeMemory ?? [],
           questCheckpoints: saved.questCheckpoints ?? {},
+          openChatRewards: saved.openChatRewards ?? {},
         };
       }
     } catch {
@@ -456,6 +476,7 @@ export class Store {
           canonLedger: this.state.canonLedger,
           crossModeMemory: this.state.crossModeMemory,
           questCheckpoints: this.state.questCheckpoints,
+          openChatRewards: this.state.openChatRewards,
         })
       );
     } catch {
@@ -499,6 +520,11 @@ export class Store {
       ? { ...this.state.transcripts, [this.state.residentId]: this.state.chat }
       : this.state.transcripts;
     const resumed = transcripts[id] ?? [];
+    const turns = resumed.filter((t) => t.from === 'user').length;
+    const rewardProgress = this.state.openChatRewards[id] ?? {
+      seenIds: [],
+      nextTurn: nextOpenChatRewardTurn(turns, this.random),
+    };
     this.set({
       residentId: id,
       transcripts,
@@ -506,7 +532,11 @@ export class Store {
       questChat: [],
       // Derived, not reset. The free allowance is spent per resident, so it has
       // to come back with her — otherwise hopping away and back mints turns.
-      turns: resumed.filter((t) => t.from === 'user').length,
+      turns,
+      openChatRewards: {
+        ...this.state.openChatRewards,
+        [id]: rewardProgress,
+      },
       speaking: false,
       thinking: false,
       voicing: false,
@@ -587,6 +617,43 @@ export class Store {
       transcripts: { ...this.state.transcripts, [this.state.residentId]: chat },
     });
     this.persist();
+  }
+
+  /** Return the due authored reward without consuming it while a reply is in flight. */
+  peekOpenChatReward(): OpenChatVisual | null {
+    if (this.state.activeQuestId) return null;
+    const progress = this.state.openChatRewards[this.state.residentId];
+    if (!progress || this.state.turns < progress.nextTurn) return null;
+    return selectOpenChatReward(
+      this.state.residentId,
+      progress.seenIds,
+      this.random,
+      this.state.session.scenario
+    );
+  }
+
+  /** Consume only a valid reward owned by the resident currently in Open Chat. */
+  consumeOpenChatReward(id: string): boolean {
+    if (this.state.activeQuestId) return false;
+    const visual = visualById(id);
+    if (!visual || visual.kind !== 'reward' || visual.residentId !== this.state.residentId) {
+      return false;
+    }
+    const current = this.state.openChatRewards[this.state.residentId];
+    if (!current || current.seenIds.includes(id) || this.state.turns < current.nextTurn) {
+      return false;
+    }
+    this.set({
+      openChatRewards: {
+        ...this.state.openChatRewards,
+        [this.state.residentId]: {
+          seenIds: [...current.seenIds, id],
+          nextTurn: nextOpenChatRewardTurn(this.state.turns, this.random),
+        },
+      },
+    });
+    this.persist();
+    return true;
   }
 
   /** Append one turn to the active Quest scene without touching Open Chat. */

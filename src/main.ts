@@ -29,6 +29,10 @@ import {
 } from './chat/mode';
 import { cancelSpeech, renderSpeech, resetSpeechEmotion, streamSpeech } from './chat/voice';
 import { spoken } from './chat/dialogue';
+import {
+  composeRewardReply,
+  openingVisualFor,
+} from './chat/open-chat-visuals';
 import type { ResidentId } from './config/residents';
 import { canonViewFor } from './config/canon-view';
 import { resolveCanonRoute } from './config/canon-route';
@@ -593,9 +597,16 @@ class App implements UIActions {
     const line = resuming
       ? r.returnGreeting
       : openingLine(r, saved.memories, saved.nickname, saved.revealed, route);
+    const visual = openingVisualFor(s.residentId);
+    const openingTurn: ChatTurn = {
+      from: 'resident',
+      text: line,
+      visualId: visual.id,
+      visualAfterSentence: 2,
+    };
     const chat: ChatTurn[] = resuming
-      ? [...s.chat, { from: 'resident', text: line }]
-      : [{ from: 'resident', text: line }];
+      ? [...s.chat, openingTurn]
+      : [openingTurn];
     store.set({ chat });
 
     const voice = r.voices.find((v) => v.slot === s.session.voice) ?? r.voices[0];
@@ -986,6 +997,7 @@ class App implements UIActions {
     };
     // History excludes the turn we just pushed; the message is sent separately.
     const history = (mode === 'quest' ? after.questChat : after.chat).slice(0, -1);
+    const visualReward = mode === 'open-chat' ? store.peekOpenChatReward() : null;
     const openQuest = s.activeQuestId ? store.questById2(s.activeQuestId) : undefined;
     const openNode = openQuest
       ? questNode(openQuest, s.activeQuestNodeId ?? openQuest.startNodeId)
@@ -1010,14 +1022,26 @@ class App implements UIActions {
       // The line starts arriving the moment the model answers. Its clip is
       // rendered alongside and joins in when it is ready.
       store.set({ thinking: false, voicing: true });
-      const prepared = this.speakReply(result.text, s.residentId, conversation);
-      if (mode === 'quest') store.pushQuestTurn({ from: 'resident', text: result.text });
-      else store.pushTurn({ from: 'resident', text: result.text });
+      let replyText = result.text;
+      let replyTurn: ChatTurn = { from: 'resident', text: replyText };
+      if (visualReward && store.consumeOpenChatReward(visualReward.id)) {
+        const composed = composeRewardReply(replyText, visualReward);
+        replyText = composed.text;
+        replyTurn = {
+          from: 'resident',
+          text: replyText,
+          visualId: visualReward.id,
+          visualAfterSentence: composed.visualAfterSentence,
+        };
+      }
+      const prepared = this.speakReply(replyText, s.residentId, conversation);
+      if (mode === 'quest') store.pushQuestTurn(replyTurn);
+      else store.pushTurn(replyTurn);
       if (result.revealedRung !== undefined) {
         store.set({ revealed: result.revealedRung + 1 });
       }
       const visibleChat = mode === 'quest' ? store.get().questChat : store.get().chat;
-      this.streamIn(visibleChat.length - 1, result.text, prepared, true, conversation);
+      this.streamIn(visibleChat.length - 1, replyText, prepared, true, conversation);
       // The free encounter ends by offering to keep what was said, not by
       // blocking the conversation mid-sentence.
       // Offer to keep the chapter once there is one worth keeping, rather

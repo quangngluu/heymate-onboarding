@@ -856,6 +856,136 @@ html[data-quest-rig='ready'] .step-stage.is-quest-mode::after {
 @keyframes shot-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .scene-shot { animation: none; } }
 
+/* An Open Chat image is a thing she deliberately shows, not a Quest camera
+   cut. It carries its own context and gives the visitor a way back into the
+   conversation instead of becoming a decorative dead end. */
+.open-chat-visual {
+  align-self: flex-start;
+  width: min(100%, 430px);
+  margin: 2px 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 44%, rgba(239, 230, 212, 0.16));
+  border-radius: 17px;
+  overflow: hidden;
+  background: rgba(7, 10, 15, 0.88);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  animation: open-chat-visual-in 0.56s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+.open-chat-visual-frame {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: #080c12;
+}
+.open-chat-visual-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 44%;
+  filter: contrast(1.03) saturate(0.92);
+  transform: scale(1.012);
+}
+.open-chat-visual-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 54%, rgba(0, 0, 0, 0.62));
+}
+.open-chat-visual-scan {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.32;
+  background: repeating-linear-gradient(
+    180deg,
+    transparent 0,
+    transparent 3px,
+    rgba(255, 255, 255, 0.1) 4px
+  );
+  animation: open-chat-scan 0.72s steps(2, end) 1;
+}
+.open-chat-visual-label {
+  position: absolute;
+  z-index: 2;
+  left: 13px;
+  bottom: 10px;
+  max-width: calc(100% - 26px);
+  color: #f7f2e8;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 9px #000;
+}
+.open-chat-visual-caption {
+  padding: 11px 13px 9px;
+  color: var(--ivory-dim);
+  font-size: 11.5px;
+  line-height: 1.48;
+}
+.open-chat-visual-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 11px 12px;
+}
+.open-chat-visual-action {
+  min-height: 31px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, rgba(239, 230, 212, 0.14));
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--accent) 11%, rgba(255, 255, 255, 0.025));
+  color: var(--ivory);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.open-chat-visual-action:hover:not(:disabled),
+.open-chat-visual-action:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 72%, white 12%);
+  background: color-mix(in srgb, var(--accent) 19%, rgba(255, 255, 255, 0.04));
+}
+.open-chat-visual-action:focus-visible { outline: 2px solid var(--ivory); outline-offset: 2px; }
+.open-chat-visual-action:disabled { opacity: 0.42; cursor: default; }
+.open-chat-visual.is-lcd { border-radius: 12px; }
+.open-chat-visual.is-lcd .open-chat-visual-frame {
+  box-shadow: inset 0 0 42px rgba(93, 211, 255, 0.16);
+}
+.open-chat-visual.is-lcd .open-chat-visual-image { filter: contrast(1.08) saturate(0.75) hue-rotate(5deg); }
+.open-chat-visual.is-blade {
+  border-radius: 23px 8px 23px 8px;
+  border-color: rgba(224, 64, 44, 0.46);
+}
+.open-chat-visual.is-blade .open-chat-visual-scan {
+  opacity: 0.2;
+  background: linear-gradient(112deg, transparent 36%, rgba(255, 216, 184, 0.32) 48%, transparent 60%);
+}
+.open-chat-visual.is-page {
+  border-radius: 8px 22px 8px 22px;
+  border-color: rgba(212, 156, 244, 0.44);
+}
+.open-chat-visual.is-page .open-chat-visual-scan {
+  opacity: 0.22;
+  background: radial-gradient(circle at 86% 8%, rgba(255, 237, 205, 0.4), transparent 31%);
+}
+@keyframes open-chat-visual-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); filter: brightness(1.7); }
+  45% { opacity: 1; filter: brightness(0.72); }
+  to { transform: none; filter: none; }
+}
+@keyframes open-chat-scan {
+  0%, 36% { transform: translateX(-1.5%); opacity: 0.64; }
+  37%, 68% { transform: translateX(1%); opacity: 0.18; }
+  69%, 100% { transform: none; opacity: 0.32; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .open-chat-visual,
+  .open-chat-visual-scan { animation: none; }
+}
+
 .beat-line {
   align-self: flex-start;
   max-width: 94%;
@@ -1807,6 +1937,38 @@ html[data-quest-rig='ready'] .step-stage.is-quest-mode::after {
     max-width: 100%;
   }
   .speech-log .scene-shot { pointer-events: auto; }
+  .speech-log:has(.open-chat-visual) {
+    width: calc(100vw - 20px);
+    max-width: 410px;
+    max-height: min(50vh, calc(100vh - var(--rail-t) - 70px - var(--dock-b) - var(--dock-h, 150px) - 4px));
+    max-height: min(50dvh, calc(100dvh - var(--rail-t) - 70px - var(--dock-b) - var(--dock-h, 150px) - 4px));
+  }
+  .speech-log:has(.open-chat-visual) .bubble,
+  .speech-log:has(.open-chat-visual) .beat-line {
+    max-width: min(56%, 232px);
+  }
+  .speech-log .open-chat-visual {
+    width: min(calc(100vw - 20px), 340px);
+    max-width: none;
+  }
+  .speech-log .open-chat-visual-frame { aspect-ratio: 16 / 9; }
+  .speech-log .open-chat-visual-caption {
+    padding: 8px 10px 7px;
+    font-size: 10.5px;
+    line-height: 1.38;
+  }
+  .speech-log .open-chat-visual-actions {
+    flex-wrap: nowrap;
+    gap: 5px;
+    padding: 0 8px 9px;
+    overflow-x: auto;
+  }
+  .speech-log .open-chat-visual-action {
+    flex: 1 0 0;
+    min-height: 34px;
+    padding: 5px 7px;
+    font-size: 9.5px;
+  }
 
   /* The cast is one compact tab strip, not three competing pills. */
   .roster {

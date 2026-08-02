@@ -298,6 +298,83 @@ async function runModeTransitionCoverage(browser) {
   return { failures, gated: false };
 }
 
+async function runOpenChatVisualRewardCoverage(browser) {
+  const failures = [];
+  const context = await browser.createBrowserContext();
+  try {
+    const page = await context.newPage();
+    await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true });
+    await page.evaluateOnNewDocument(() => {
+      Math.random = () => 0;
+      const realFetch = window.fetch.bind(window);
+      const fetchUrls = [];
+      window.__heymateVisualSmoke = { fetchUrls };
+      window.fetch = (input, init) => {
+        const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+        fetchUrls.push(url);
+        if (url.includes('/api/chat')) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ text: 'Em nghe rồi. Đoạn này vẫn còn một nhịp chưa nói hết.' }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          );
+        }
+        if (url.includes('/api/tts')) return Promise.resolve(new Response('', { status: 503 }));
+        return realFetch(input, init);
+      };
+    });
+    await page.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.click('[data-testid="universe-waifu-universe"]');
+    await page.waitForSelector('.step-stage', { visible: true });
+    await page.waitForSelector('[data-testid="open-chat-visual"]', { visible: true });
+
+    const input = '.dock-bar .chat-input';
+    const send = '.dock-bar .btn-primary';
+    for (let turn = 1; turn <= 3; turn++) {
+      await page.waitForSelector(`${input}:not([disabled])`, { visible: true, timeout: 15_000 });
+      await fillInput(page, input, `Lượt reward ${turn}`);
+      await clickSelector(page, send);
+      await page.waitForFunction(
+        (expected) => document.querySelectorAll('.speech-log .bubble-user').length >= expected,
+        { timeout: 5_000 },
+        turn
+      );
+    }
+
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid="open-chat-visual"]').length >= 2,
+      { timeout: 15_000 }
+    );
+    await page.waitForFunction(
+      () => document.querySelector('.speech-log')?.textContent?.includes('Em kéo khung này ra vì đoạn anh vừa nói.'),
+      { timeout: 15_000 }
+    );
+    const state = await page.evaluate(() => {
+      const cards = [...document.querySelectorAll('[data-testid="open-chat-visual"]')];
+      const reward = cards.at(-1);
+      const image = reward?.querySelector('img');
+      return {
+        id: reward?.getAttribute('data-visual-id') ?? null,
+        actions: reward?.querySelectorAll('.open-chat-visual-action').length ?? 0,
+        imageLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+        transcript: document.querySelector('.speech-log')?.textContent ?? '',
+        sceneRequests: window.__heymateVisualSmoke.fetchUrls.filter((url) => url.includes('/api/scene-image')).length,
+      };
+    });
+    if (!state.id?.startsWith('rin-reward-')) failures.push(`reward visual=${JSON.stringify(state.id)}`);
+    if (state.actions !== 2) failures.push(`reward actions=${state.actions}`);
+    if (!state.imageLoaded) failures.push('reward image did not load');
+    if (!state.transcript.includes('Em kéo khung này ra vì đoạn anh vừa nói.')) {
+      failures.push('reward visual is missing its authored conversational bridge');
+    }
+    if (state.sceneRequests !== 0) failures.push(`reward made ${state.sceneRequests} scene-image requests`);
+  } finally {
+    await context.close();
+  }
+  return { failures };
+}
+
 async function runViewport(browser, viewport) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
@@ -329,6 +406,36 @@ async function runViewport(browser, viewport) {
     () => document.documentElement.dataset.questRig === 'ready',
     { timeout: 30_000 }
   );
+  await page.waitForFunction(
+    () => {
+      const image = document.querySelector('[data-testid="open-chat-visual"] img');
+      return image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0;
+    },
+    { timeout: 15_000 }
+  );
+  const openingVisualState = await page.evaluate(() => {
+    const card = document.querySelector('[data-testid="open-chat-visual"]');
+    const children = [...(card?.parentElement?.children ?? [])];
+    const at = card ? children.indexOf(card) : -1;
+    const image = card?.querySelector('img');
+    return {
+      id: card?.getAttribute('data-visual-id') ?? null,
+      residentBubblesBefore: at < 0
+        ? -1
+        : children.slice(0, at).filter((element) => element.classList.contains('bubble-resident')).length,
+      actionCount: card?.querySelectorAll('.open-chat-visual-action').length ?? 0,
+      alt: image?.getAttribute('alt') ?? '',
+      naturalWidth: image instanceof HTMLImageElement ? image.naturalWidth : 0,
+      horizontalOverflowPx: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
+    };
+  });
+  if (captureDir) {
+    mkdirSync(captureDir, { recursive: true });
+    await page.screenshot({
+      path: resolve(captureDir, `open-chat-visual-${viewport.width}x${viewport.height}.png`),
+      fullPage: false,
+    });
+  }
   await page.click('[data-testid="session-settings-open"]');
   await page.waitForSelector('.session-scrim:not([hidden])', { visible: true });
   const settingsShape = await page.evaluate(() => ({
@@ -379,7 +486,7 @@ async function runViewport(browser, viewport) {
     firstBeatMs = Math.round(performance.now() - start);
   }
 
-  const state = await page.evaluate((settingsShape_, settingsState_, questPlayable_, gatedCardVisible_) => {
+  const state = await page.evaluate((settingsShape_, settingsState_, questPlayable_, gatedCardVisible_, openingVisualState_) => {
     const visible = (element) => {
       if (!(element instanceof HTMLElement)) return false;
       const rect = element.getBoundingClientRect();
@@ -426,8 +533,9 @@ async function runViewport(browser, viewport) {
           ?.hasAttribute('hidden') ?? false,
       questPlayable: questPlayable_,
       gatedCardVisible: gatedCardVisible_,
+      openingVisual: openingVisualState_,
     };
-  }, settingsShape, settingsState, Boolean(playable), gatedCardVisible);
+  }, settingsShape, settingsState, Boolean(playable), gatedCardVisible, openingVisualState);
 
   if (captureDir) {
     mkdirSync(captureDir, { recursive: true });
@@ -467,6 +575,21 @@ async function runViewport(browser, viewport) {
     failures.push(`settings length=${JSON.stringify(state.settingsState.length)}`);
   }
   if (!state.settingsState.voiceActionEnabled) failures.push('voice action is unavailable');
+  if (state.openingVisual.id !== 'rin-opening-signal') {
+    failures.push(`opening visual=${JSON.stringify(state.openingVisual.id)}`);
+  }
+  if (state.openingVisual.residentBubblesBefore !== 2) {
+    failures.push(`opening visual after ${state.openingVisual.residentBubblesBefore} sentences`);
+  }
+  if (state.openingVisual.actionCount !== 2) {
+    failures.push(`opening visual actions=${state.openingVisual.actionCount}`);
+  }
+  if (!state.openingVisual.alt || state.openingVisual.naturalWidth < 1) {
+    failures.push('opening visual lacks a loaded accessible image');
+  }
+  if (state.openingVisual.horizontalOverflowPx > 1) {
+    failures.push(`opening horizontalOverflowPx=${state.openingVisual.horizontalOverflowPx}`);
+  }
   if (state.questPlayable) {
     if (!state.scenarioHiddenInQuest) failures.push('scenario remains visible in Quest');
     if (state.questPhase !== 'threshold') failures.push(`questPhase=${state.questPhase}`);
@@ -525,6 +648,7 @@ try {
     }
   }
   const modeCoverage = await runModeTransitionCoverage(browser);
+  const openChatVisualCoverage = await runOpenChatVisualRewardCoverage(browser);
 
   if (captureDir) {
     writeFileSync(
@@ -550,7 +674,16 @@ try {
   );
   for (const failure of modeCoverage.failures) process.stderr.write(`  - ${failure}\n`);
 
-  if (results.some((result) => result.failures.length) || modeCoverage.failures.length) process.exitCode = 1;
+  process.stdout.write(
+    `${openChatVisualCoverage.failures.length ? 'FAIL' : 'PASS'} Open Chat visual reward scheduling\n`
+  );
+  for (const failure of openChatVisualCoverage.failures) process.stderr.write(`  - ${failure}\n`);
+
+  if (
+    results.some((result) => result.failures.length) ||
+    modeCoverage.failures.length ||
+    openChatVisualCoverage.failures.length
+  ) process.exitCode = 1;
 } finally {
   await browser?.close();
   if (vite && !vite.killed) vite.kill('SIGTERM');

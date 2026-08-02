@@ -30,6 +30,11 @@ let scene: THREE.Scene | null = null;
 let camera: THREE.PerspectiveCamera | null = null;
 
 const cache = new Map<string, Promise<string | null>>();
+const portraitCache = new Map<string, Promise<string | null>>();
+
+let portraitRenderer: THREE.WebGLRenderer | null = null;
+let portraitScene: THREE.Scene | null = null;
+let portraitCamera: THREE.PerspectiveCamera | null = null;
 
 function ensureRig(): void {
   if (renderer) return;
@@ -104,4 +109,69 @@ export function subjectShot(modelUrl: string): Promise<string | null> {
     cache.set(modelUrl, p);
   }
   return p;
+}
+
+function ensurePortraitRig(): void {
+  if (portraitRenderer) return;
+  portraitRenderer = new THREE.WebGLRenderer({
+    antialias: true,
+    preserveDrawingBuffer: true,
+    alpha: true,
+  });
+  portraitRenderer.setSize(W, H, false);
+  portraitRenderer.setPixelRatio(1);
+  portraitRenderer.outputColorSpace = THREE.SRGBColorSpace;
+  portraitRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+  portraitRenderer.setClearColor(0x000000, 0);
+
+  portraitScene = new THREE.Scene();
+  portraitScene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a8a, 1.55));
+  const key = new THREE.DirectionalLight(0xfff4e2, 1.9);
+  key.position.set(1.6, 3.4, 3.6);
+  portraitScene.add(key);
+  const fill = new THREE.DirectionalLight(0xdfe6f2, 0.75);
+  fill.position.set(-2.4, 1.4, 1.8);
+  portraitScene.add(fill);
+
+  portraitCamera = new THREE.PerspectiveCamera(28, W / H, 0.1, 20);
+}
+
+/**
+ * Exact transparent resident render used by the offline Open Chat asset
+ * capture script. It never calls an image model and never enters runtime chat
+ * state; the yaw only gives the authored reward deck distinct camera views.
+ */
+export function subjectPortrait(modelUrl: string, yaw = 0): Promise<string | null> {
+  const key = `${modelUrl}:${yaw.toFixed(3)}`;
+  let pending = portraitCache.get(key);
+  if (!pending) {
+    pending = Promise.race([
+      whenLoaded(modelUrl),
+      new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 3000)),
+    ])
+      .then((loaded) => {
+        if (!loaded) return null;
+        ensurePortraitRig();
+        const model = loaded.clone(true);
+        model.rotation.y = yaw;
+        portraitScene!.add(model);
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+        const centre = box.getCenter(new THREE.Vector3());
+        const vFov = (portraitCamera!.fov * Math.PI) / 180;
+        const hFov = 2 * Math.atan(Math.tan(vFov / 2) * portraitCamera!.aspect);
+        const forHeight = size.y / 2 / Math.tan(vFov / 2);
+        const forWidth = Math.max(size.x, size.z) / 2 / Math.tan(hFov / 2);
+        const distance = Math.max(forHeight, forWidth) * 1.16;
+        portraitCamera!.position.set(centre.x, centre.y, centre.z + distance);
+        portraitCamera!.lookAt(centre);
+        portraitRenderer!.render(portraitScene!, portraitCamera!);
+        const data = portraitRenderer!.domElement.toDataURL('image/png');
+        portraitScene!.remove(model);
+        return data;
+      })
+      .catch(() => null);
+    portraitCache.set(key, pending);
+  }
+  return pending;
 }

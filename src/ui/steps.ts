@@ -33,6 +33,10 @@ import {
 import { ONBOARDING_QUESTS } from '../config/onboarding-quests';
 import { segments, segmentsUpTo } from '../chat/dialogue';
 import {
+  dialogueBlocksFromSegments,
+  visualById,
+} from '../chat/open-chat-visuals';
+import {
   COST,
   chatConversationScope,
   questConversationScope,
@@ -159,6 +163,59 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   // What she says lives next to her, as cards on the stage. The controls live
   // in one dock at the bottom centre, so the scene is never behind a box.
   const log = h('div', { class: 'speech-log', 'aria-live': 'polite' });
+
+  const openChatVisualCard = (visualId: string, state: AppState): HTMLElement | null => {
+    const visual = visualById(visualId);
+    if (!visual || visual.residentId !== state.residentId) return null;
+    const blocked = state.thinking || state.voicing || state.reveal !== null || !!state.activeQuestId;
+    const ask = (prompt: string) => {
+      const current = store.get();
+      if (current.thinking || current.voicing || current.reveal || current.activeQuestId) return;
+      actions.sendMessage(prompt);
+    };
+    return h(
+      'figure',
+      {
+        class: `open-chat-visual is-${visual.frame}`,
+        'data-testid': 'open-chat-visual',
+        'data-visual-id': visual.id,
+      },
+      h(
+        'div',
+        { class: 'open-chat-visual-frame' },
+        h('img', {
+          class: 'open-chat-visual-image',
+          onLoad: () => {
+            window.requestAnimationFrame(() => {
+              log.scrollTop = log.scrollHeight;
+            });
+          },
+          src: visual.src,
+          alt: visual.alt,
+          loading: visual.kind === 'opening' ? 'eager' : 'lazy',
+          decoding: 'async',
+        }),
+        h('span', { class: 'open-chat-visual-scan', 'aria-hidden': 'true' }),
+        h('span', { class: 'open-chat-visual-label' }, visual.label)
+      ),
+      h('figcaption', { class: 'open-chat-visual-caption' }, visual.caption),
+      h(
+        'div',
+        { class: 'open-chat-visual-actions', 'aria-label': 'Hỏi tiếp về hình ảnh' },
+        ...visual.prompts.map((prompt) =>
+          h(
+            'button',
+            {
+              class: 'open-chat-visual-action',
+              disabled: blocked,
+              onClick: () => ask(prompt),
+            },
+            prompt
+          )
+        )
+      )
+    );
+  };
 
   // "Để em nói hộ" is a mode of the same input, not another panel: the bar
   // changes what it does and says so, and one tap puts it back.
@@ -1184,11 +1241,25 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
             const shot: HTMLElement[] = shotUrl
               ? [h('img', { class: 'scene-shot', src: shotUrl, alt: '', loading: 'lazy' })]
               : [];
-            return shot.concat(parts.map((seg, k) => {
-              const tail = partial && k === parts.length - 1 ? ' is-typing' : '';
+            const dialogue = dialogueBlocksFromSegments(
+              parts,
+              openQuest ? undefined : t.visualId,
+              t.visualAfterSentence ?? 2,
+              !partial
+            );
+            const lastTextIndex = dialogue.reduce(
+              (last, block, index) => (block.kind === 'visual' ? last : index),
+              -1
+            );
+            return shot.concat(dialogue.flatMap((seg, k) => {
+              if (seg.kind === 'visual') {
+                const card = openChatVisualCard(seg.visualId, s);
+                return card ? [card] : [];
+              }
+              const tail = partial && k === lastTextIndex ? ' is-typing' : '';
               return seg.kind === 'beat'
-                ? h('p', { class: `beat-line${tail}` }, seg.text)
-                : h('p', { class: `bubble bubble-resident${tail}` }, seg.text);
+                ? [h('p', { class: `beat-line${tail}` }, seg.text)]
+                : [h('p', { class: `bubble bubble-resident${tail}` }, seg.text)];
             }));
           }),
           ...(waiting
