@@ -707,6 +707,7 @@ class App implements UIActions {
     residentId: ResidentId,
     conversation = this.conversationToken()
   ): Promise<number | null> {
+    if (this.ambience.isMuted) return null;
     const r = canonViewFor(residentId, resolveCanonRoute());
     const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
     const line = spoken(text);
@@ -757,6 +758,7 @@ class App implements UIActions {
     residentId: ResidentId,
     conversation = this.conversationToken()
   ): Promise<number | null> {
+    if (this.ambience.isMuted) return Promise.resolve(null);
     return this.speakStreamed(text, residentId, conversation).then(async (seconds) => {
       if (!this.conversationIsCurrent(conversation)) return null;
       if (seconds !== null) return seconds;
@@ -777,6 +779,7 @@ class App implements UIActions {
     bump = true,
     conversation = this.conversationToken()
   ): Promise<AudioBuffer | null> {
+    if (this.ambience.isMuted) return Promise.resolve(null);
     const r = canonViewFor(residentId, resolveCanonRoute());
     const slot = r.voices.find((v) => v.slot === store.get().session.voice) ?? r.voices[0];
     if (bump) this.speechToken++;
@@ -906,6 +909,10 @@ class App implements UIActions {
     }
 
     stopAfter(speakingDuration(spoken(text) || text));
+    if (this.ambience.isMuted) {
+      store.set({ voicing: false });
+      return;
+    }
     store.set({ voicing: true });
     const speakerId = store.get().residentId;
     const r = canonViewFor(speakerId, resolveCanonRoute());
@@ -1368,6 +1375,7 @@ class App implements UIActions {
       this.flashError(COPY.stage.voiceMessageEmpty);
       return;
     }
+    if (this.ambience.isMuted) return;
     if (s.speaking || s.thinking || s.voicing) return;
     if (!store.canAfford('speakForMe')) {
       store.set({ broke: 'speakForMe' });
@@ -1647,8 +1655,8 @@ class App implements UIActions {
   }
 
   toggleMute(): boolean {
-    this.ambience.setMuted(!this.ambience.muted);
-    return this.ambience.muted;
+    this.ambience.setMuted(!this.ambience.isMuted);
+    return this.ambience.isMuted;
   }
 }
 

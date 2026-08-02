@@ -375,6 +375,63 @@ async function runOpenChatVisualRewardCoverage(browser) {
   return { failures };
 }
 
+async function runMuteTtsCoverage(browser) {
+  const failures = [];
+  const context = await browser.createBrowserContext();
+  try {
+    const page = await context.newPage();
+    await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true });
+    await page.evaluateOnNewDocument(() => {
+      const realFetch = window.fetch.bind(window);
+      window.__heymateMuteSmoke = { chats: 0, tts: 0 };
+      window.fetch = (input, init) => {
+        const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+        if (url.includes('/api/chat')) {
+          window.__heymateMuteSmoke.chats++;
+          return Promise.resolve(
+            new Response(JSON.stringify({ text: 'Em nghe thấy lượt kiểm thử này.' }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          );
+        }
+        if (url.includes('/api/tts')) {
+          window.__heymateMuteSmoke.tts++;
+          return Promise.resolve(new Response('', { status: 503 }));
+        }
+        return realFetch(input, init);
+      };
+    });
+    await page.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.click('[data-testid="universe-waifu-universe"]');
+    await page.waitForSelector('.step-stage', { visible: true });
+    await page.waitForSelector('.dock-bar .chat-input:not([disabled])', { visible: true });
+    await page.evaluate(() => {
+      window.__heymateMuteSmoke.chats = 0;
+      window.__heymateMuteSmoke.tts = 0;
+    });
+
+    await page.click('.mute-btn');
+    await fillInput(page, '.dock-bar .chat-input', 'MUTED TURN');
+    await clickSelector(page, '.dock-bar .btn-primary');
+    await page.waitForFunction(() => window.__heymateMuteSmoke.chats === 1);
+    await page.waitForSelector('.dock-bar .chat-input:not([disabled])', { visible: true });
+    await new Promise((done) => setTimeout(done, 100));
+    const mutedRequests = await page.evaluate(() => window.__heymateMuteSmoke.tts);
+    if (mutedRequests !== 0) failures.push(`muted turn issued ${mutedRequests} TTS request(s)`);
+
+    await page.click('.mute-btn');
+    await fillInput(page, '.dock-bar .chat-input', 'AUDIBLE TURN');
+    await clickSelector(page, '.dock-bar .btn-primary');
+    await page.waitForFunction(() => window.__heymateMuteSmoke.tts > 0);
+    const mutedState = await page.$eval('.mute-btn', (button) => button.getAttribute('aria-pressed'));
+    if (mutedState !== 'false') failures.push(`mute control stayed pressed=${mutedState}`);
+  } finally {
+    await context.close();
+  }
+  return { failures };
+}
+
 async function runViewport(browser, viewport) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
@@ -649,6 +706,7 @@ try {
   }
   const modeCoverage = await runModeTransitionCoverage(browser);
   const openChatVisualCoverage = await runOpenChatVisualRewardCoverage(browser);
+  const muteTtsCoverage = await runMuteTtsCoverage(browser);
 
   if (captureDir) {
     writeFileSync(
@@ -679,10 +737,16 @@ try {
   );
   for (const failure of openChatVisualCoverage.failures) process.stderr.write(`  - ${failure}\n`);
 
+  process.stdout.write(
+    `${muteTtsCoverage.failures.length ? 'FAIL' : 'PASS'} mute skips TTS generation\n`
+  );
+  for (const failure of muteTtsCoverage.failures) process.stderr.write(`  - ${failure}\n`);
+
   if (
     results.some((result) => result.failures.length) ||
     modeCoverage.failures.length ||
-    openChatVisualCoverage.failures.length
+    openChatVisualCoverage.failures.length ||
+    muteTtsCoverage.failures.length
   ) process.exitCode = 1;
 } finally {
   await browser?.close();

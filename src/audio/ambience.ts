@@ -99,7 +99,12 @@ export class Ambience {
   private started = false;
   /** The silent element holding the media session open on older iOS. */
   private anchor: HTMLAudioElement | null = null;
-  muted = false;
+  private muted = false;
+
+  /** Conversation layer gate: muted audio must not spend a TTS render. */
+  get isMuted(): boolean {
+    return this.muted;
+  }
 
   private clipCache = new Map<string, Promise<AudioBuffer>>();
   private clipSource: AudioBufferSourceNode | null = null;
