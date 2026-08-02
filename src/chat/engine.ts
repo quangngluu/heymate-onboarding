@@ -175,7 +175,7 @@ export function idleLine(
 }
 
 export interface SessionSetup {
-  nickname: string;
+  address: string;
   length: LengthId;
 }
 
@@ -220,8 +220,8 @@ function firstSentence(text: string): string {
 }
 
 /** Every resident addresses the visitor the same way, even when a name is saved. */
-function visitorAddress(nickname: string): string {
-  const name = nickname.trim().replace(/\s+/g, ' ').slice(0, 40);
+function visitorAddress(address: string): string {
+  const name = address.trim().replace(/\s+/g, ' ').slice(0, 40);
   return name ? `Anh ${name}` : 'Anh';
 }
 
@@ -258,8 +258,8 @@ export function reply(message: string, ctx: ReplyContext): ReplyResult {
     text = `${text} Lần trước anh nhắc đến ${ctx.memories[seed % ctx.memories.length]}. Em vẫn nhớ.`;
   }
 
-  if (session.nickname && seed % 4 === 0) {
-    text = `${visitorAddress(session.nickname)}. ${text}`;
+  if (session.address && seed % 4 === 0) {
+    text = `${visitorAddress(session.address)}. ${text}`;
   }
 
   if (session.length === 'short') text = firstSentence(text);
@@ -274,14 +274,14 @@ export function reply(message: string, ctx: ReplyContext): ReplyResult {
 export function openingLine(
   resident: ResidentConfig,
   memories: string[],
-  nickname: string,
+  address: string,
   revealed = 0,
   route: CanonRoute = DEFAULT_ROUTE
 ): string {
   const view = canonViewFor(resident.id, route);
   if (!memories.length) return view.greeting;
   if (revealed >= 3) return view.closeGreeting;
-  const who = visitorAddress(nickname);
+  const who = visitorAddress(address);
   const memory = memories[0];
   if (view.fallback) {
     return `${who}, ${view.returnGreeting} Lần trước anh nhắc đến ${memory}.`;

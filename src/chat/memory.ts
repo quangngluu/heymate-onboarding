@@ -11,7 +11,7 @@ export interface MemoryCandidate {
   id: string;
   /** Reads as a sentence inside "She will remember: ..." */
   text: string;
-  kind: 'nickname' | 'openLoop' | 'preference' | 'topic';
+  kind: 'openLoop' | 'preference' | 'topic';
 }
 
 const PATTERNS: { kind: MemoryCandidate['kind']; re: RegExp; make: (m: RegExpMatchArray) => string }[] = [
@@ -65,7 +65,7 @@ const PATTERNS: { kind: MemoryCandidate['kind']; re: RegExp; make: (m: RegExpMat
   },
 ];
 
-export function extractMemories(chat: ChatTurn[], nickname: string): MemoryCandidate[] {
+export function extractMemories(chat: ChatTurn[]): MemoryCandidate[] {
   const out: MemoryCandidate[] = [];
   const seen = new Set<string>();
   const push = (kind: MemoryCandidate['kind'], text: string) => {
@@ -74,8 +74,6 @@ export function extractMemories(chat: ChatTurn[], nickname: string): MemoryCandi
     seen.add(key);
     out.push({ id: `m${out.length}`, text, kind });
   };
-
-  if (nickname.trim()) push('nickname', `gọi anh là ${nickname.trim()}`);
 
   for (const turn of chat) {
     if (turn.from !== 'user') continue;

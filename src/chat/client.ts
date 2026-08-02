@@ -46,7 +46,13 @@ export async function getReply(
   } = {}
 ): Promise<ChatOutcome> {
   const route = resolveCanonRoute();
-  const routedContext: ReplyContext = { ...ctx, route };
+  const bond = opts.bond as { address?: unknown } | undefined;
+  const address = typeof bond?.address === 'string' ? bond.address : '';
+  const routedContext: ReplyContext = {
+    ...ctx,
+    route,
+    session: { address, length: ctx.session.length },
+  };
   // An idle nudge is already-authored dialogue, not a user message that the
   // scripted engine should try to answer. The model may vary it, but offline
   // and unavailable deployments must still let her speak first.
@@ -71,7 +77,7 @@ export async function getReply(
         mode,
         approvedCrossMode: opts.approvedCrossMode ?? [],
         revealed: ctx.revealed,
-        revealNow: opts.idle ? undefined : (dueEpisodeIndex(ctx) ?? undefined),
+        revealNow: opts.idle ? undefined : (dueEpisodeIndex(routedContext) ?? undefined),
         idle: opts.idle,
         level: opts.level ?? 0,
         quest: opts.quest,

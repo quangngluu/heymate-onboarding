@@ -6,7 +6,6 @@ import {
 } from '../../src/chat/mode';
 
 const session = {
-  nickname: 'K',
   persona: 'ít lời',
   identity: '',
   scenario: 'casual' as const,

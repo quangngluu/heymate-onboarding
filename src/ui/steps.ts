@@ -492,14 +492,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   const rail = h('div', { class: 'stage-rail' }, log);
 
   // --- session sheet (only after the encounter) ---
-  const nickInput = h('input', {
-    type: 'text',
-    class: 'name-input',
-    placeholder: COPY.stage.nicknamePlaceholder,
-    'aria-label': COPY.stage.nickname,
-    maxlength: '24',
-  }) as HTMLInputElement;
-  nickInput.addEventListener('change', () => actions.updateSession({ nickname: nickInput.value }));
   const identityInput = h('input', {
     type: 'text',
     class: 'name-input',
@@ -691,7 +683,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       'div',
       { class: 'session-advanced-body' },
       lengthField,
-      h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, COPY.stage.nickname), nickInput),
       h(
         'div',
         { class: 'custom-group' },
@@ -1037,7 +1028,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       if (s.residentId !== lastResident) {
         lastResident = s.residentId;
         srOnlyName.textContent = r.name;
-        nickInput.value = s.session.nickname;
         personaInput.value = s.session.persona;
         // The card carries three layers: the hook, who she is, and what the
         // user gets. Full canon stays behind the story list.
@@ -1065,7 +1055,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           )
         );
       }
-      if (document.activeElement !== nickInput) nickInput.value = s.session.nickname;
       if (document.activeElement !== identityInput) identityInput.value = s.session.identity;
       if (document.activeElement !== personaInput) personaInput.value = s.session.persona;
       if (s.session.identity) identityCustomActive = true;
@@ -1321,7 +1310,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       (unlockGate as HTMLElement).hidden = !s.unlockGateOpen;
       (saveGate as HTMLElement).hidden = !s.saveGateOpen;
       if (s.saveGateOpen && !lastGateOpen) {
-        const candidates = extractMemories(s.chat, s.session.nickname);
+        const candidates = extractMemories(s.chat);
         memChecks.clear();
         memList.replaceChildren(
           ...(candidates.length

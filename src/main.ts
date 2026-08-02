@@ -596,7 +596,7 @@ class App implements UIActions {
     const resuming = s.chat.length > 0;
     const line = resuming
       ? r.returnGreeting
-      : openingLine(r, saved.memories, saved.nickname, saved.revealed, route);
+      : openingLine(r, saved.memories, saved.bond?.address ?? '', saved.revealed, route);
     const visual = openingVisualFor(s.residentId);
     const openingTurn: ChatTurn = {
       from: 'resident',
@@ -1459,7 +1459,7 @@ class App implements UIActions {
    * variant that is yours. Your own version is yours to turn around.
    */
   makeYourVersion(): void {
-    const seed = fnv1a(`${store.get().residentId}:${store.get().session.nickname || 'you'}`);
+    const seed = fnv1a(`${store.get().residentId}:${store.get().bond.address || 'you'}`);
     this.residentStage?.tintHero(seed);
     store.unlockView('__owned');
     store.set({ unlockGateOpen: false, variantSeed: seed });

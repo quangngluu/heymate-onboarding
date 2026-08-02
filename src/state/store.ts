@@ -124,7 +124,6 @@ export interface CrossModeMemory {
 
 /** Session-only: applies to this encounter and is never persisted. */
 export interface SessionSetup {
-  nickname: string;
   /** Visitor preference for the resident's conversational presence, never canon. */
   persona: string;
   /** Open Chat context. Quest scenes ignore it and supply their own setting. */
@@ -139,7 +138,8 @@ export interface SessionSetup {
 export interface SavedProgress {
   memories: string[];
   revealed: number;
-  nickname: string;
+  /** Legacy only: migrated into bond.address when a v1 save is loaded. */
+  nickname?: string;
   persona: string;
   /** Who he came in as last time, so she can greet that person again. */
   identity: string;
@@ -179,7 +179,6 @@ export interface QuestChoiceResult {
 
 function defaultSession(): SessionSetup {
   return {
-    nickname: '',
     persona: '',
     scenario: 'casual',
     length: 'natural',
@@ -379,6 +378,32 @@ type Listener = (state: AppState, prev: AppState) => void;
 // explicitly chose a clean v3 cutover, so no legacy story state is migrated.
 const STORAGE_KEY = 'heymate.progress.sao.v1';
 
+function legacyAddress(value: unknown): string {
+  return typeof value === 'string'
+    ? value.trim().replace(/\s+/g, ' ').slice(0, 28)
+    : '';
+}
+
+function migrateSavedProgress(saved: SavedProgress): SavedProgress {
+  const { nickname, ...current } = saved;
+  const bond = { ...defaultBond(), ...(saved.bond ?? {}) };
+  if (!bond.address) bond.address = legacyAddress(nickname);
+  return {
+    ...current,
+    persona: saved.persona ?? '',
+    identity: saved.identity ?? '',
+    completedQuests: saved.completedQuests ?? [],
+    bond,
+    rapport: sanitizeRapport(saved.rapport ?? defaultRapport()),
+  };
+}
+
+function migrateProgress(progress: Record<string, SavedProgress>): Record<string, SavedProgress> {
+  return Object.fromEntries(
+    Object.entries(progress).map(([residentId, saved]) => [residentId, migrateSavedProgress(saved)])
+  );
+}
+
 export class Store {
   private state: AppState = initialState;
   private listeners = new Set<Listener>();
@@ -407,7 +432,7 @@ export class Store {
         };
         this.state = {
           ...this.state,
-          progress: saved.progress ?? {},
+          progress: migrateProgress(saved.progress ?? {}),
           transcripts: saved.transcripts ?? {},
           questTranscripts: saved.questTranscripts ?? {},
           credits: saved.credits ?? this.state.credits,
@@ -489,19 +514,11 @@ export class Store {
   progressFor(id = this.state.residentId): SavedProgress {
     const saved = this.state.progress[id];
     if (saved) {
-      return {
-        ...saved,
-        persona: saved.persona ?? '',
-        identity: saved.identity ?? '',
-        completedQuests: saved.completedQuests ?? [],
-        bond: { ...defaultBond(), ...(saved.bond ?? {}) },
-        rapport: sanitizeRapport(saved.rapport ?? defaultRapport()),
-      };
+      return migrateSavedProgress(saved);
     }
     return {
       memories: [],
       revealed: 0,
-      nickname: '',
       persona: '',
       identity: '',
       visits: 0,
@@ -556,7 +573,6 @@ export class Store {
       unlockGateOpen: false,
       session: {
         ...defaultSession(),
-        nickname: saved.nickname,
         persona: saved.persona,
         identity: saved.identity,
       },
@@ -602,7 +618,7 @@ export class Store {
   resetSession(): void {
     const saved = this.progressFor();
     this.set({
-      session: { ...defaultSession(), nickname: saved.nickname, persona: saved.persona },
+      session: { ...defaultSession(), persona: saved.persona },
     });
   }
 
@@ -824,11 +840,7 @@ export class Store {
     return quest.rewardCredits;
   }
 
-  /**
-   * Spend a credit to keep the selected memories for next time. The nickname
-   * is stored as a setting rather than a memory, so callbacks never try to
-   * say "you mentioned to call you Q".
-   */
+  /** Spend a credit to keep the selected memories for next time. */
   saveChapter(memories: string[]): boolean {
     if (!this.canAfford('saveChapter')) {
       this.set({ broke: 'saveChapter' });
@@ -842,7 +854,6 @@ export class Store {
       [id]: {
         memories: [...prev.memories, ...conversational].slice(-8),
         revealed: this.state.revealed,
-        nickname: this.state.session.nickname || prev.nickname,
         persona: this.state.session.persona || prev.persona,
         identity: this.state.session.identity || prev.identity,
         visits: prev.visits + 1,

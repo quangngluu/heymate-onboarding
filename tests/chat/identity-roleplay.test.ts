@@ -6,7 +6,6 @@ describe('roleplay identity prompt', () => {
     const prompt = buildSystemPrompt(
       'rin',
       {
-        nickname: '',
         persona: '',
         identity: 'Kirito',
         scenario: 'casual',

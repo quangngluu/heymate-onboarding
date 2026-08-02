@@ -22,8 +22,6 @@ export const COPY = {
     voiceChat: 'Gọi cho em',
     voiceChatLocked: 'Sắp mở: nói trực tiếp với em bằng giọng của anh.',
     sessionNote: 'Thiết lập này chỉ áp dụng cho lần gặp này. Con người của em không đổi.',
-    nickname: 'Em nên gọi anh là gì?',
-    nicknamePlaceholder: 'Tên hoặc biệt danh',
     scenario: 'Hai người đang làm gì cùng nhau?',
     mood: 'Anh muốn không khí thế nào?',
     style: 'Em nên chủ động đến đâu?',

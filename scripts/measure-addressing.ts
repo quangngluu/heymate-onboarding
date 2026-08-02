@@ -153,7 +153,6 @@ async function callModel(
 function systemFor(residentId: ResidentId, mode: ConversationMode, prompt: string): string {
   const session = effectivePromptSession(
     {
-      nickname: '',
       persona: '',
       identity: '',
       scenario: mode === 'open-chat' ? 'casual' : 'together',

@@ -39,7 +39,6 @@ import { RIN_ENDINGS_READY } from '../src/config/rin-sao';
  * right default here even though the product opens on `companion`.
  */
 const SESSION: PromptSession = {
-  nickname: '',
   persona: '',
   identity: '',
   scenario: 'casual',
@@ -271,7 +270,7 @@ function scriptedCoverage(): void {
       const result = reply(messages[index], {
         resident: base,
         route: 'sao',
-        session: SESSION,
+        session: { address: '', length: SESSION.length },
         revealed: Math.min(index, 5),
         memories: index > 0 ? ['một chi tiết đã được lưu'] : [],
         turn: index + 1,

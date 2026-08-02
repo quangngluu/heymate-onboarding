@@ -350,7 +350,7 @@ import { buildSystemPrompt } from '../src/chat/prompt';
 for (const c of characters) {
   const system = buildSystemPrompt(
     c.residentId,
-    { nickname: '', persona: '', identity: '', scenario: 'casual', mood: 'calm', style: 'balanced', length: 'natural' },
+    { persona: '', identity: '', scenario: 'casual', mood: 'calm', style: 'balanced', length: 'natural' },
     [], 0, undefined, false, 0, undefined, undefined, undefined, undefined, undefined, undefined, undefined, route
   );
   for (const rule of SAFETY) {
