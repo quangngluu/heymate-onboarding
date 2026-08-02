@@ -13,6 +13,7 @@ import {
   loadQuestRig,
   setQuestRigStatus,
 } from './quest-rig';
+import { SceneTraversal } from './scene-traversal';
 import { RESIDENTS, type VisualIdentity } from '../config/residents';
 import type { QuestPresentation } from '../config/quests';
 
@@ -56,6 +57,12 @@ function questRigDebugEnabled(): boolean {
   return new URLSearchParams(window.location.search).get('debugQuestRig') === '1';
 }
 
+/** 2.5D traversal spike: walk-in-place rig + scrolling scene backdrop. */
+function traversalSpikeEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('traversalSpike') === '1';
+}
+
 /** Waiting spots behind and to the left of the base, matching the layout. */
 /**
  * Waiting spots. Read from the stage camera they must step back *and* across,
@@ -92,9 +99,12 @@ export class WaifuStage {
   private moteMotif: MoteMotif = 'data';
   private questMode = false;
   private readonly debugQuestRig: boolean;
+  private readonly traversalSpike: boolean;
   private questRig: THREE.Group | null = null;
   /** Drives the quest rig's walk clip; null until the animated asset loads. */
   private questMixer: THREE.AnimationMixer | null = null;
+  /** Scrolling scene backdrop for the 2.5D traversal spike; null unless enabled. */
+  private traversal: SceneTraversal | null = null;
   private archive = new THREE.Group();
   private archiveFrames: THREE.Mesh[] = [];
   private frame12: THREE.Mesh;
@@ -111,8 +121,11 @@ export class WaifuStage {
     baseTopY: number,
     maxAnisotropy = 8
   ) {
-    this.debugQuestRig = questRigDebugEnabled();
+    this.traversalSpike = traversalSpikeEnabled();
+    // The traversal spike needs the animated rig on stage, so it implies debug rig.
+    this.debugQuestRig = questRigDebugEnabled() || this.traversalSpike;
     document.documentElement.dataset.questRigDebug = String(this.debugQuestRig);
+    if (this.traversalSpike) this.traversal = new SceneTraversal(scene, baseTopY);
     this.maxAnisotropy = maxAnisotropy;
     this.heroY = baseTopY;
     this.ringMat = new THREE.MeshBasicMaterial({
@@ -383,6 +396,8 @@ export class WaifuStage {
     this.archive.visible = on;
     this.applyQuestCharacterVisibility();
     this.ring.visible = !on;
+    if (on) this.traversal?.show();
+    else this.traversal?.hide();
     this.setQuestVisual(on ? 'archive-corridor' : 'archive-corridor');
   }
 
@@ -483,6 +498,8 @@ export class WaifuStage {
     if (this.questMode) {
       // Advance the rig's walk clip (dt is the frame delta in seconds).
       if (this.debugQuestRig) this.questMixer?.update(dt);
+      // Scroll/crossfade the traversal backdrop so she reads as moving through it.
+      this.traversal?.update(dt);
       this.archiveFrames.forEach((frame, i) => {
         const material = frame.material as THREE.MeshBasicMaterial;
         material.opacity =
@@ -580,5 +597,7 @@ export class WaifuStage {
     this.questMixer = null;
     if (this.questRig) disposeQuestRig(this.questRig);
     this.questRig = null;
+    this.traversal?.dispose();
+    this.traversal = null;
   }
 }
