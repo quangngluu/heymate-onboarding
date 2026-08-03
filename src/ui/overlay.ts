@@ -3,7 +3,7 @@
 
 import { h } from './dom';
 import type { UIActions } from './actions';
-import type { AppState, Step, Store } from '../state/store';
+import { availableCredits, type AppState, type Step, type Store } from '../state/store';
 import {
   arrivalStep,
   galleryStep,
@@ -237,8 +237,9 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
 
   /** Chrome that follows the state rather than the step. */
   function paintChrome(state: AppState): void {
-    walletBalance.textContent = `${state.credits} credit`;
-    wallet.classList.toggle('is-low', state.credits < 20);
+    const balance = availableCredits(state);
+    walletBalance.textContent = `${balance} credit`;
+    wallet.classList.toggle('is-low', balance < 20);
     wallet.hidden = state.step !== 'stage' || !!state.activeQuestId;
     wallet.setAttribute('aria-expanded', String(state.walletOpen));
     questBtn.hidden = state.step !== 'stage' || !!state.activeQuestId;
@@ -246,7 +247,7 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
     questBtn.classList.toggle('is-active', !!state.activeQuestId);
     (questBtn.querySelector('.quest-dot') as HTMLElement).hidden = !waiting;
     (walletSheet as HTMLElement).hidden = !state.walletOpen;
-    walletSheetBalance.textContent = String(state.credits);
+    walletSheetBalance.textContent = String(balance);
     walletLedger.replaceChildren(
       ...(state.transactions.length
         ? [...state.transactions].reverse().slice(0, 8).map((transaction) =>
@@ -276,7 +277,7 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
     const broke = state.broke as Spend | null;
     (insufficientSheet as HTMLElement).hidden = !broke;
     if (broke) {
-      brokeCopy.textContent = `${CREDIT_LABEL[broke]} cần ${COST[broke]} credit; anh đang có ${state.credits}.`;
+      brokeCopy.textContent = `${CREDIT_LABEL[broke]} cần ${COST[broke]} credit; anh đang có ${balance}.`;
     }
   }
 

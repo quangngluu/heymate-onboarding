@@ -83,4 +83,40 @@ describe('scene-image handler', () => {
     };
     expect(composer.safety_tolerance).toBe('3');
   });
+
+  it('sends only the bounded scene brief for an Open Chat draw', async () => {
+    process.env.DEEPSEEK_API_KEY = 'test';
+    process.env.FAL_KEY = 'test';
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          choices: [{ message: { content: 'Dark archive room, one cyan monitor, Frame 12.' } }],
+        })
+      )
+      .mockResolvedValueOnce(
+        Response.json({ images: [{ url: 'https://images.example/context.jpg' }] })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await sceneHandler(
+      new Request('http://local/api/scene-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          residentId: 'rin',
+          route: 'sao',
+          source: 'open-chat',
+          text: 'Liên hệ riêng của anh là visitor@example.com.',
+          scene: 'Kho lưu trữ tối với Frame 12 sáng giữa phòng.',
+          perspective: 'first-person',
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const requests = fetchMock.mock.calls.map((call) => String(call[1]?.body));
+    expect(requests.join('\n')).not.toContain('visitor@example.com');
+    await expect(response.json()).resolves.toMatchObject({ perspective: 'observed' });
+  });
 });

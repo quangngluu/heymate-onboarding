@@ -16,6 +16,7 @@ import {
   repairAddressingDeterministically,
 } from '../src/chat/addressing';
 import { splitModelState, trimModelProse } from '../src/chat/model-response';
+import { contextVisualIntentFromState } from '../src/chat/context-visual';
 import { DEFAULT_DARK_VARIANT, type DarkVariant } from '../src/config/dark-patterns';
 import { DEFAULT_MATURITY, type MaturityLevel } from '../src/config/maturity';
 import { DEFAULT_ROUTE, type CanonRoute } from '../src/config/canon-route';
@@ -60,6 +61,7 @@ export const config = { runtime: 'edge' };
 const ENDPOINT = 'https://api.deepseek.com/chat/completions';
 const MODEL = process.env.DEEPSEEK_MODEL ?? 'deepseek-chat';
 const MAX_TOKENS = { short: 120, natural: 220, expressive: 320 } as const;
+const OPEN_CHAT_STATE_ALLOWANCE = 80;
 /** Stay inside the client's 20s request timeout across both upstream calls. */
 const TOTAL_UPSTREAM_BUDGET_MS = 18_000;
 
@@ -177,7 +179,9 @@ export default async function handler(req: Request): Promise<Response> {
         model: MODEL,
         messages,
         temperature: 0.92, // a distinct voice without generic/canon-drifting improvisation
-        max_tokens: MAX_TOKENS[session.length] ?? MAX_TOKENS.natural,
+        max_tokens:
+          (MAX_TOKENS[session.length] ?? MAX_TOKENS.natural) +
+          (mode === 'open-chat' && !body.idle ? OPEN_CHAT_STATE_ALLOWANCE : 0),
         // She speaks as herself; stop the model from writing the user's turn.
         stop: ['\nUser:', '\nYou:', '\nAnh:'],
       }),
@@ -199,12 +203,22 @@ export default async function handler(req: Request): Promise<Response> {
     const text = trimModelProse(prose, data.choices?.[0]?.finish_reason);
     if (!text) return Response.json({ error: 'empty' }, { status: 502 });
     const rapport = state ? sanitizeRapport(state) : undefined;
+    const visualIntent =
+      mode === 'open-chat' && !body.idle
+        ? contextVisualIntentFromState(state)
+        : null;
+    const success = (nextText: string) =>
+      Response.json({
+        text: nextText,
+        rapport,
+        ...(visualIntent ? { visualIntent } : {}),
+      });
     const deterministic = repairAddressingDeterministically(text);
     if (!deterministic.before.length) {
-      return Response.json({ text, rapport });
+      return success(text);
     }
     if (!deterministic.remaining.length) {
-      return Response.json({ text: deterministic.text, rapport });
+      return success(deterministic.text);
     }
     // English contractions cannot be repaired safely by replacing a pronoun
     // token (`I'm` must never become `Em'm`). Fail closed to authored copy.
@@ -245,7 +259,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (!applied.ok) {
       return Response.json({ error: 'invalid-addressing' }, { status: 502 });
     }
-    return Response.json({ text: applied.text, rapport });
+    return success(applied.text);
   } catch {
     return Response.json({ error: 'unreachable' }, { status: 502 });
   }

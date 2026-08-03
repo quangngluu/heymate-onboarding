@@ -63,6 +63,36 @@ describe('scene drawing result contract', () => {
     })).resolves.toEqual({ ok: false, reason: 'timeout' });
   });
 
+  it('propagates caller cancellation into the image request', async () => {
+    const controller = new AbortController();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise<Response>((resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              reject(new DOMException('cancelled', 'AbortError'));
+            });
+            setTimeout(
+              () => resolve(Response.json({ url: 'late', perspective: 'observed', withSubject: false })),
+              30
+            );
+          })
+      )
+    );
+
+    const pending = drawScene({
+      residentId: 'rin',
+      route: 'sao',
+      text: 'Frame mở.',
+      subjectStrategy: 'none',
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    await expect(pending).resolves.toEqual({ ok: false, reason: 'timeout' });
+  });
+
   it('rejects a malformed success body as invalid', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ url: '' })));
 

@@ -30,9 +30,9 @@ import {
 import { cancelSpeech, renderSpeech, resetSpeechEmotion, streamSpeech } from './chat/voice';
 import { spoken } from './chat/dialogue';
 import {
-  composeRewardReply,
   openingVisualFor,
 } from './chat/open-chat-visuals';
+import { OpenChatVisualRuntime } from './chat/open-chat-visual-runtime';
 import type { ResidentId } from './config/residents';
 import { canonViewFor } from './config/canon-view';
 import { resolveCanonRoute } from './config/canon-route';
@@ -113,11 +113,14 @@ class App implements UIActions {
   private picker: Picker;
   private ambience = new Ambience();
   private questVisuals: QuestVisualRuntime;
+  private openChatVisuals: OpenChatVisualRuntime;
   private conversation = new ConversationLifetime();
   private nameplate: Nameplate;
   private backdrop!: FactionBackdrop;
   /** True while an Open Chat scene owns the backdrop (figure dimmed behind it). */
   private openChatSceneActive = false;
+  /** Invalidates late texture loads when a newer scene or turn takes ownership. */
+  private openChatSceneToken = 0;
 
   private views = new Map<string, ChampionView>();
   private liftTargets = new Map<string, number>();
@@ -161,6 +164,8 @@ class App implements UIActions {
   /** Stop every presentational side effect owned by the conversation we leave. */
   private transitionConversation(): void {
     this.conversation.transition();
+    this.openChatVisuals.cancel();
+    this.restoreOpenChatScene();
     this.cancelIdleNudge();
     this.speechToken++;
     window.clearTimeout(this.speakTimer);
@@ -204,8 +209,13 @@ class App implements UIActions {
       this.engine.camera
     );
     this.questVisuals = new QuestVisualRuntime(store, undefined, (url) => {
-      void this.backdrop.showScene(url);
+      return this.backdrop.showScene(url);
     });
+    this.openChatVisuals = new OpenChatVisualRuntime(
+      store,
+      undefined,
+      (url) => this.presentOpenChatScene(url)
+    );
 
     // Selection rim rig: two colored back-side lights that follow whatever is
     // in focus (selected plinth, then the Mate) so figures pop off the pano.
@@ -594,19 +604,25 @@ class App implements UIActions {
    * the name, dimming the sculpt so the generated image reads as the scene rather
    * than sitting beside a second copy of her.
    */
-  private presentOpenChatScene(src: string): void {
+  private async presentOpenChatScene(src: string): Promise<boolean> {
+    const token = ++this.openChatSceneToken;
     this.openChatSceneActive = true;
     document.documentElement.dataset.openChatScene = 'loading';
-    void this.nameplate.showImage(src).then((ok) => {
-      if (ok && this.openChatSceneActive) {
-        document.documentElement.dataset.openChatScene = 'ready';
-      }
-    });
+    const ok = await this.nameplate.showImage(src);
+    if (token !== this.openChatSceneToken || !this.openChatSceneActive) return false;
+    if (ok) {
+      document.documentElement.dataset.openChatScene = 'ready';
+      return true;
+    }
+    this.openChatSceneActive = false;
+    delete document.documentElement.dataset.openChatScene;
+    return false;
   }
 
   /** Fade the frame back out from behind the name on the next turn. */
   private restoreOpenChatScene(): void {
     if (!this.openChatSceneActive) return;
+    this.openChatSceneToken++;
     this.openChatSceneActive = false;
     delete document.documentElement.dataset.openChatScene;
     this.nameplate.hideImage();
@@ -642,7 +658,7 @@ class App implements UIActions {
       ? [...s.chat, openingTurn]
       : [openingTurn];
     store.set({ chat });
-    this.presentOpenChatScene(visual.src);
+    void this.presentOpenChatScene(visual.src);
 
     const voice = r.voices.find((v) => v.slot === 'signature') ?? r.voices[0];
     // Only the authored signature greeting has a recording; everything else is
@@ -1046,7 +1062,6 @@ class App implements UIActions {
     };
     // History excludes the turn we just pushed; the message is sent separately.
     const history = (mode === 'quest' ? after.questChat : after.chat).slice(0, -1);
-    const visualReward = mode === 'open-chat' ? store.peekOpenChatReward() : null;
     const openQuest = s.activeQuestId ? store.questById2(s.activeQuestId) : undefined;
     const openNode = openQuest
       ? questNode(openQuest, s.activeQuestNodeId ?? openQuest.startNodeId)
@@ -1071,27 +1086,24 @@ class App implements UIActions {
       // The line starts arriving the moment the model answers. Its clip is
       // rendered alongside and joins in when it is ready.
       store.set({ thinking: false, voicing: true });
-      let replyText = result.text;
-      let replyTurn: ChatTurn = { from: 'resident', text: replyText };
-      if (visualReward && store.consumeOpenChatReward(visualReward.id)) {
-        const composed = composeRewardReply(replyText, visualReward);
-        replyText = composed.text;
-        replyTurn = {
-          from: 'resident',
-          text: replyText,
-          visualId: visualReward.id,
-          visualAfterSentence: composed.visualAfterSentence,
-        };
-        this.presentOpenChatScene(visualReward.src);
-      }
+      const replyText = result.text;
+      const replyTurn: ChatTurn = { from: 'resident', text: replyText };
       const prepared = this.speakReply(replyText, s.residentId, conversation);
+      const committed = mode === 'quest' ? null : store.pushTurn(replyTurn);
       if (mode === 'quest') store.pushQuestTurn(replyTurn);
-      else store.pushTurn(replyTurn);
       if (result.revealedRung !== undefined) {
         store.set({ revealed: result.revealedRung + 1 });
       }
       const visibleChat = mode === 'quest' ? store.get().questChat : store.get().chat;
       this.streamIn(visibleChat.length - 1, replyText, prepared, true, conversation);
+      if (mode === 'open-chat' && committed && result.visualIntent) {
+        void this.openChatVisuals.replyCommitted({
+          residentId: s.residentId,
+          turnId: committed.id,
+          userTurn: store.get().turns,
+          intent: result.visualIntent,
+        });
+      }
       // The free encounter ends by offering to keep what was said, not by
       // blocking the conversation mid-sentence.
       // Offer to keep the chapter once there is one worth keeping, rather
@@ -1102,6 +1114,27 @@ class App implements UIActions {
         }, 1200);
       }
     });
+  }
+
+  requestOpenChatImage(turnId: string): void {
+    const state = store.get();
+    if (state.thinking || state.voicing || state.reveal || state.activeQuestId) return;
+    void this.openChatVisuals.request(turnId);
+  }
+
+  dismissOpenChatImage(turnId: string): void {
+    const state = store.get();
+    if (state.thinking || state.voicing || state.reveal || state.activeQuestId) return;
+    this.openChatVisuals.dismiss(turnId);
+  }
+
+  showOpenChatImage(turnId: string): void {
+    const state = store.get();
+    if (state.activeQuestId) return;
+    const visual = state.chat.find((turn) => turn.id === turnId)?.contextVisual;
+    if (visual?.status === 'ready' && visual.src) {
+      void this.presentOpenChatScene(visual.src);
+    }
   }
 
   openQuests(): void {

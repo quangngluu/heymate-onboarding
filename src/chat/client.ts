@@ -18,6 +18,10 @@ import {
 import { resolveDarkVariant } from '../config/dark-patterns';
 import { resolveMaturity } from '../config/maturity';
 import { resolveCanonRoute } from '../config/canon-route';
+import {
+  contextVisualIntentFromState,
+  type ContextVisualIntent,
+} from './context-visual';
 
 export type ChatSource = 'model' | 'scripted';
 
@@ -25,6 +29,8 @@ export interface ChatOutcome extends ReplyResult {
   source: ChatSource;
   /** What she reported about the relationship after this turn, if anything. */
   rapport?: unknown;
+  /** Optional scene suggestion; generation and billing remain client policy. */
+  visualIntent?: ContextVisualIntent;
 }
 
 /** Skip the network entirely once we know there is no endpoint here. */
@@ -102,7 +108,11 @@ export async function getReply(
     }
     if (!res.ok) return { ...scripted, source: 'scripted' };
 
-    const data = (await res.json()) as { text?: string; rapport?: unknown };
+    const data = (await res.json()) as {
+      text?: string;
+      rapport?: unknown;
+      visualIntent?: unknown;
+    };
     if (!data.text) return { ...scripted, source: 'scripted' };
     // The reveal schedule stays owned by the app, not the model.
     return {
@@ -110,6 +120,10 @@ export async function getReply(
       revealedRung: opts.idle ? undefined : scripted.revealedRung,
       source: 'model',
       rapport: data.rapport,
+      visualIntent:
+        mode === 'open-chat'
+          ? contextVisualIntentFromState({ visualIntent: data.visualIntent }) ?? undefined
+          : undefined,
     };
   } catch {
     return { ...scripted, source: 'scripted' };

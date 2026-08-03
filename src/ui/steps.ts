@@ -4,7 +4,7 @@
 
 import { h } from './dom';
 import type { UIActions } from './actions';
-import type { AppState } from '../state/store';
+import type { AppState, ChatTurn } from '../state/store';
 import { COPY } from '../config/copy';
 import { factionById } from '../config/factions';
 import { CHARACTERS, characterById, characterIndex } from '../config/characters';
@@ -38,6 +38,7 @@ import {
 } from '../chat/open-chat-visuals';
 import {
   COST,
+  availableCredits,
   chatConversationScope,
   questConversationScope,
   store,
@@ -200,6 +201,75 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
             prompt
           )
         )
+      )
+    );
+  };
+
+  const contextVisualCard = (turn: ChatTurn, state: AppState): HTMLElement | null => {
+    const visual = turn.contextVisual;
+    if (!turn.id || !visual) return null;
+    const blocked = state.thinking || state.voicing || state.reveal !== null || !!state.activeQuestId;
+    const label =
+      visual.status === 'ready'
+        ? 'CẢNH TỪ ĐOẠN VỪA RỒI'
+        : visual.status === 'generating'
+          ? 'ĐANG DỰNG CẢNH'
+          : visual.status === 'failed'
+            ? 'CẢNH ĐÃ BỎ QUA'
+            : 'CẢNH ĐƯỢC ĐỀ XUẤT';
+    const actionLabel =
+      visual.status === 'ready'
+          ? 'Xem lại ảnh'
+          : visual.status === 'generating'
+            ? 'Đang dựng…'
+            : visual.status === 'failed'
+              ? 'Không trừ credit'
+          : visual.payment === 'free-auto'
+            ? 'Thử lại miễn phí'
+            : `Dựng cảnh này · ${visual.price} credit`;
+    const activate = () => {
+      if (visual.status === 'ready') actions.showOpenChatImage(turn.id!);
+      else if (visual.status === 'offered') actions.requestOpenChatImage(turn.id!);
+    };
+    return h(
+      'figure',
+      {
+        class: `open-chat-visual open-chat-visual-compact is-context is-${visual.status}`,
+        'data-testid': 'open-chat-context-visual',
+        'data-visual-status': visual.status,
+        'data-visual-payment': visual.payment,
+      },
+      h(
+        'figcaption',
+        { class: 'open-chat-visual-caption' },
+        h('span', { class: 'open-chat-visual-label' }, label),
+        h('span', { class: 'open-chat-visual-caption-text' }, visual.caption)
+      ),
+      h(
+        'div',
+        { class: 'open-chat-visual-actions' },
+        h(
+          'button',
+          {
+            class: 'open-chat-visual-action',
+            disabled: blocked || visual.status === 'generating' || visual.status === 'failed',
+            onClick: activate,
+          },
+          actionLabel
+        ),
+        ...(visual.status === 'offered' && visual.payment === 'paid'
+          ? [
+              h(
+                'button',
+                {
+                  class: 'open-chat-visual-action is-secondary',
+                  disabled: blocked,
+                  onClick: () => actions.dismissOpenChatImage(turn.id!),
+                },
+                'Bỏ qua'
+              ),
+            ]
+          : [])
       )
     );
   };
@@ -988,6 +1058,15 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     unlockGate
   );
 
+  const keepLatestTurnVisible = () => {
+    log.scrollTop = log.scrollHeight;
+    requestAnimationFrame(() => {
+      if (log.isConnected) log.scrollTop = log.scrollHeight;
+    });
+  };
+  const onStageResize = () => keepLatestTurnVisible();
+  window.addEventListener('resize', onStageResize);
+
   // The dock is the only thing whose height nobody controls: the quest strip
   // makes it two or three times taller. Publish that height so the rail above
   // can stay clear of it instead of guessing.
@@ -997,6 +1076,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     // her last line exactly that far underneath it.
     const box = entry.borderBoxSize?.[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
     el.style.setProperty('--dock-h', `${Math.round(box)}px`);
+    keepLatestTurnVisible();
   });
 
   let lastResident = '';
@@ -1007,6 +1087,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   let lastChatScope = '';
   let lastWaiting = false;
   let lastRevealKey = '';
+  let lastContextVisualKey = '';
   let lastGateOpen = false;
   watchDock.observe(dock);
 
@@ -1014,6 +1095,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     el,
     destroy() {
       watchDock.disconnect();
+      window.removeEventListener('resize', onStageResize);
       stopGateCountdown();
     },
     update(s, prev) {
@@ -1226,9 +1308,10 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
 
       // One balance, and the price of whatever the bar is about to do.
       const price = speakMode ? COST.speakForMe : COST.turn;
+      const balance = availableCredits(s);
       turnsLeft.textContent =
-        s.credits >= price ? `${s.credits} credit còn lại` : COPY.stage.outOfTurns;
-      turnsLeft.classList.toggle('is-broke', s.credits < price);
+        balance >= price ? `${balance} credit còn lại` : COPY.stage.outOfTurns;
+      turnsLeft.classList.toggle('is-broke', balance < price);
       // Let a broke visitor attempt the action: Store will refuse it and the
       // shared credit sheet can explain the exact shortfall and open Wallet.
       const blocked = s.thinking || s.voicing;
@@ -1244,16 +1327,24 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       const lastTurn = visibleChat[visibleChat.length - 1];
       const waiting = s.thinking || (s.voicing && lastTurn?.from === 'user');
       const revealKey = s.reveal ? `${s.reveal.turn}:${s.reveal.words}` : '';
+      const contextVisualKey = visibleChat
+        .map((turn) => {
+          const visual = turn.contextVisual;
+          return visual ? `${turn.id}:${visual.jobId}:${visual.status}:${visual.src ?? ''}` : '';
+        })
+        .join('|');
       if (
         visibleChat.length !== lastChatLen ||
         chatScope !== lastChatScope ||
         waiting !== lastWaiting ||
-        revealKey !== lastRevealKey
+        revealKey !== lastRevealKey ||
+        contextVisualKey !== lastContextVisualKey
       ) {
         lastChatLen = visibleChat.length;
         lastChatScope = chatScope;
         lastWaiting = waiting;
         lastRevealKey = revealKey;
+        lastContextVisualKey = contextVisualKey;
         // Her actions and her words look different, because they are: one is
         // the room, the other is her voice. Only the second is ever spoken.
         log.replaceChildren(
@@ -1271,7 +1362,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
               (last, block, index) => (block.kind === 'visual' ? last : index),
               -1
             );
-            return dialogue.flatMap((seg, k) => {
+            const rendered = dialogue.flatMap((seg, k) => {
               if (seg.kind === 'visual') {
                 const card = openChatVisualCard(seg.visualId, s);
                 return card ? [card] : [];
@@ -1281,6 +1372,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
                 ? [h('p', { class: `beat-line${tail}` }, seg.text)]
                 : [h('p', { class: `bubble bubble-resident${tail}` }, seg.text)];
             });
+            const contextCard = !openQuest && !partial ? contextVisualCard(t, s) : null;
+            return contextCard ? [...rendered, contextCard] : rendered;
           }),
           ...(waiting
             ? [
@@ -1294,7 +1387,9 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
               ]
             : [])
         );
-        log.scrollTop = log.scrollHeight;
+        // Compact visual cards gain their final height after layout/font paint.
+        // Re-anchor once more so the CTA never ends up clipped behind the dock.
+        keepLatestTurnVisible();
       }
 
       (unlockGate as HTMLElement).hidden = !s.unlockGateOpen;
@@ -1318,10 +1413,10 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         skipArmed = false;
         skipBtn.textContent = gate.saveSkip;
         startGateCountdown();
-        const canPay = s.credits >= COST.saveChapter && candidates.length > 0;
+        const canPay = balance >= COST.saveChapter && candidates.length > 0;
         gateCost.textContent = canPay
-          ? `${COPY.stage.saveCost} Anh còn ${s.credits} credit.`
-          : s.credits > 0
+          ? `${COPY.stage.saveCost} Anh còn ${balance} credit.`
+          : balance > 0
             ? COPY.stage.saveNothing
             : COPY.stage.noCredits;
         saveBtn.disabled = !canPay;
@@ -1429,7 +1524,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
 
       const voiceLeft = COPY.stage.voiceMessageFree
         .replace('{cost}', String(COST.speakForMe))
-        .replace('{count}', String(s.credits));
+        .replace('{count}', String(balance));
       // The dock states what the bar will do and what it costs, live.
       voiceLeftText = `${voiceLeft}.`;
       applyDockMode();

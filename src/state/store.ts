@@ -41,6 +41,10 @@ import {
   visualById,
   type OpenChatVisual,
 } from '../chat/open-chat-visuals';
+import type {
+  GeneratedOpenChatVisual,
+  OpenChatContextProgress,
+} from '../chat/context-visual';
 
 export { COST } from '../config/economy';
 export type { Spend } from '../config/economy';
@@ -65,12 +69,16 @@ export interface GenInput {
 export type GenPhase = 'idle' | 'processing' | 'done';
 
 export interface ChatTurn {
+  /** Stable owner for async visual work; legacy persisted turns may omit it. */
+  id?: string;
   from: 'user' | 'resident';
   text: string;
   /** Open Chat only: an authored character frame inserted inside this reply. */
   visualId?: string;
   /** Spoken sentence boundary after which the visual becomes visible. */
   visualAfterSentence?: number;
+  /** A model-suggested scene whose generation lifecycle belongs to this turn. */
+  contextVisual?: GeneratedOpenChatVisual;
 }
 
 export interface OpenChatRewardProgress {
@@ -166,6 +174,13 @@ export interface CreditTransaction {
   createdAt: number;
 }
 
+export interface CreditReservation {
+  id: string;
+  feature: Spend;
+  amount: number;
+  createdAt: number;
+}
+
 export interface QuestChoiceResult {
   quest: QuestDefinition;
   choice: QuestChoice;
@@ -249,6 +264,8 @@ export interface AppState {
   viewUnlocked: Record<string, boolean>;
   unlockGateOpen: boolean;
   credits: number;
+  /** Session-only holds; the durable balance changes only after delivery. */
+  creditReservations: Record<string, CreditReservation>;
   transactions: CreditTransaction[];
   onboardingCompleted: string[];
   /** Set when a spend was refused, so the dock can say which one and why. */
@@ -282,6 +299,8 @@ export interface AppState {
   turnShots: Record<string, string>;
   /** Per-resident authored reward deck progress; Open Chat only. */
   openChatRewards: Record<string, OpenChatRewardProgress>;
+  /** Per-resident generated-frame allowance and cooldown. */
+  openChatContext: Record<string, OpenChatContextProgress>;
 
   // --- creator universe ---
   characterId: string;
@@ -315,6 +334,17 @@ export function shotAssignmentsSignature(turnShots: Record<string, string>): str
     .join('|');
 }
 
+/** Balance that remains spendable after in-flight deliveries reserve their price. */
+export function availableCredits(
+  state: Pick<AppState, 'credits' | 'creditReservations'>
+): number {
+  const reserved = Object.values(state.creditReservations).reduce(
+    (total, reservation) => total + reservation.amount,
+    0
+  );
+  return Math.max(0, state.credits - reserved);
+}
+
 const initialState: AppState = {
   step: 'gallery',
   universeId: null,
@@ -345,6 +375,7 @@ const initialState: AppState = {
   viewUnlocked: {},
   unlockGateOpen: false,
   credits: START_CREDITS,
+  creditReservations: {},
   transactions: [],
   onboardingCompleted: [],
   broke: null,
@@ -359,6 +390,7 @@ const initialState: AppState = {
   sceneShots: {},
   turnShots: {},
   openChatRewards: {},
+  openChatContext: {},
 
   characterId: CHARACTERS[0].id,
   gen: { mode: 'text', text: '', photoUrl: null, photoName: null },
@@ -402,9 +434,35 @@ function migrateProgress(progress: Record<string, SavedProgress>): Record<string
   );
 }
 
+function restoreOpenChatTranscripts(
+  transcripts: Record<string, ChatTurn[]>
+): Record<string, ChatTurn[]> {
+  return Object.fromEntries(
+    Object.entries(transcripts).map(([residentId, turns]) => [
+      residentId,
+      turns.map((turn) =>
+        turn.contextVisual?.status === 'generating'
+          ? {
+              ...turn,
+              contextVisual: {
+                ...turn.contextVisual,
+                status:
+                  turn.contextVisual.payment === 'free-auto'
+                    ? ('failed' as const)
+                    : ('offered' as const),
+                src: undefined,
+              },
+            }
+          : turn
+      ),
+    ])
+  );
+}
+
 export class Store {
   private state: AppState = initialState;
   private listeners = new Set<Listener>();
+  private turnSerial = 0;
 
   constructor(private random: () => number = Math.random) {
     try {
@@ -427,11 +485,12 @@ export class Store {
           crossModeMemory?: CrossModeMemory[];
           questCheckpoints?: Record<string, string>;
           openChatRewards?: Record<string, OpenChatRewardProgress>;
+          openChatContext?: Record<string, OpenChatContextProgress>;
         };
         this.state = {
           ...this.state,
           progress: migrateProgress(saved.progress ?? {}),
-          transcripts: saved.transcripts ?? {},
+          transcripts: restoreOpenChatTranscripts(saved.transcripts ?? {}),
           questTranscripts: saved.questTranscripts ?? {},
           credits: saved.credits ?? this.state.credits,
           viewUnlocked: saved.viewUnlocked ?? {},
@@ -446,6 +505,18 @@ export class Store {
           crossModeMemory: saved.crossModeMemory ?? [],
           questCheckpoints: saved.questCheckpoints ?? {},
           openChatRewards: saved.openChatRewards ?? {},
+          openChatContext: Object.fromEntries(
+            Object.entries(saved.openChatContext ?? {}).map(([residentId, progress]) => [
+              residentId,
+              {
+                freeState: progress.freeState === 'consumed' ? 'consumed' : 'available',
+                lastDeliveredTurn:
+                  typeof progress.lastDeliveredTurn === 'number'
+                    ? progress.lastDeliveredTurn
+                    : null,
+              } satisfies OpenChatContextProgress,
+            ])
+          ),
         };
       }
     } catch {
@@ -500,6 +571,7 @@ export class Store {
           crossModeMemory: this.state.crossModeMemory,
           questCheckpoints: this.state.questCheckpoints,
           openChatRewards: this.state.openChatRewards,
+          openChatContext: this.state.openChatContext,
         })
       );
     } catch {
@@ -620,9 +692,13 @@ export class Store {
     });
   }
 
-  pushTurn(turn: ChatTurn): void {
-    const turns = turn.from === 'user' ? this.state.turns + 1 : this.state.turns;
-    const chat = [...this.state.chat, turn].slice(-60);
+  pushTurn(turn: ChatTurn): ChatTurn & { id: string } {
+    const committed = {
+      ...turn,
+      id: turn.id ?? `${this.state.residentId}-${Date.now().toString(36)}-${this.turnSerial++}`,
+    };
+    const turns = committed.from === 'user' ? this.state.turns + 1 : this.state.turns;
+    const chat = [...this.state.chat, committed].slice(-60);
     // Open Chat is mirrored and written out every turn. Quest Mode has its own
     // transcript and must never reach this path.
     this.set({
@@ -631,6 +707,135 @@ export class Store {
       transcripts: { ...this.state.transcripts, [this.state.residentId]: chat },
     });
     this.persist();
+    return committed;
+  }
+
+  /** Attach a generated visual contract to exactly one stable resident turn. */
+  attachContextVisual(
+    residentId: ResidentId,
+    turnId: string,
+    visual: GeneratedOpenChatVisual
+  ): boolean {
+    const source =
+      residentId === this.state.residentId
+        ? this.state.chat
+        : this.state.transcripts[residentId] ?? [];
+    const index = source.findIndex((turn) => turn.id === turnId && turn.from === 'resident');
+    if (index === -1 || source[index].contextVisual) return false;
+    const next = source.map((turn, at) =>
+      at === index ? { ...turn, contextVisual: visual } : turn
+    );
+    this.set({
+      ...(residentId === this.state.residentId ? { chat: next } : {}),
+      transcripts: { ...this.state.transcripts, [residentId]: next },
+    });
+    this.persist();
+    return true;
+  }
+
+  /** Patch only the job that still owns its original turn. */
+  updateContextVisual(
+    residentId: ResidentId,
+    turnId: string,
+    jobId: string,
+    patch: Partial<Pick<GeneratedOpenChatVisual, 'status' | 'src'>>
+  ): boolean {
+    const source =
+      residentId === this.state.residentId
+        ? this.state.chat
+        : this.state.transcripts[residentId] ?? [];
+    const index = source.findIndex(
+      (turn) => turn.id === turnId && turn.contextVisual?.jobId === jobId
+    );
+    if (index === -1) return false;
+    const next = source.map((turn, at) =>
+      at === index
+        ? { ...turn, contextVisual: { ...turn.contextVisual!, ...patch } }
+        : turn
+    );
+    this.set({
+      ...(residentId === this.state.residentId ? { chat: next } : {}),
+      transcripts: { ...this.state.transcripts, [residentId]: next },
+    });
+    this.persist();
+    return true;
+  }
+
+  contextVisualProgressFor(residentId = this.state.residentId): OpenChatContextProgress {
+    return this.state.openChatContext[residentId] ?? {
+      freeState: 'available',
+      lastDeliveredTurn: null,
+    };
+  }
+
+  reserveFreeContextVisual(residentId: ResidentId, jobId: string): boolean {
+    const progress = this.contextVisualProgressFor(residentId);
+    if (progress.freeState !== 'available') return false;
+    this.set({
+      openChatContext: {
+        ...this.state.openChatContext,
+        [residentId]: { ...progress, freeState: 'reserved', freeJobId: jobId },
+      },
+    });
+    return true;
+  }
+
+  releaseFreeContextVisual(residentId: ResidentId, jobId: string): boolean {
+    const progress = this.contextVisualProgressFor(residentId);
+    if (progress.freeState !== 'reserved' || progress.freeJobId !== jobId) return false;
+    this.set({
+      openChatContext: {
+        ...this.state.openChatContext,
+        [residentId]: {
+          freeState: 'available',
+          lastDeliveredTurn: progress.lastDeliveredTurn,
+        },
+      },
+    });
+    return true;
+  }
+
+  commitFreeContextVisual(
+    residentId: ResidentId,
+    jobId: string,
+    userTurn: number
+  ): boolean {
+    const progress = this.contextVisualProgressFor(residentId);
+    if (progress.freeState !== 'reserved' || progress.freeJobId !== jobId) return false;
+    this.set({
+      openChatContext: {
+        ...this.state.openChatContext,
+        [residentId]: {
+          freeState: 'consumed',
+          lastDeliveredTurn: userTurn,
+        },
+      },
+    });
+    this.persist();
+    return true;
+  }
+
+  markPaidContextVisualDelivered(residentId: ResidentId, userTurn: number): void {
+    const progress = this.contextVisualProgressFor(residentId);
+    this.set({
+      openChatContext: {
+        ...this.state.openChatContext,
+        [residentId]: { ...progress, lastDeliveredTurn: userTurn },
+      },
+    });
+    this.persist();
+  }
+
+  hasOutstandingContextVisual(residentId = this.state.residentId): boolean {
+    const turns =
+      residentId === this.state.residentId
+        ? this.state.chat
+        : this.state.transcripts[residentId] ?? [];
+    return turns.some(
+      (turn) =>
+        turn.contextVisual?.status === 'offered' ||
+        turn.contextVisual?.status === 'generating'
+    );
   }
 
   /** Return the due authored reward without consuming it while a reply is in flight. */
@@ -778,7 +983,7 @@ export class Store {
 
   /** What a given action would leave her, or -1 when it cannot be afforded. */
   canAfford(what: Spend): boolean {
-    return this.state.credits >= COST[what];
+    return availableCredits(this.state) >= COST[what];
   }
 
   private transaction(kind: CreditTransaction['kind'], feature: CreditFeature, amount: number): CreditTransaction {
@@ -790,6 +995,49 @@ export class Store {
       amount,
       createdAt,
     };
+  }
+
+  /** Hold a disclosed price without changing the durable balance or ledger. */
+  reserveCredit(id: string, what: Spend): boolean {
+    if (!id || this.state.creditReservations[id]) return false;
+    if (!this.canAfford(what)) {
+      this.set({ broke: what });
+      return false;
+    }
+    this.set({
+      creditReservations: {
+        ...this.state.creditReservations,
+        [id]: { id, feature: what, amount: COST[what], createdAt: Date.now() },
+      },
+      broke: null,
+    });
+    return true;
+  }
+
+  /** Settle exactly one successful reserved delivery. */
+  commitCredit(id: string): boolean {
+    const reservation = this.state.creditReservations[id];
+    if (!reservation) return false;
+    const creditReservations = { ...this.state.creditReservations };
+    delete creditReservations[id];
+    const transaction = this.transaction('spend', reservation.feature, reservation.amount);
+    this.set({
+      credits: this.state.credits - reservation.amount,
+      creditReservations,
+      transactions: [...this.state.transactions, transaction].slice(-30),
+      broke: null,
+    });
+    this.persist();
+    return true;
+  }
+
+  /** Release a failed, cancelled or stale hold; idempotent and ledger-free. */
+  releaseCredit(id: string): boolean {
+    if (!this.state.creditReservations[id]) return false;
+    const creditReservations = { ...this.state.creditReservations };
+    delete creditReservations[id];
+    this.set({ creditReservations });
+    return true;
   }
 
   /**
@@ -1225,7 +1473,16 @@ export class Store {
       onboardingCompleted: this.state.onboardingCompleted,
       storyFlags: this.state.storyFlags,
       questOutcomes: this.state.questOutcomes,
+      questEndings: this.state.questEndings,
       questHistory: this.state.questHistory,
+      questCheckpoints: this.state.questCheckpoints,
+      transcripts: this.state.transcripts,
+      questTranscripts: this.state.questTranscripts,
+      canonLedger: this.state.canonLedger,
+      crossModeMemory: this.state.crossModeMemory,
+      sceneShots: this.state.sceneShots,
+      openChatRewards: this.state.openChatRewards,
+      openChatContext: this.state.openChatContext,
     });
   }
 

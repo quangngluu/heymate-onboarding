@@ -794,9 +794,12 @@ function betweenSection(
       '',
       'BẮT BUỘC Ở CUỐI MỖI LƯỢT',
       'Sau khi nói xong, xuống dòng và thêm đúng một dòng máy đọc, không có gì sau nó:',
-      '<<state {"trust":0.00,"respect":0.00,"desire":0.00,"irritation":0.00,"attachment":0.00,"unresolvedConflict":null,"repairStatus":"none"}>>',
+      '<<state {"trust":0.00,"respect":0.00,"desire":0.00,"irritation":0.00,"attachment":0.00,"unresolvedConflict":null,"repairStatus":"none","visualIntent":null}>>',
       `Năm con số là GIÁ TRỊ TUYỆT ĐỐI từ 0.00 tới 1.00 sau lượt này, không phải mức tăng giảm. Giá trị trước lượt này: trust ${rapport.trust.toFixed(2)}, respect ${rapport.respect.toFixed(2)}, desire ${rapport.desire.toFixed(2)}, irritation ${rapport.irritation.toFixed(2)}, attachment ${rapport.attachment.toFixed(2)}. Chỉnh từ đó, và mỗi lượt bình thường chỉ nhích rất nhỏ.`,
       'unresolvedConflict là một câu ngắn bằng tiếng Việt nếu còn chuyện chưa xong giữa hai người, ngược lại là null. repairStatus là "none", "needed" hoặc "addressed".',
+      quest || idle
+        ? 'visualIntent bắt buộc là null trong Quest hoặc khi em tự mở lời vào lúc anh im lặng.'
+        : 'visualIntent là null trong hầu hết lượt. Em chỉ đề xuất ảnh khi lượt hiện tại tạo ra một khoảnh khắc cụ thể có nơi chốn, đồ vật hoặc hành động đáng nhìn; không đề xuất cho cảm xúc chung chung, lời chào, lời khuyên hay câu hỏi. Khi đủ rõ, dùng {"sceneBrief":"một mô tả cảnh ngắn bằng tiếng Việt","caption":"một câu chú thích tự nhiên bằng tiếng Việt","confidence":0.00}. Chỉ giữ chi tiết thị giác cần thiết, không chép lại nguyên tin nhắn, tên thật, địa chỉ, liên hệ, URL hay bí mật của anh. confidence chỉ từ 0.00 tới 1.00.',
       'Dòng này bị hệ thống cắt bỏ trước khi anh thấy. Không bao giờ nhắc tới nó, không giải thích nó, và không bỏ nó.',
     ].join('\n'),
   ];

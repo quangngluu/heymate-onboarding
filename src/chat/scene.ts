@@ -34,6 +34,9 @@ export interface SceneDrawRequest {
   scene?: string;
   perspective?: ScenePerspective;
   subjectStrategy?: 'identity' | 'identity+pose' | 'none';
+  source?: 'quest' | 'open-chat';
+  /** Optional caller-owned cancellation for stale conversation work. */
+  signal?: AbortSignal;
 }
 
 function failedReason(error: unknown): SceneDrawFailureReason {
@@ -52,6 +55,18 @@ function failedReason(error: unknown): SceneDrawFailureReason {
     default:
       return 'invalid';
   }
+}
+
+function sceneRequestSignal(external: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  if (!external) return timeout;
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([external, timeout]);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  external.addEventListener('abort', abort, { once: true });
+  timeout.addEventListener('abort', abort, { once: true });
+  if (external.aborted || timeout.aborted) controller.abort();
+  return controller.signal;
 }
 
 export async function drawScene(input: SceneDrawRequest): Promise<SceneDrawResult> {
@@ -75,10 +90,11 @@ export async function drawScene(input: SceneDrawRequest): Promise<SceneDrawResul
         route,
         text: input.text,
         scene: input.scene,
+        source: input.source,
         perspective: input.perspective ?? 'observed',
         subject: subject ?? undefined,
       }),
-      signal: AbortSignal.timeout(subject ? 80000 : 40000),
+      signal: sceneRequestSignal(input.signal, subject ? 80000 : 40000),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => null) as { error?: unknown } | null;

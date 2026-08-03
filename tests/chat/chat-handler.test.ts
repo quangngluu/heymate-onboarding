@@ -46,6 +46,57 @@ describe('chat addressing repair ladder', () => {
     else process.env.DEEPSEEK_API_KEY = originalKey;
   });
 
+  it('returns a validated Open Chat visual intent without exposing private state', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        upstream(
+          'Em thấy Frame 12 sáng lên.\n<<state {"trust":0.4,"respect":0.4,"desire":0.2,"irritation":0.1,"attachment":0.3,"unresolvedConflict":null,"repairStatus":"none","visualIntent":{"sceneBrief":"Kho lưu trữ tối với Frame 12 sáng giữa phòng.","caption":"Frame 12 trở lại sau câu trả lời.","confidence":0.9}}>>'
+        )
+      )
+    );
+
+    const response = await handler(request());
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      text: 'Em thấy Frame 12 sáng lên.',
+      rapport: {
+        trust: 0.4,
+        respect: 0.4,
+        desire: 0.2,
+        irritation: 0.1,
+        attachment: 0.3,
+        unresolvedConflict: null,
+        repairStatus: 'none',
+        lastBoundary: null,
+      },
+      visualIntent: {
+        sceneBrief: 'Kho lưu trữ tối với Frame 12 sáng giữa phòng.',
+        caption: 'Frame 12 trở lại sau câu trả lời.',
+        confidence: 0.9,
+      },
+    });
+  });
+
+  it('asks the model for a visual only when the current turn contains a concrete scene', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(upstream('Em vẫn nghe anh.'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await handler(request());
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    const body = JSON.parse(String(init.body)) as {
+      messages: { role: string; content: string }[];
+      max_tokens: number;
+    };
+    const system = body.messages.find((message) => message.role === 'system')?.content ?? '';
+    expect(system).toContain('"visualIntent":null');
+    expect(system).toContain('chỉ đề xuất ảnh khi');
+    expect(system).toContain('không chép lại nguyên tin nhắn');
+    expect(body.max_tokens).toBe(300);
+  });
+
   it('does not flag third-party relationship nouns or explicit quoted mentions', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       upstream('Người bạn của em nhắc lại lời anh: “Tôi sẽ đến.”')

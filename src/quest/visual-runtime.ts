@@ -1,4 +1,5 @@
 import { drawScene } from '../chat/scene';
+import { SceneJobRuntime } from '../chat/scene-job-runtime';
 import type { QuestChoice, QuestDefinition, QuestNode } from '../config/quests';
 import type { Store } from '../state/store';
 import { questConversationScope } from '../state/store';
@@ -25,11 +26,17 @@ export interface QuestOutcomeCommitted {
 
 type VisualStore = Pick<
   Store,
-  'get' | 'spend' | 'refund' | 'keepShot' | 'showShot'
+  | 'get'
+  | 'conversationScope'
+  | 'reserveCredit'
+  | 'commitCredit'
+  | 'releaseCredit'
+  | 'keepShot'
+  | 'showShot'
 >;
 
 type SceneDrawer = typeof drawScene;
-type ScenePresenter = (url: string) => void;
+type ScenePresenter = (url: string) => void | boolean | Promise<boolean>;
 
 /**
  * Owns the asynchronous lifetime of a Quest drawing.
@@ -39,19 +46,14 @@ type ScenePresenter = (url: string) => void;
  * session-only transcript attachment.
  */
 export class QuestVisualRuntime {
+  private readonly jobs: SceneJobRuntime;
+
   constructor(
     private readonly owner: VisualStore,
     private readonly drawer: SceneDrawer = drawScene,
     private readonly presentScene: ScenePresenter = () => {}
-  ) {}
-
-  private attach(
-    scope: ReturnType<typeof questConversationScope>,
-    turn: number,
-    cacheKey: string,
-    url: string
-  ): void {
-    if (this.owner.showShot(scope, turn, cacheKey)) this.presentScene(url);
+  ) {
+    this.jobs = new SceneJobRuntime(owner, drawer);
   }
 
   async outcomeCommitted(event: QuestOutcomeCommitted): Promise<void> {
@@ -78,38 +80,28 @@ export class QuestVisualRuntime {
       event.capabilities
     );
     const scope = questConversationScope(event.quest.id);
-    const cached = this.owner.get().sceneShots[spec.cacheKey];
-    if (cached) {
-      this.attach(scope, event.turn, spec.cacheKey, cached);
-      return;
-    }
-    if (!this.owner.spend('sceneImage')) return;
-
-    const result = await this.drawer({
-      residentId: event.quest.residentId,
-      route: event.quest.route,
-      text: event.choice.outcome,
-      scene: spec.scene,
-      perspective: spec.perspective,
-      subjectStrategy: spec.subjectStrategy,
-    });
-    if (!result.ok) {
-      this.owner.refund('sceneImage');
-      return;
-    }
-
     const expectedSubject = spec.subjectStrategy !== 'none';
-    if (
-      result.perspective !== spec.perspective ||
-      result.withSubject !== expectedSubject
-    ) {
-      this.owner.refund('sceneImage');
-      return;
+    const jobId = `${scope}:${event.turn}:${spec.cacheKey}`;
+    if (!this.owner.reserveCredit(jobId, 'sceneImage')) return;
+    const result = await this.jobs.run({
+      id: jobId,
+      cacheKey: spec.cacheKey,
+      request: {
+        residentId: event.quest.residentId,
+        route: event.quest.route,
+        text: event.choice.outcome,
+        scene: spec.scene,
+        perspective: spec.perspective,
+        subjectStrategy: spec.subjectStrategy,
+      },
+      expected: { perspective: spec.perspective, withSubject: expectedSubject },
+      billing: { kind: 'reserved', reservationId: jobId },
+      isCurrent: () => this.owner.conversationScope === scope,
+      stalePolicy: 'cache-and-keep',
+      present: async (url) => (await this.presentScene(url)) !== false,
+    });
+    if (result.status === 'ready') {
+      this.owner.showShot(scope, event.turn, spec.cacheKey);
     }
-
-    // Valid generated work remains reusable even if navigation made its former
-    // turn ineligible to receive it.
-    this.owner.keepShot(spec.cacheKey, result.url);
-    this.attach(scope, event.turn, spec.cacheKey, result.url);
   }
 }

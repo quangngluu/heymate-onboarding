@@ -9,6 +9,9 @@ export interface UIActions {
   // --- companion universe ---
   selectResident(id: string): void;
   sendMessage(text: string): void;
+  requestOpenChatImage(turnId: string): void;
+  dismissOpenChatImage(turnId: string): void;
+  showOpenChatImage(turnId: string): void;
   openSessionPanel(): void;
   openWallet(): void;
   closeWallet(): void;

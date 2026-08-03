@@ -298,26 +298,50 @@ async function runModeTransitionCoverage(browser) {
   return { failures, gated: false };
 }
 
-async function runOpenChatVisualRewardCoverage(browser) {
+async function runOpenChatContextVisualCoverage(browser) {
   const failures = [];
   const context = await browser.createBrowserContext();
   try {
     const page = await context.newPage();
     await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true });
     await page.evaluateOnNewDocument(() => {
-      Math.random = () => 0;
       const realFetch = window.fetch.bind(window);
       const fetchUrls = [];
-      window.__heymateVisualSmoke = { fetchUrls };
+      const sceneBodies = [];
+      window.__heymateVisualSmoke = { fetchUrls, sceneBodies };
       window.fetch = (input, init) => {
         const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
         fetchUrls.push(url);
         if (url.includes('/api/chat')) {
+          const request = JSON.parse(String(init?.body ?? '{}'));
+          const userTurn = Array.isArray(request.history)
+            ? request.history.filter((item) => item.role === 'user').length
+            : 1;
           return Promise.resolve(
-            new Response(JSON.stringify({ text: 'Em nghe rồi. Đoạn này vẫn còn một nhịp chưa nói hết.' }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            })
+            new Response(
+              JSON.stringify({
+                text: `Em giữ lại tín hiệu ${userTurn}.`,
+                visualIntent: {
+                  sceneBrief: `Kho lưu trữ tối với tín hiệu số ${userTurn} sáng giữa phòng.`,
+                  caption: `Tín hiệu ${userTurn} được giữ lại từ đoạn vừa rồi.`,
+                  confidence: 0.95,
+                },
+              }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } }
+            )
+          );
+        }
+        if (url.includes('/api/scene-image')) {
+          sceneBodies.push(JSON.parse(String(init?.body ?? '{}')));
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                url: '/assets/open-chat/rin-opening-signal.webp',
+                perspective: 'observed',
+                withSubject: true,
+              }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } }
+            )
           );
         }
         if (url.includes('/api/tts')) return Promise.resolve(new Response('', { status: 503 }));
@@ -331,9 +355,9 @@ async function runOpenChatVisualRewardCoverage(browser) {
 
     const input = '.dock-bar .chat-input';
     const send = '.dock-bar .btn-primary';
-    for (let turn = 1; turn <= 3; turn++) {
+    for (let turn = 1; turn <= 5; turn++) {
       await page.waitForSelector(`${input}:not([disabled])`, { visible: true, timeout: 15_000 });
-      await fillInput(page, input, `Lượt reward ${turn}`);
+      await fillInput(page, input, `Lượt context ${turn}`);
       await clickSelector(page, send);
       await page.waitForFunction(
         (expected) => document.querySelectorAll('.speech-log .bubble-user').length >= expected,
@@ -343,37 +367,87 @@ async function runOpenChatVisualRewardCoverage(browser) {
     }
 
     await page.waitForFunction(
-      () => document.querySelectorAll('[data-testid="open-chat-visual"]').length >= 2,
+      () =>
+        document.querySelectorAll('[data-testid="open-chat-context-visual"]').length === 2 &&
+        document.querySelector('[data-testid="open-chat-context-visual"][data-visual-payment="free-auto"]')?.getAttribute('data-visual-status') === 'ready' &&
+        document.querySelector('[data-testid="open-chat-context-visual"][data-visual-payment="paid"]')?.getAttribute('data-visual-status') === 'offered',
       { timeout: 15_000 }
     );
-    await page.waitForFunction(
-      () => document.querySelector('.speech-log')?.textContent?.includes('Em kéo khung này ra vì đoạn anh vừa nói.'),
-      { timeout: 15_000 }
-    );
-    await page.waitForFunction(
-      () => document.documentElement.dataset.openChatScene === 'ready',
-      { timeout: 15_000 }
-    );
+
+    const paidActionSelector =
+      '[data-testid="open-chat-context-visual"][data-visual-payment="paid"] .open-chat-visual-action:not([disabled])';
+    const offered = await page.waitForSelector(paidActionSelector, {
+      visible: true,
+      timeout: 15_000,
+    });
+    if (!offered) {
+      failures.push('paid context visual has no explicit action');
+    } else {
+      const labels = await page.$$eval(
+        '[data-testid="open-chat-context-visual"][data-visual-payment="paid"] .open-chat-visual-action',
+        (buttons) => buttons.map((button) => button.textContent?.trim() ?? '')
+      );
+      const label = labels[0] ?? '';
+      if (label !== 'Dựng cảnh này · 4 credit') failures.push(`paid CTA=${JSON.stringify(label)}`);
+      if (labels[1] !== 'Bỏ qua') failures.push(`paid dismiss=${JSON.stringify(labels[1] ?? null)}`);
+      const offerGeometry = await page.evaluate(() => {
+        const buttons = [...document.querySelectorAll(
+          '[data-testid="open-chat-context-visual"][data-visual-payment="paid"] .open-chat-visual-action'
+        )];
+        return {
+          minTarget: Math.min(...buttons.map((button) => button.getBoundingClientRect().height)),
+          overflow: document.body.scrollWidth - window.innerWidth,
+        };
+      });
+      if (offerGeometry.minTarget < 43.5) failures.push(`paid target=${offerGeometry.minTarget}px`);
+      if (offerGeometry.overflow > 1) failures.push(`paid offer overflow=${offerGeometry.overflow}px`);
+      await clickSelector(page, paidActionSelector);
+      await page
+        .waitForFunction(
+          () => document.querySelector('[data-testid="open-chat-context-visual"][data-visual-payment="paid"]')?.getAttribute('data-visual-status') === 'ready',
+          { timeout: 15_000 }
+        )
+        .catch(() => undefined);
+    }
+
     const state = await page.evaluate(() => {
-      const cards = [...document.querySelectorAll('[data-testid="open-chat-visual"]')];
-      const reward = cards.at(-1);
+      const cards = [...document.querySelectorAll('[data-testid="open-chat-context-visual"]')];
+      const free = cards.find((card) => card.getAttribute('data-visual-payment') === 'free-auto');
+      const paid = cards.find((card) => card.getAttribute('data-visual-payment') === 'paid');
+      const store = window.__hm?.store?.get?.();
       return {
-        id: reward?.getAttribute('data-visual-id') ?? null,
-        actions: reward?.querySelectorAll('.open-chat-visual-action').length ?? 0,
-        hasInlineImage: !!reward?.querySelector('img'),
+        cardCount: cards.length,
+        freeStatus: free?.getAttribute('data-visual-status') ?? null,
+        paidStatus: paid?.getAttribute('data-visual-status') ?? null,
+        paidAction: paid?.querySelector('.open-chat-visual-action')?.textContent?.trim() ?? null,
+        hasInlineImage: cards.some((card) => !!card.querySelector('img')),
         sceneBackdrop: document.documentElement.dataset.openChatScene ?? '',
-        transcript: document.querySelector('.speech-log')?.textContent ?? '',
         sceneRequests: window.__heymateVisualSmoke.fetchUrls.filter((url) => url.includes('/api/scene-image')).length,
+        sceneBodies: window.__heymateVisualSmoke.sceneBodies,
+        credits: store?.credits ?? null,
+        imageSpends: store?.transactions?.filter((item) => item.feature === 'sceneImage').length ?? null,
       };
     });
-    if (!state.id?.startsWith('rin-reward-')) failures.push(`reward visual=${JSON.stringify(state.id)}`);
-    if (state.actions !== 2) failures.push(`reward actions=${state.actions}`);
-    if (state.hasInlineImage) failures.push('reward visual still renders an inline image');
-    if (state.sceneBackdrop !== 'ready') failures.push(`reward scene backdrop=${JSON.stringify(state.sceneBackdrop)}`);
-    if (!state.transcript.includes('Em kéo khung này ra vì đoạn anh vừa nói.')) {
-      failures.push('reward visual is missing its authored conversational bridge');
+    if (state.cardCount !== 2) failures.push(`context visual cards=${state.cardCount}`);
+    if (state.freeStatus !== 'ready') failures.push(`free context status=${JSON.stringify(state.freeStatus)}`);
+    if (state.paidStatus !== 'ready') failures.push(`paid context status=${JSON.stringify(state.paidStatus)}`);
+    if (state.paidAction !== 'Xem lại ảnh') failures.push(`paid ready action=${JSON.stringify(state.paidAction)}`);
+    if (state.hasInlineImage) failures.push('context visual still renders an inline image');
+    if (state.sceneBackdrop !== 'ready') failures.push(`context scene backdrop=${JSON.stringify(state.sceneBackdrop)}`);
+    if (state.sceneRequests !== 2) failures.push(`context visual made ${state.sceneRequests} scene-image requests`);
+    if (state.credits !== 91) failures.push(`context visual credits=${state.credits}`);
+    if (state.imageSpends !== 1) failures.push(`context visual image spends=${state.imageSpends}`);
+    if (
+      state.sceneBodies.some(
+        (body) =>
+          body.source !== 'open-chat' ||
+          body.perspective !== 'observed' ||
+          body.text !== body.scene ||
+          String(body.text).includes('Lượt context')
+      )
+    ) {
+      failures.push(`context scene request leaked or changed contract=${JSON.stringify(state.sceneBodies)}`);
     }
-    if (state.sceneRequests !== 0) failures.push(`reward made ${state.sceneRequests} scene-image requests`);
   } finally {
     await context.close();
   }
@@ -849,7 +923,7 @@ try {
     }
   }
   const modeCoverage = await runModeTransitionCoverage(browser);
-  const openChatVisualCoverage = await runOpenChatVisualRewardCoverage(browser);
+  const openChatVisualCoverage = await runOpenChatContextVisualCoverage(browser);
   const muteTtsCoverage = await runMuteTtsCoverage(browser);
   const turnOverlapCoverage = await runTurnOverlapCoverage(browser);
 
@@ -878,7 +952,7 @@ try {
   for (const failure of modeCoverage.failures) process.stderr.write(`  - ${failure}\n`);
 
   process.stdout.write(
-    `${openChatVisualCoverage.failures.length ? 'FAIL' : 'PASS'} Open Chat visual reward scheduling\n`
+    `${openChatVisualCoverage.failures.length ? 'FAIL' : 'PASS'} Open Chat context visual billing\n`
   );
   for (const failure of openChatVisualCoverage.failures) process.stderr.write(`  - ${failure}\n`);
 

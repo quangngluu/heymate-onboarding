@@ -26,6 +26,7 @@ import {
 } from '../src/config/canon-view';
 import { DEFAULT_ROUTE, type CanonRoute } from '../src/config/canon-route';
 import type { ResidentId } from '../src/config/residents';
+import { sanitizeContextSceneBrief } from '../src/chat/context-visual';
 
 interface SceneRequest {
   residentId: string;
@@ -46,6 +47,8 @@ interface SceneRequest {
    * so nothing is uploaded to storage first.
    */
   subject?: string;
+  /** Open Chat accepts only its bounded model-produced scene brief. */
+  source?: 'quest' | 'open-chat';
 }
 
 export const config = { runtime: 'edge' };
@@ -194,8 +197,15 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ error }, { status: 400 });
   }
 
-  const text = String(body.text ?? '').trim().slice(0, 600);
+  const source = body.source === 'open-chat' ? 'open-chat' : 'quest';
+  const openChatBrief =
+    source === 'open-chat' ? sanitizeContextSceneBrief(body.scene) : null;
+  const text =
+    source === 'open-chat'
+      ? openChatBrief ?? ''
+      : String(body.text ?? '').trim().slice(0, 600);
   if (!text) return Response.json({ error: 'empty-text' }, { status: 400 });
+  const scene = source === 'open-chat' ? openChatBrief! : body.scene;
 
   let resident: ReturnType<typeof canonViewFor>;
   try {
@@ -212,13 +222,15 @@ export default async function handler(req: Request): Promise<Response> {
   // of the viewer. With no subject the room is drawn empty, and an empty room
   // shot from someone's eyes is the same empty room.
   const perspective: ScenePerspective =
-    subject && body.perspective === 'first-person' ? 'first-person' : 'observed';
+    source !== 'open-chat' && subject && body.perspective === 'first-person'
+      ? 'first-person'
+      : 'observed';
 
   try {
     const authoredBrief = sceneBriefFor(
       resident.id,
       route,
-      body.scene ?? text,
+      scene ?? text,
       perspective
     ).replace(/\n+/g, '. ');
     let sceneBrief = authoredBrief;
@@ -240,12 +252,17 @@ export default async function handler(req: Request): Promise<Response> {
                     ? BRIEF_WITH_SUBJECT
                     : BRIEF_EMPTY,
                 '',
-                sceneBriefFor(resident.id, route, body.scene ?? text, perspective),
+                sceneBriefFor(resident.id, route, scene ?? text, perspective),
               ].join('\n'),
             },
             {
               role: 'user',
-              content: body.scene ? `Cảnh: ${body.scene}\nVừa xảy ra: ${text}` : text,
+              content:
+                source === 'open-chat'
+                  ? `Cảnh: ${text}`
+                  : scene
+                    ? `Cảnh: ${scene}\nVừa xảy ra: ${text}`
+                    : text,
             },
           ],
         }),
