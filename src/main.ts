@@ -587,7 +587,6 @@ class App implements UIActions {
     this.rimB.color.setHex(v.rimFill);
     // Her display name is her given name, not the full series title.
     this.nameplate.transitionTo(r.name.split(' ')[0], r.accentColor, heroPos, camPos);
-    this.residentStage?.setHeroDim(false);
   }
 
   /**
@@ -598,20 +597,19 @@ class App implements UIActions {
   private presentOpenChatScene(src: string): void {
     this.openChatSceneActive = true;
     document.documentElement.dataset.openChatScene = 'loading';
-    this.residentStage?.setHeroDim(true);
-    void this.backdrop.showScene(src).then((ok) => {
+    void this.nameplate.showImage(src).then((ok) => {
       if (ok && this.openChatSceneActive) {
         document.documentElement.dataset.openChatScene = 'ready';
       }
     });
   }
 
-  /** Give the studio backdrop and the full-strength sculpt back on the next turn. */
+  /** Fade the frame back out from behind the name on the next turn. */
   private restoreOpenChatScene(): void {
     if (!this.openChatSceneActive) return;
     this.openChatSceneActive = false;
     delete document.documentElement.dataset.openChatScene;
-    this.applyStageAccent();
+    this.nameplate.hideImage();
   }
 
   /**

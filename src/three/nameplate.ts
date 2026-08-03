@@ -1,8 +1,15 @@
 // Oversized character-name backdrop: a canvas-textured plane standing behind
 // the selected plinth, neon-relic style. Presentation-only; fades between
 // selections and always faces the active camera position.
+//
+// It can also carry an optional frame image (an Open Chat scene) on a second
+// plane just behind the wordmark, so a generated picture reads as the backdrop
+// *for the name* — off to the side, clear of the figure on the plinth — rather
+// than a full-screen takeover sitting on top of the sculpt.
 
 import * as THREE from 'three';
+
+const imageLoader = new THREE.TextureLoader();
 
 export class Nameplate {
   private mesh: THREE.Mesh;
@@ -10,6 +17,15 @@ export class Nameplate {
   private canvas = document.createElement('canvas');
   private targetOpacity = 0;
   private maxOpacity = 0.15;
+
+  private imageMesh: THREE.Mesh;
+  private imageMaterial: THREE.MeshBasicMaterial;
+  private imageTarget = 0;
+  private imageActive = false;
+  /** How solid the frame behind the name gets once it has faded in. */
+  private static readonly IMAGE_OPACITY = 0.62;
+  /** The wordmark reads brighter while a frame is behind it, so it stays a label. */
+  private static readonly NAME_OVER_IMAGE = 0.4;
 
   constructor(scene: THREE.Scene) {
     this.canvas.width = 2048;
@@ -28,6 +44,20 @@ export class Nameplate {
     this.mesh.visible = false;
     this.mesh.renderOrder = -1;
     scene.add(this.mesh);
+
+    this.imageMaterial = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    this.imageMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 4.5), this.imageMaterial);
+    this.imageMesh.visible = false;
+    // Behind the wordmark (-1), in front of the studio dome (-2). depthTest stays
+    // on so the sculpt on the plinth occludes it, keeping the frame in the
+    // background around the name rather than pasted over her.
+    this.imageMesh.renderOrder = -1.5;
+    scene.add(this.imageMesh);
   }
 
   setText(name: string, accent: number): void {
@@ -49,20 +79,54 @@ export class Nameplate {
     (this.material.map as THREE.CanvasTexture).needsUpdate = true;
   }
 
+  /** Fade a frame in behind the name; resolves false if the image cannot load. */
+  showImage(url: string): Promise<boolean> {
+    this.imageActive = true;
+    if (this.mesh.visible) this.targetOpacity = Nameplate.NAME_OVER_IMAGE;
+    return new Promise((resolve) => {
+      imageLoader.load(
+        url,
+        (texture) => {
+          texture.colorSpace = THREE.SRGBColorSpace;
+          this.imageMaterial.map = texture;
+          this.imageMaterial.needsUpdate = true;
+          this.imageMesh.visible = true;
+          this.imageTarget = Nameplate.IMAGE_OPACITY;
+          resolve(true);
+        },
+        undefined,
+        () => resolve(false)
+      );
+    });
+  }
+
+  hideImage(): void {
+    this.imageActive = false;
+    this.imageTarget = 0;
+    if (this.mesh.visible) this.targetOpacity = this.maxOpacity;
+  }
+
   /** Place behind a plinth, pushed away from the camera, facing it. */
   showAt(plinth: THREE.Vector3, cameraPos: THREE.Vector3): void {
     const away = plinth.clone().sub(cameraPos);
     away.y = 0;
-    away.normalize().multiplyScalar(2.4);
-    this.mesh.position.copy(plinth).add(away);
+    away.normalize();
+    this.mesh.position.copy(plinth).addScaledVector(away, 2.4);
     this.mesh.position.y = 1.75;
     this.mesh.lookAt(cameraPos.x, 1.75, cameraPos.z);
     this.mesh.visible = true;
-    this.targetOpacity = this.maxOpacity;
+    this.targetOpacity = this.imageActive ? Nameplate.NAME_OVER_IMAGE : this.maxOpacity;
+    // The frame sits a touch further back and higher, so it frames the wordmark
+    // instead of the figure standing in front of the plinth.
+    this.imageMesh.position.copy(plinth).addScaledVector(away, 2.8);
+    this.imageMesh.position.y = 2.05;
+    this.imageMesh.quaternion.copy(this.mesh.quaternion);
   }
 
   hide(): void {
     this.targetOpacity = 0;
+    this.imageActive = false;
+    this.imageTarget = 0;
   }
 
   /** Fade toward target; call once per frame. */
@@ -70,6 +134,10 @@ export class Nameplate {
     const o = this.material.opacity;
     this.material.opacity = o + (this.targetOpacity - o) * Math.min(1, dt * 5);
     if (this.targetOpacity === 0 && this.material.opacity < 0.005) this.mesh.visible = false;
+
+    const io = this.imageMaterial.opacity;
+    this.imageMaterial.opacity = io + (this.imageTarget - io) * Math.min(1, dt * 4);
+    if (this.imageTarget === 0 && this.imageMaterial.opacity < 0.005) this.imageMesh.visible = false;
   }
 
   /** Fade out, then swap text and fade back in at the new anchor. */

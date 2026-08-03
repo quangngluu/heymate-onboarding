@@ -82,9 +82,6 @@ export class WaifuStage {
   /** 0 = idle, 1 = mid-utterance; drives ring pulse and sway amplitude. */
   speakingLevel = 0;
   private speakingTarget = 0;
-  /** Hero opacity, faded down when an Open Chat scene takes over the backdrop. */
-  private heroDim = 1;
-  private heroDimTarget = 1;
 
   readonly ring: THREE.Mesh;
   private ringMat: THREE.MeshBasicMaterial;
@@ -380,14 +377,6 @@ export class WaifuStage {
     this.speakingTarget = on ? 1 : 0;
   }
 
-  /**
-   * Fade the hero down while an Open Chat scene owns the backdrop, so a generated
-   * frame of her behind the name does not sit beside the sculpt of her in front.
-   */
-  setHeroDim(dimmed: boolean): void {
-    this.heroDimTarget = dimmed ? 0.14 : 1;
-  }
-
   /** Quest Mode owns the whole stage: only the selected resident remains. */
   setQuestMode(on: boolean): void {
     this.questMode = on;
@@ -488,18 +477,6 @@ export class WaifuStage {
         const amp = 0.006 + this.speakingLevel * 0.006;
         e.group.position.y = this.heroY + Math.sin(t * 1.15) * amp;
         e.group.rotation.z = Math.sin(t * 0.7) * 0.004;
-      }
-    }
-
-    if (Math.abs(this.heroDim - this.heroDimTarget) > 0.001) {
-      this.heroDim += (this.heroDimTarget - this.heroDim) * Math.min(1, dt * 4);
-      const hero = this.heroId ? this.entries.get(this.heroId) : null;
-      if (hero) {
-        const opaque = this.heroDim > 0.999;
-        for (const material of hero.materials as THREE.MeshStandardMaterial[]) {
-          material.transparent = !opaque;
-          material.opacity = this.heroDim;
-        }
       }
     }
 
