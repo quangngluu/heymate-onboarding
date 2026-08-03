@@ -195,7 +195,7 @@ class App implements UIActions {
       universeById('afterburn-city'),
       CHARACTERS.map((c) => factionById(c.factionId).accentColor)
     );
-    this.nameplate = new Nameplate(this.engine.scene);
+    this.nameplate = new Nameplate(this.engine.scene, this.engine.camera);
     this.backdrop = new FactionBackdrop(
       this.engine.scene,
       [this.stage.skyline],
