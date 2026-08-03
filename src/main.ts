@@ -116,6 +116,8 @@ class App implements UIActions {
   private conversation = new ConversationLifetime();
   private nameplate: Nameplate;
   private backdrop!: FactionBackdrop;
+  /** True while an Open Chat scene owns the backdrop (figure dimmed behind it). */
+  private openChatSceneActive = false;
 
   private views = new Map<string, ChampionView>();
   private liftTargets = new Map<string, number>();
@@ -585,6 +587,31 @@ class App implements UIActions {
     this.rimB.color.setHex(v.rimFill);
     // Her display name is her given name, not the full series title.
     this.nameplate.transitionTo(r.name.split(' ')[0], r.accentColor, heroPos, camPos);
+    this.residentStage?.setHeroDim(false);
+  }
+
+  /**
+   * Move an Open Chat frame out of the transcript and onto the backdrop, behind
+   * the name, dimming the sculpt so the generated image reads as the scene rather
+   * than sitting beside a second copy of her.
+   */
+  private presentOpenChatScene(src: string): void {
+    this.openChatSceneActive = true;
+    document.documentElement.dataset.openChatScene = 'loading';
+    this.residentStage?.setHeroDim(true);
+    void this.backdrop.showScene(src).then((ok) => {
+      if (ok && this.openChatSceneActive) {
+        document.documentElement.dataset.openChatScene = 'ready';
+      }
+    });
+  }
+
+  /** Give the studio backdrop and the full-strength sculpt back on the next turn. */
+  private restoreOpenChatScene(): void {
+    if (!this.openChatSceneActive) return;
+    this.openChatSceneActive = false;
+    delete document.documentElement.dataset.openChatScene;
+    this.applyStageAccent();
   }
 
   /**
@@ -617,6 +644,7 @@ class App implements UIActions {
       ? [...s.chat, openingTurn]
       : [openingTurn];
     store.set({ chat });
+    this.presentOpenChatScene(visual.src);
 
     const voice = r.voices.find((v) => v.slot === 'signature') ?? r.voices[0];
     // Only the authored signature greeting has a recording; everything else is
@@ -999,6 +1027,7 @@ class App implements UIActions {
     window.clearTimeout(this.speakTimer);
     cancelSpeech();
     this.ambience.stopClip();
+    this.restoreOpenChatScene();
     store.set({ speaking: false, voicing: false });
     this.residentStage?.setSpeaking(false);
     if (mode === 'quest') store.pushQuestTurn({ from: 'user', text });
@@ -1055,6 +1084,7 @@ class App implements UIActions {
           visualId: visualReward.id,
           visualAfterSentence: composed.visualAfterSentence,
         };
+        this.presentOpenChatScene(visualReward.src);
       }
       const prepared = this.speakReply(replyText, s.residentId, conversation);
       if (mode === 'quest') store.pushQuestTurn(replyTurn);
@@ -1135,6 +1165,8 @@ class App implements UIActions {
     // corridor's far wall is. Leaving it up put a translucent "RIN" on top of
     // the Frame 12 reveal, which is the one image Episode 0 exists to deliver.
     this.nameplate.hide();
+    this.openChatSceneActive = false;
+    delete document.documentElement.dataset.openChatScene;
     this.residentStage?.setQuestMode(true);
     this.ambience.startQuestSoundscape();
   }

@@ -350,21 +350,26 @@ async function runOpenChatVisualRewardCoverage(browser) {
       () => document.querySelector('.speech-log')?.textContent?.includes('Em kéo khung này ra vì đoạn anh vừa nói.'),
       { timeout: 15_000 }
     );
+    await page.waitForFunction(
+      () => document.documentElement.dataset.openChatScene === 'ready',
+      { timeout: 15_000 }
+    );
     const state = await page.evaluate(() => {
       const cards = [...document.querySelectorAll('[data-testid="open-chat-visual"]')];
       const reward = cards.at(-1);
-      const image = reward?.querySelector('img');
       return {
         id: reward?.getAttribute('data-visual-id') ?? null,
         actions: reward?.querySelectorAll('.open-chat-visual-action').length ?? 0,
-        imageLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+        hasInlineImage: !!reward?.querySelector('img'),
+        sceneBackdrop: document.documentElement.dataset.openChatScene ?? '',
         transcript: document.querySelector('.speech-log')?.textContent ?? '',
         sceneRequests: window.__heymateVisualSmoke.fetchUrls.filter((url) => url.includes('/api/scene-image')).length,
       };
     });
     if (!state.id?.startsWith('rin-reward-')) failures.push(`reward visual=${JSON.stringify(state.id)}`);
     if (state.actions !== 2) failures.push(`reward actions=${state.actions}`);
-    if (!state.imageLoaded) failures.push('reward image did not load');
+    if (state.hasInlineImage) failures.push('reward visual still renders an inline image');
+    if (state.sceneBackdrop !== 'ready') failures.push(`reward scene backdrop=${JSON.stringify(state.sceneBackdrop)}`);
     if (!state.transcript.includes('Em kéo khung này ra vì đoạn anh vừa nói.')) {
       failures.push('reward visual is missing its authored conversational bridge');
     }
@@ -541,26 +546,26 @@ async function runViewport(browser, viewport) {
     () => ['disabled', 'ready', 'fallback'].includes(document.documentElement.dataset.questRig ?? ''),
     { timeout: 30_000 }
   );
+  // The frame now plays on the backdrop behind the name, not inside the card, so
+  // wait for the compact card to render and for the scene to reach the backdrop.
   await page.waitForFunction(
-    () => {
-      const image = document.querySelector('[data-testid="open-chat-visual"] img');
-      return image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0;
-    },
+    () =>
+      document.querySelector('[data-testid="open-chat-visual"]') !== null &&
+      document.documentElement.dataset.openChatScene === 'ready',
     { timeout: 15_000 }
   );
   const openingVisualState = await page.evaluate(() => {
     const card = document.querySelector('[data-testid="open-chat-visual"]');
     const children = [...(card?.parentElement?.children ?? [])];
     const at = card ? children.indexOf(card) : -1;
-    const image = card?.querySelector('img');
     return {
       id: card?.getAttribute('data-visual-id') ?? null,
       residentBubblesBefore: at < 0
         ? -1
         : children.slice(0, at).filter((element) => element.classList.contains('bubble-resident')).length,
       actionCount: card?.querySelectorAll('.open-chat-visual-action').length ?? 0,
-      alt: image?.getAttribute('alt') ?? '',
-      naturalWidth: image instanceof HTMLImageElement ? image.naturalWidth : 0,
+      hasInlineImage: !!card?.querySelector('img'),
+      sceneBackdrop: document.documentElement.dataset.openChatScene ?? '',
       horizontalOverflowPx: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
     };
   });
@@ -777,8 +782,11 @@ async function runViewport(browser, viewport) {
   if (state.openingVisual.actionCount !== 2) {
     failures.push(`opening visual actions=${state.openingVisual.actionCount}`);
   }
-  if (!state.openingVisual.alt || state.openingVisual.naturalWidth < 1) {
-    failures.push('opening visual lacks a loaded accessible image');
+  if (state.openingVisual.hasInlineImage) {
+    failures.push('opening visual still renders an inline image');
+  }
+  if (state.openingVisual.sceneBackdrop !== 'ready') {
+    failures.push(`opening scene backdrop=${JSON.stringify(state.openingVisual.sceneBackdrop)}`);
   }
   if (state.openingVisual.horizontalOverflowPx > 1) {
     failures.push(`opening horizontalOverflowPx=${state.openingVisual.horizontalOverflowPx}`);

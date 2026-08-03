@@ -171,32 +171,21 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       if (current.thinking || current.voicing || current.reveal || current.activeQuestId) return;
       actions.sendMessage(prompt);
     };
+    // The frame itself now plays on the backdrop behind the name; the transcript
+    // keeps only the caption and the follow-up prompts, as a compact note.
     return h(
       'figure',
       {
-        class: `open-chat-visual is-${visual.frame}`,
+        class: `open-chat-visual open-chat-visual-compact is-${visual.frame}`,
         'data-testid': 'open-chat-visual',
         'data-visual-id': visual.id,
       },
       h(
-        'div',
-        { class: 'open-chat-visual-frame' },
-        h('img', {
-          class: 'open-chat-visual-image',
-          onLoad: () => {
-            window.requestAnimationFrame(() => {
-              log.scrollTop = log.scrollHeight;
-            });
-          },
-          src: visual.src,
-          alt: visual.alt,
-          loading: visual.kind === 'opening' ? 'eager' : 'lazy',
-          decoding: 'async',
-        }),
-        h('span', { class: 'open-chat-visual-scan', 'aria-hidden': 'true' }),
-        h('span', { class: 'open-chat-visual-label' }, visual.label)
+        'figcaption',
+        { class: 'open-chat-visual-caption' },
+        h('span', { class: 'open-chat-visual-label' }, visual.label),
+        h('span', { class: 'open-chat-visual-caption-text' }, visual.caption)
       ),
-      h('figcaption', { class: 'open-chat-visual-caption' }, visual.caption),
       h(
         'div',
         { class: 'open-chat-visual-actions', 'aria-label': 'Hỏi tiếp về hình ảnh' },

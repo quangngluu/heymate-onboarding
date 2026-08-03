@@ -921,6 +921,21 @@ html[data-quest-rig-debug='true'][data-quest-rig='ready'] .step-stage.is-quest-m
 }
 .open-chat-visual-action:focus-visible { outline: 2px solid var(--ivory); outline-offset: 2px; }
 .open-chat-visual-action:disabled { opacity: 0.42; cursor: default; }
+/* Compact card: the frame moved to the backdrop, so the label sits inline above
+   the caption instead of floating over an image. */
+.open-chat-visual-compact .open-chat-visual-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.open-chat-visual-compact .open-chat-visual-label {
+  position: static;
+  left: auto;
+  bottom: auto;
+  max-width: none;
+  color: color-mix(in srgb, var(--accent) 70%, #f7f2e8);
+  text-shadow: none;
+}
 .open-chat-visual.is-lcd { border-radius: 12px; }
 .open-chat-visual.is-lcd .open-chat-visual-frame {
   box-shadow: inset 0 0 42px rgba(93, 211, 255, 0.16);
