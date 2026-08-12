@@ -37,12 +37,21 @@ export function buildSeedPrompt(
     .slice(0, 120);
   const persona = String(session.persona ?? '').trim().slice(0, 600);
 
+  // SEED_CHAR_CEILING (3000) bounds only the fixed core assembled below: the
+  // six seed entries plus the improvisation and state-contract prose. The
+  // visitor-controlled additions are capped separately and are not part of
+  // this budget — persona at 600 chars, identity at 120, and the retrieved
+  // ledger at IMPROVISED_CANON_CHAR_BUDGET (800, see improvised-canon.ts) —
+  // so a fully-loaded prompt can exceed 3000 by design.
   const blocks: string[] = [
     // `silhouetteFor` in seed.ts returns '' for an unmapped resident, but the
     // guard above already throws before that could ever be the case here.
-    // The filter below is a second, independent safeguard: it stops a blank
-    // silhouette from ever surfacing as a bare, dangling "EM LÀ AI" heading.
-    ['EM LÀ AI', seed.whoSheIs, seed.silhouette].filter(Boolean).join('\n'),
+    // `whoSheIs` is folded into the heading itself, so it can never be
+    // silently dropped by the filter below — only the optional silhouette
+    // can. That keeps this line consistent with the four seed entries after
+    // it, none of which are ever conditionally omitted: the core is not
+    // negotiable.
+    [`EM LÀ AI\n${seed.whoSheIs}`, seed.silhouette].filter(Boolean).join('\n'),
     seed.voice,
     seed.boundaries,
     seed.invariants,
@@ -52,8 +61,8 @@ export function buildSeedPrompt(
   blocks.push(
     [
       'CÁCH EM ỨNG BIẾN',
-      'Em được phép nghĩ ra chi tiết đời sống, nơi chốn, đồ vật, thói quen khi cần, nói như thể vẫn luôn biết chúng.',
-      'Nhưng không được mâu thuẫn với điều trên, và không viết lại điều đã thành thật giữa hai người.',
+      'Em được phép nghĩ ra chi tiết đời sống, nơi chốn, đồ vật, thói quen của mình khi cần.',
+      'Không mâu thuẫn với điều trên, không viết lại điều đã thành thật.',
     ].join('\n')
   );
 
@@ -79,8 +88,8 @@ export function buildSeedPrompt(
       'BẮT BUỘC Ở CUỐI MỖI LƯỢT',
       'Xuống dòng, rồi thêm đúng một dòng máy đọc, không có gì sau nó:',
       '<<state {"trust":0.00,"respect":0.00,"desire":0.00,"irritation":0.00,"attachment":0.00,"canon":null}>>',
-      `Năm số 0–1 là giá trị sau lượt; trước lượt: trust ${rapport.trust.toFixed(2)}, respect ${rapport.respect.toFixed(2)}, desire ${rapport.desire.toFixed(2)}, irritation ${rapport.irritation.toFixed(2)}, attachment ${rapport.attachment.toFixed(2)}. Nhích rất nhỏ mỗi lượt.`,
-      `canon là null ở hầu hết lượt, chỉ điền khi vừa khẳng định chi tiết mới, tối đa ${IMPROVISED_CANON_PER_TURN} mục: [{"kind":"…","text":"câu ngắn tiếng Việt"}].`,
+      `Năm con số là GIÁ TRỊ TUYỆT ĐỐI từ 0.00 tới 1.00 sau lượt này; trước lượt: trust ${rapport.trust.toFixed(2)}, respect ${rapport.respect.toFixed(2)}, desire ${rapport.desire.toFixed(2)}, irritation ${rapport.irritation.toFixed(2)}, attachment ${rapport.attachment.toFixed(2)}. Mỗi lượt chỉ nhích rất nhỏ.`,
+      `canon là null ở hầu hết lượt, chỉ điền khi vừa khẳng định chi tiết mới về thế giới của mình, tối đa ${IMPROVISED_CANON_PER_TURN} mục: [{"kind":"…","text":"câu ngắn tiếng Việt"}].`,
       `kind chỉ nhận: ${IMPROVISED_CANON_KINDS.join(', ')}.`,
       'Không đưa tên thật, địa chỉ, liên hệ, URL hay bí mật của anh vào canon.',
       'Dòng này bị hệ thống cắt trước khi anh thấy; không nhắc tới nó, không bỏ nó.',
