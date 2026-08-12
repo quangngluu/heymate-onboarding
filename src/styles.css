@@ -422,7 +422,6 @@ html, body {
 /* The companion route has three intentional layers. Teaser owns the screen,
    showcase sells the character, playground restores the conversation tools. */
 .stage-teaser,
-.teaser-final-frame,
 .premium-teaser,
 .product-rail,
 .hero-talk-prompt,
@@ -451,10 +450,6 @@ html, body {
   background: #050506;
   opacity: 0;
   animation: teaser-arrive 0.42s ease forwards;
-}
-.stage-teaser.is-ending {
-  opacity: 0;
-  transition: none;
 }
 .stage-teaser-video {
   position: absolute;
@@ -489,41 +484,8 @@ html, body {
 }
 .stage-teaser-brand span { font-size: 13px; font-weight: 700; }
 .stage-teaser-brand small { color: var(--ivory-dim); font-size: 9px; letter-spacing: 0.3em; }
-.teaser-skip {
-  position: absolute;
-  z-index: 3;
-  right: 24px;
-  bottom: 24px;
-  padding: 10px 2px;
-  border: 0;
-  border-bottom: 1px solid rgba(239, 230, 212, 0.44);
-  background: transparent;
-  color: var(--ivory);
-  font: 600 10px/1 var(--font);
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
 .teaser-play { position: absolute; z-index: 4; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 @keyframes teaser-arrive { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
-
-.step-stage.is-thawing .teaser-final-frame { display: block; }
-.teaser-final-frame {
-  position: absolute;
-  z-index: 3;
-  inset: 0;
-  pointer-events: none;
-  background-color: #000;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
-  animation: final-frame-map 0.88s cubic-bezier(0.22, 0.76, 0.18, 1) forwards;
-}
-@keyframes final-frame-map {
-  0%, 24% { opacity: 1; filter: none; }
-  54% { opacity: 0.38; filter: contrast(1.03) blur(4px); }
-  100% { opacity: 0; filter: blur(16px); }
-}
 
 .premium-teaser {
   position: absolute;
@@ -917,7 +879,6 @@ html, body {
   .premium-teaser-copy { left: 18px; bottom: calc(22px + var(--safe-b)); }
   .premium-teaser-image { object-fit: cover; }
   .stage-teaser-brand { left: 14px; bottom: calc(17px + var(--safe-b)); }
-  .teaser-skip { right: 14px; bottom: calc(17px + var(--safe-b)); }
   .stage-teaser-video { object-fit: cover; background: #000; }
 
   .step-stage[data-companion-mode='showcase'] .stage-top {

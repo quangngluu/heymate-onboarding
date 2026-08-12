@@ -421,12 +421,6 @@ export function companionTeaserStep(actions: UIActions): StepView {
   video.muted = true;
   video.playsInline = true;
   const play = h('button', { class: 'btn btn-primary teaser-play', hidden: true }, 'Phát teaser') as HTMLButtonElement;
-  const skip = h(
-    'button',
-    { class: 'teaser-skip', hidden: true },
-    'Bỏ qua teaser',
-    h('span', { 'aria-hidden': 'true' }, ' →')
-  ) as HTMLButtonElement;
   let finished = false;
   const finish = () => {
     if (finished) return;
@@ -442,11 +436,7 @@ export function companionTeaserStep(actions: UIActions): StepView {
   video.addEventListener('ended', finish);
   video.addEventListener('error', finish);
   play.addEventListener('click', playVideo);
-  skip.addEventListener('click', finish);
   const startTimer = window.setTimeout(playVideo, 180);
-  const skipTimer = window.setTimeout(() => {
-    skip.hidden = false;
-  }, 1800);
   const el = h(
     'section',
     { class: 'step step-companion-teaser', 'aria-label': 'Teaser mở vũ trụ Kagura' },
@@ -461,15 +451,13 @@ export function companionTeaserStep(actions: UIActions): StepView {
         h('span', {}, 'KAGURA AKAGANE'),
         h('small', {}, 'THE RED EDGE AWAKENS')
       ),
-      play,
-      skip
+      play
     )
   );
   return {
     el,
     destroy() {
       window.clearTimeout(startTimer);
-      window.clearTimeout(skipTimer);
       video.pause();
     },
   };
@@ -549,47 +537,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   // in one dock at the bottom centre, so the scene is never behind a box.
   const log = h('div', { class: 'speech-log', 'aria-live': 'polite' });
 
-  // --- cinematic hand-off: gallery camera push → teaser → thawed figurine ---
-  const teaserVideo = h('video', {
-    class: 'stage-teaser-video',
-    src: 'assets/kagura-teaser-v2.mp4',
-    poster: 'assets/open-chat/kagura-opening-reflection.webp',
-    preload: 'auto',
-    playsinline: 'true',
-    'aria-label': 'Teaser điện ảnh của Kagura Akagane',
-  }) as HTMLVideoElement;
-  teaserVideo.muted = true;
-  teaserVideo.playsInline = true;
-  const teaserPlay = h(
-    'button',
-    { class: 'btn btn-primary teaser-play', hidden: true },
-    'Phát teaser'
-  ) as HTMLButtonElement;
-  const teaserSkip = h(
-    'button',
-    { class: 'teaser-skip', hidden: true },
-    'Bỏ qua teaser',
-    h('span', { 'aria-hidden': 'true' }, ' →')
-  ) as HTMLButtonElement;
-  const teaser = h(
-    'div',
-    { class: 'stage-teaser', 'data-testid': 'kagura-teaser' },
-    h('div', { class: 'stage-teaser-vignette', 'aria-hidden': 'true' }),
-    teaserVideo,
-    h(
-      'div',
-      { class: 'stage-teaser-brand' },
-      h('span', {}, 'KAGURA AKAGANE'),
-      h('small', {}, 'THE RED EDGE AWAKENS')
-    ),
-    teaserPlay,
-    teaserSkip
-  );
-  const finalFrame = h('div', {
-    class: 'teaser-final-frame',
-    'aria-hidden': 'true',
-    style: `background-image:url('assets/kagura-teaser-v2-final.webp')`,
-  });
   const premiumTeaserImage = h('img', {
     class: 'premium-teaser-image',
     src: KAGURA_FIGURINE_VARIANTS[0].transitionImageUrl,
@@ -987,48 +934,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     )
   );
 
-  let teaserStartTimer = 0;
-  let teaserSkipTimer = 0;
-  let teaserFinishTimer = 0;
   let thawTimer = 0;
-  let teaserFinishing = false;
-  const clearTeaserTimers = () => {
-    window.clearTimeout(teaserStartTimer);
-    window.clearTimeout(teaserSkipTimer);
-    window.clearTimeout(teaserFinishTimer);
-  };
-  const finishTeaser = () => {
-    if (teaserFinishing) return;
-    teaserFinishing = true;
-    clearTeaserTimers();
-    teaserVideo.pause();
-    // The dedicated final-frame layer owns the mapping; fade the video without
-    // waiting so there is no black flash between the two identical silhouettes.
-    teaser.style.transition = 'none';
-    teaser.classList.add('is-ending');
-    actions.finishCompanionTeaser();
-  };
-  const playTeaser = () => {
-    if (store.get().companionMode !== 'teaser') return;
-    teaser.classList.add('is-playing');
-    teaserPlay.hidden = true;
-    void teaserVideo.play().catch(() => {
-      teaser.classList.add('needs-play');
-      teaserPlay.hidden = false;
-    });
-  };
-  teaserVideo.addEventListener('ended', finishTeaser);
-  teaserVideo.addEventListener('error', finishTeaser);
-  teaserPlay.addEventListener('click', playTeaser);
-  teaserSkip.addEventListener('click', finishTeaser);
-  if (state.companionMode === 'teaser') {
-    // Let the Three.js camera begin its push into the universe before the film
-    // takes over. The overlap masks GLB streaming without adding a loading UI.
-    teaserStartTimer = window.setTimeout(playTeaser, 780);
-    teaserSkipTimer = window.setTimeout(() => {
-      teaserSkip.hidden = false;
-    }, 2000);
-  }
   // Left is her dossier, right is her voice, bottom is what you do. The card
   // can step off the frame entirely when the visitor wants the stage clear.
   // On a phone she gets the screen and her dossier starts out of the way: one
@@ -1481,8 +1387,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       'data-figurine-display': state.figurineDisplayMode,
     },
     srOnlyName,
-    teaser,
-    finalFrame,
     premiumTeaser,
     thawFx,
     h(
@@ -1546,9 +1450,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     destroy() {
       watchDock.disconnect();
       window.removeEventListener('resize', onStageResize);
-      clearTeaserTimers();
       window.clearTimeout(thawTimer);
-      teaserVideo.pause();
       stopGateCountdown();
     },
     update(s, prev) {

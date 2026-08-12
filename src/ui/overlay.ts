@@ -304,7 +304,7 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
     }
     paintChrome(state);
     stepHost.classList.toggle('is-transitioning', state.transitioning);
-    skipBtn.hidden = !state.transitioning;
+    skipBtn.hidden = !state.transitioning || state.universeId === 'waifu-universe';
     if (state.error) {
       toast.textContent = state.error;
       toast.hidden = false;

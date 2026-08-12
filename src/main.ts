@@ -62,6 +62,7 @@ import {
   kaguraFigurineVariantById,
   type KaguraFigurineVariantId,
 } from './config/figurine-products';
+import { shouldPlayTeaser } from './config/entry';
 
 const PLINTHS = plinthPositions(CHARACTERS.length);
 
@@ -553,6 +554,9 @@ class App implements UIActions {
       });
       this.setPlinthsVisible(false);
       store.goto('companion-teaser');
+      if (!shouldPlayTeaser(store.get().waifuUniverseEntered)) {
+        this.finishCompanionTeaser();
+      }
     } else {
       store.set({ transitioning: false });
       if (!this.centerBase) this.loadCenterBase();
@@ -1144,7 +1148,8 @@ class App implements UIActions {
       if (this.engine.reducedMotion) pullOut();
     };
     this.openStage(false, beginReveal);
-    // A broken asset must not trap the visitor in the held final frame forever.
+    // A broken model must not trap the shot; after seven seconds advance into
+    // the reveal. This is a failsafe, never a visitor-facing skip affordance.
     window.setTimeout(beginReveal, 7000);
   }
 
