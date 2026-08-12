@@ -51,7 +51,7 @@ function cleanLine(value: unknown, max: number): string {
     : '';
 }
 
-const DIRECT_IDENTIFIER_RE = /(?:https?:\/\/|www\.|\b[^\s@]+@[^\s@]+\.[^\s@]+\b|(?:\+?\d[\s().-]*){8,})/iu;
+export const DIRECT_IDENTIFIER_RE = /(?:https?:\/\/|www\.|\b[^\s@]+@[^\s@]+\.[^\s@]+\b|(?:\+?\d[\s().-]*){8,})/iu;
 
 export function sanitizeContextSceneBrief(value: unknown): string | null {
   const sceneBrief = cleanLine(value, 240);
