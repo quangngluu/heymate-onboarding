@@ -1115,3 +1115,195 @@ The four spec assertions (§8) map to tasks as follows:
 | Retrieval ceiling at any ledger size | 3 | `tests/chat/improvised-canon-retrieval.test.ts` (500-entry case) |
 | Core present regardless of persona | 5 | `tests/chat/seed-prompt.test.ts` |
 | Round trip | 6 | `tests/chat/canon-round-trip.test.ts` |
+
+---
+
+### Task 7: Wire the round trip into the app shell
+
+**Added 2026-08-12 after the Task 6 review.** Task 6 built the transport — the flag, the server branch, the parse-back, the client passthrough — but nothing calls it. `src/main.ts` is the only caller of `getReply`, and neither of its two call sites passes `improvisedCanon` or records `result.canon`. As merged, `PERSONA_SEED=on` runs the seed prompt with a permanently empty ledger block and persists nothing. This task closes that gap. The §7 gate cannot run before it.
+
+`main.ts` is the app shell and is not directly unit-testable, so the two decisions worth testing are extracted into a small pure module and `main.ts` becomes a thin caller.
+
+**Files:**
+- Create: `src/chat/canon-wiring.ts`
+- Modify: `src/main.ts` (idle call site ~:716, main-turn call site ~:1070 and its `.then` handler ~:1081)
+- Test: `tests/chat/canon-wiring.test.ts` (create)
+
+**Interfaces:**
+- Consumes: `relevantImprovisedCanon` from `src/chat/improvised-canon.ts`; `CanonLedgerEntry`, `ChatTurn` from `src/state/store.ts`.
+- Produces: `lastVisitorMessage(chat: ChatTurn[]): string`, `canonForRequest(input: { ledger: CanonLedgerEntry[]; residentId: string; message: string; mode: 'open-chat' | 'quest' }): string[]`.
+
+**The idle decision.** The idle call site passes `idleLine(...)` — her own scripted opener — as the message, not anything the visitor said. Retrieving against it would score against her words instead of his. Idle turns therefore retrieve against **the last visitor turn in the transcript**, because she is continuing the same conversation. With no prior visitor turn, retrieval returns empty.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/chat/canon-wiring.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { canonForRequest, lastVisitorMessage } from '../../src/chat/canon-wiring';
+import type { CanonLedgerEntry } from '../../src/state/store';
+
+function entry(text: string, residentId = 'kagura'): CanonLedgerEntry {
+  return {
+    id: text,
+    residentId: residentId as CanonLedgerEntry['residentId'],
+    canonType: 'player-created',
+    text,
+    createdAt: 1,
+    source: 'chat',
+  } as CanonLedgerEntry;
+}
+
+describe('lastVisitorMessage', () => {
+  it('returns an empty string for an empty transcript', () => {
+    expect(lastVisitorMessage([])).toBe('');
+  });
+
+  it('returns an empty string when only she has spoken', () => {
+    expect(lastVisitorMessage([{ from: 'resident', text: 'Anh còn thức à.' }])).toBe('');
+  });
+
+  it('returns the most recent visitor line, not the first', () => {
+    const chat = [
+      { from: 'user' as const, text: 'chào em' },
+      { from: 'resident' as const, text: 'Anh tới rồi.' },
+      { from: 'user' as const, text: 'đi ăn mì không' },
+      { from: 'resident' as const, text: 'Được.' },
+    ];
+    expect(lastVisitorMessage(chat)).toBe('đi ăn mì không');
+  });
+});
+
+describe('canonForRequest', () => {
+  const ledger = [entry('Quán mì dưới cầu vượt là chỗ em quen.')];
+
+  it('returns nothing in quest mode', () => {
+    expect(
+      canonForRequest({ ledger, residentId: 'kagura', message: 'quán mì', mode: 'quest' })
+    ).toEqual([]);
+  });
+
+  it('retrieves for open chat', () => {
+    expect(
+      canonForRequest({ ledger, residentId: 'kagura', message: 'quán mì', mode: 'open-chat' })
+    ).toEqual(['Quán mì dưới cầu vượt là chỗ em quen.']);
+  });
+
+  it('returns nothing when the message is empty', () => {
+    expect(
+      canonForRequest({ ledger, residentId: 'kagura', message: '', mode: 'open-chat' })
+    ).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/chat/canon-wiring.test.ts`
+Expected: FAIL — cannot resolve `../../src/chat/canon-wiring`.
+
+- [ ] **Step 3: Write the implementation**
+
+Create `src/chat/canon-wiring.ts`:
+
+```ts
+// The two decisions that sit between the store and a chat request.
+//
+// main.ts is the app shell and is awkward to test directly, so the judgment
+// lives here and the shell stays a thin caller.
+
+import { relevantImprovisedCanon } from './improvised-canon';
+import type { CanonLedgerEntry, ChatTurn } from '../state/store';
+
+/**
+ * What the visitor last said. Idle turns send her own scripted opener as the
+ * message, so retrieving against that would score her words instead of his.
+ */
+export function lastVisitorMessage(chat: ChatTurn[]): string {
+  for (let i = chat.length - 1; i >= 0; i -= 1) {
+    if (chat[i].from === 'user') return chat[i].text;
+  }
+  return '';
+}
+
+/** Quest runs the authored canon and never reads the improvised ledger. */
+export function canonForRequest(input: {
+  ledger: CanonLedgerEntry[];
+  residentId: string;
+  message: string;
+  mode: 'open-chat' | 'quest';
+}): string[] {
+  if (input.mode !== 'open-chat' || !input.message.trim()) return [];
+  return relevantImprovisedCanon(input.ledger, input.residentId, input.message);
+}
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `npx vitest run tests/chat/canon-wiring.test.ts`
+Expected: PASS — 6 tests.
+
+- [ ] **Step 5: Wire the main-turn call site**
+
+In `src/main.ts`, add to the imports:
+
+```ts
+import { canonForRequest, lastVisitorMessage } from './chat/canon-wiring';
+```
+
+In the `getReply(text, ctx, history, { … })` options object (~:1070), after `rapport: s.rapport,` add:
+
+```ts
+      improvisedCanon: canonForRequest({
+        ledger: s.canonLedger,
+        residentId: s.residentId,
+        message: text,
+        mode,
+      }),
+```
+
+In that call's `.then` handler, directly after the existing `store.applyRapport(result.rapport);` line (~:1082), add:
+
+```ts
+      // What she just invented becomes true for this visitor from the next
+      // turn on. Quest keeps its own authored ledger writer.
+      if (mode === 'open-chat' && result.canon?.length) {
+        store.recordImprovisedCanon(s.residentId, result.canon);
+      }
+```
+
+- [ ] **Step 6: Wire the idle call site**
+
+In `src/main.ts`, in the `getReply(idleLine(r, spokenIndex, route), ctx, s.chat, { … })` options object (~:716), after `rapport: s.rapport,` add:
+
+```ts
+      improvisedCanon: canonForRequest({
+        ledger: s.canonLedger,
+        residentId: s.residentId,
+        message: lastVisitorMessage(s.chat),
+        mode: 'open-chat',
+      }),
+```
+
+In that call's `.then` handler, after the existing guard block that returns when the conversation is no longer current, add:
+
+```ts
+      if (result.canon?.length) {
+        store.recordImprovisedCanon(s.residentId, result.canon);
+      }
+```
+
+- [ ] **Step 7: Verify the whole chain**
+
+Run: `npm run build && npm test`
+Expected: typecheck clean, suite green with the 6 new tests added.
+
+Then confirm the wiring is real rather than nominal: temporarily change `canonForRequest` to always return `[]`, run `npx vitest run tests/chat/canon-wiring.test.ts`, confirm failures, and restore.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/chat/canon-wiring.ts src/main.ts tests/chat/canon-wiring.test.ts
+git commit -m "feat: wire the improvised canon round trip into the app shell"
+```
