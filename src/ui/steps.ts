@@ -9,7 +9,7 @@ import { COPY } from '../config/copy';
 import { factionById } from '../config/factions';
 import { CHARACTERS, characterById, characterIndex } from '../config/characters';
 import { characterThumb, monogramThumb } from '../three/thumbs';
-import { UNIVERSES } from '../config/universes';
+import { visibleUniverses } from '../config/entry';
 import {
   LENGTHS,
   RESIDENTS,
@@ -361,74 +361,30 @@ export function createPersonaBuilder(
 // ---------- GALLERY (outer: pick a universe) ----------
 
 export function galleryStep(actions: UIActions): StepView {
-  const tiles = UNIVERSES.map((u) => {
-    const previews = u.galleryPreviews?.length
-      ? u.galleryPreviews
-      : u.posterUrl
-        ? [{ url: u.posterUrl, label: u.name }]
-        : [];
+  const tiles = visibleUniverses().map((u) => {
+    const preview = u.galleryPreviews?.[0] ?? (u.posterUrl ? { url: u.posterUrl, label: u.name } : null);
     const poster = h('div', {
-      class: `tile-poster ${previews.length > 1 ? 'is-collage' : 'is-single'}`,
+      class: 'tile-poster is-single',
       style: `--accent:${cssColor(u.accentColor)}`,
       'aria-hidden': 'true',
     });
-    previews.forEach((preview, index) => {
+    if (preview) {
       const img = h('img', { alt: '', src: preview.url, draggable: 'false' }) as HTMLImageElement;
       img.addEventListener('error', () => img.remove(), { once: true });
-      poster.append(
-        h(
-          'span',
-          { class: `tile-preview tile-preview-${index + 1}` },
-          img,
-          previews.length > 1 ? h('span', { class: 'tile-preview-label' }, preview.label) : null
-        )
-      );
-    });
-    const meta = u.kind === 'companion'
-      ? `${u.residents?.length ?? 0} nhân vật`
-      : `${u.factions?.length ?? 0} phe`;
-    const mode = u.kind === 'companion' ? 'Trò chuyện' : 'Tạo nhân vật';
-    const action = u.kind === 'companion' ? 'Chọn người để gặp' : 'Tạo Mate của anh';
+      poster.append(h('span', { class: 'tile-preview tile-preview-1' }, img));
+    }
     const tile = h(
       'button',
       {
         class: `universe-tile universe-tile-${u.kind}`,
         'data-testid': `universe-${u.id}`,
         style: `--accent:${cssColor(u.accentColor)}`,
-        'aria-label': `${u.name}. ${action}`,
+        'aria-label': u.name,
       },
       poster,
-      h(
-        'span',
-        { class: 'tile-body' },
-        h(
-          'span',
-          { class: 'tile-overline' },
-          h('span', { class: 'tile-mode' }, mode),
-          h('span', { class: 'tile-meta' }, meta)
-        ),
-        h('span', { class: 'tile-name' }, u.name),
-        h('span', { class: 'tile-tagline' }, u.tagline),
-        h(
-          'span',
-          { class: 'tile-action' },
-          h('span', {}, action),
-          h('span', { class: 'tile-action-arrow', 'aria-hidden': 'true' }, '→')
-        )
-      )
+      h('span', { class: 'tile-name' }, u.name)
     ) as HTMLButtonElement;
-    tile.addEventListener('click', () => {
-      const gallery = tile.closest('.step-gallery');
-      if (gallery?.classList.contains('is-entering')) return;
-      const rect = tile.getBoundingClientRect();
-      const scale = Math.max(window.innerWidth / rect.width, window.innerHeight / rect.height) * 1.05;
-      tile.style.setProperty('--enter-x', `${window.innerWidth / 2 - (rect.left + rect.width / 2)}px`);
-      tile.style.setProperty('--enter-y', `${window.innerHeight / 2 - (rect.top + rect.height / 2)}px`);
-      tile.style.setProperty('--enter-scale', String(scale));
-      gallery?.classList.add('is-entering');
-      tile.classList.add('is-entering');
-      window.setTimeout(() => actions.openUniverse(u.id), 520);
-    });
+    tile.addEventListener('click', () => actions.openUniverse(u.id));
     return tile;
   });
 

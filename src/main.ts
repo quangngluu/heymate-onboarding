@@ -19,6 +19,7 @@ import { createRevealFx, type RevealFx } from './three/reveal';
 import { Nameplate } from './three/nameplate';
 import { FactionBackdrop } from './three/backdrop';
 import { WaifuStage } from './three/waifu-stage';
+import { GalleryPortal, portalDollyPreset } from './three/gallery-portal';
 import { idleLine, openingLine, speakingDuration } from './chat/engine';
 import { getReply } from './chat/client';
 import {
@@ -125,6 +126,7 @@ class App implements UIActions {
   private openChatVisuals: OpenChatVisualRuntime;
   private conversation = new ConversationLifetime();
   private nameplate: Nameplate;
+  private galleryPortal: GalleryPortal;
   private backdrop!: FactionBackdrop;
   /** True while an Open Chat scene owns the backdrop (figure dimmed behind it). */
   private openChatSceneActive = false;
@@ -219,6 +221,12 @@ class App implements UIActions {
       CHARACTERS.map((c) => factionById(c.factionId).accentColor)
     );
     this.nameplate = new Nameplate(this.engine.scene, this.engine.camera);
+    this.galleryPortal = new GalleryPortal(this.engine.scene);
+    const entryUniverse = universeById('waifu-universe');
+    this.galleryPortal.build(
+      entryUniverse.galleryPreviews?.[0]?.url ?? entryUniverse.posterUrl ?? '',
+      entryUniverse.accentColor
+    );
     this.backdrop = new FactionBackdrop(
       this.engine.scene,
       [this.stage.skyline],
@@ -276,6 +284,7 @@ class App implements UIActions {
 
     store.subscribe((s, prev) => {
       if (s.characterId !== prev.characterId || s.step !== prev.step) this.updateLiftTargets();
+      this.galleryPortal.setVisible(s.step === 'gallery');
       this.picker.enabled =
         !s.transitioning &&
         (s.step === 'studio' ||
@@ -283,6 +292,7 @@ class App implements UIActions {
             (s.companionMode === 'showcase' || s.companionMode === 'playground') &&
             !s.activeQuestId));
     });
+    this.galleryPortal.setVisible(store.get().step === 'gallery');
 
     mountUI(document.getElementById('ui')!, store, this);
     window.addEventListener('error', () => this.flashError(COPY.errors.generic));
@@ -415,6 +425,7 @@ class App implements UIActions {
 
   private tick(dt: number, t: number): void {
     this.rig.update(dt);
+    if (store.get().step === 'gallery') this.syncGalleryOverlay();
     if (this.controls.enabled && !this.rig.flying) this.controls.update();
     this.stage.update(dt, t);
     this.picker.update();
@@ -450,6 +461,17 @@ class App implements UIActions {
     for (const rim of [this.rimA, this.rimB]) {
       rim.intensity += (this.rimTarget - rim.intensity) * Math.min(1, dt * 4);
     }
+  }
+
+  /** Keep the accessible DOM hit target glued to the moving Three.js plane. */
+  private syncGalleryOverlay(): void {
+    const tile = document.querySelector<HTMLElement>('[data-testid="universe-waifu-universe"]');
+    if (!tile) return;
+    const rect = this.galleryPortal.rect(this.engine.camera, window.innerWidth, window.innerHeight);
+    tile.style.setProperty('--portal-x', `${rect.x}px`);
+    tile.style.setProperty('--portal-y', `${rect.y}px`);
+    tile.style.setProperty('--portal-w', `${rect.w}px`);
+    tile.style.setProperty('--portal-h', `${rect.h}px`);
   }
 
   private flashError(msg: string): void {
@@ -503,13 +525,15 @@ class App implements UIActions {
     for (const l of this.stage.plinthLights) l.visible = v;
   }
 
-  openUniverse(id: string): void {
+  async openUniverse(id: string): Promise<void> {
     if (store.get().transitioning) return;
     const universe = universeById(id);
     this.ambience.start();
-    store.set({ universeId: id });
+    store.set({ universeId: id, transitioning: true });
 
     if (universe.kind === 'companion') {
+      await this.rig.flyTo(portalDollyPreset(), this.engine.reducedMotion ? 0 : 0.9);
+      if (store.get().universeId !== id) return;
       // Opening the universe is an encounter like any other, so it goes through
       // the same door as a resident switch. Without this the first entry after a
       // reload left `chat` empty and she opened on the greeting while the
@@ -521,10 +545,16 @@ class App implements UIActions {
       store.beginEncounter('kagura');
       // The cinematic gate is mounted before any companion scene/model. The
       // universe only starts streaming after the film ends or is skipped.
-      store.set({ companionMode: 'teaser', figurineDisplayMode: 'original' });
+      this.galleryPortal.setVisible(false);
+      store.set({
+        companionMode: 'teaser',
+        figurineDisplayMode: 'original',
+        transitioning: false,
+      });
       this.setPlinthsVisible(false);
       store.goto('companion-teaser');
     } else {
+      store.set({ transitioning: false });
       if (!this.centerBase) this.loadCenterBase();
       this.setPlinthsVisible(true);
       this.buildCharacters();
@@ -1056,6 +1086,7 @@ class App implements UIActions {
     this.portalTarget = 0.12;
     this.setPlinthsVisible(false);
     store.leaveUniverse();
+    this.galleryPortal.setVisible(true);
     this.rig.applyPreset(CAMERA_PRESETS.gallery);
   }
 

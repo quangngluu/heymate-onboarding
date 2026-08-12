@@ -3,8 +3,9 @@ import type { CamPreset } from '../config/cameras';
 
 /** The single card stands on the centerline of the empty gallery room. */
 export const PORTAL_PLANE: { center: [number, number, number]; size: [number, number] } = {
-  center: [0, 1.35, 0],
-  size: [2.6, 3.4],
+  center: [0, 0.6, 0],
+  // Preserve the authored 4:3 preview instead of stretching it into 16:9.
+  size: [3.7, 2.775],
 };
 
 /** End pose for the real camera dolly into the portal. */
@@ -68,6 +69,7 @@ export class GalleryPortal {
     const material = new THREE.MeshBasicMaterial({ color: accentHex, toneMapped: false });
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.position.set(...PORTAL_PLANE.center);
+    this.mesh.renderOrder = 1;
     this.group.add(this.mesh);
 
     new THREE.TextureLoader().load(

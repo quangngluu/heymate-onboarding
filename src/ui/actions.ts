@@ -4,7 +4,7 @@ import type { KaguraFigurineVariantId } from '../config/figurine-products';
 /** Contract between the HTML overlay and the scene/app controller. */
 export interface UIActions {
   /** Gallery: open a universe (routes to its own experience). */
-  openUniverse(id: string): void;
+  openUniverse(id: string): void | Promise<void>;
   leaveUniverse(): void;
 
   // --- companion universe ---
