@@ -172,7 +172,7 @@ Add the import at the top of `src/state/store.ts`:
 import type { ImprovisedFact } from '../chat/improvised-canon';
 ```
 
-Note: `ImprovisedFact` is created in Task 2. Implement Task 2 first if the type does not yet exist, or stub it locally and remove the stub in Task 2.
+**Task 2 is a prerequisite for this task** — it creates `ImprovisedFact`. Execution order is 2 → 1 → 3 → 4 → 5 → 6. The import is type-only, so the resulting store ↔ improvised-canon cycle erases at compile time.
 
 - [ ] **Step 6: Run tests to verify they pass**
 
