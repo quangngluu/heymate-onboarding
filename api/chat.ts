@@ -21,6 +21,7 @@ import { buildSeedPrompt } from '../src/chat/seed-prompt';
 import { seedFor } from '../src/config/seed';
 import {
   improvisedCanonFromState,
+  IMPROVISED_CANON_CHAR_BUDGET,
   IMPROVISED_CANON_MAX_ENTRIES,
 } from '../src/chat/improvised-canon';
 import { DEFAULT_DARK_VARIANT, type DarkVariant } from '../src/config/dark-patterns';
@@ -73,7 +74,20 @@ export const config = { runtime: 'edge' };
 const ENDPOINT = 'https://api.deepseek.com/chat/completions';
 const MODEL = process.env.DEEPSEEK_MODEL ?? 'deepseek-chat';
 const MAX_TOKENS = { short: 120, natural: 220, expressive: 320 } as const;
+/** Headroom for the authored path's trailer: five rapport floats and nothing else. */
 const OPEN_CHAT_STATE_ALLOWANCE = 80;
+/**
+ * The seed contract asks for the same five floats *plus* up to
+ * IMPROVISED_CANON_PER_TURN facts of up to MAX_FACT_CHARS each. Diacritic-heavy
+ * Vietnamese runs near one token per character on this tokenizer, so two full
+ * facts are ~320 tokens before the JSON scaffolding around them. Anything
+ * short of that and the reply is cut mid-trailer: the closing `>>` never
+ * arrives, STATE_RE in model-response.ts fails to match, and splitModelState
+ * returns null — losing the rapport update as well as the canon, silently,
+ * because the prose in front of it survives. This is a ceiling, not a spend;
+ * turns that invent nothing never reach it.
+ */
+const SEED_STATE_ALLOWANCE = 400;
 /** Stay inside the client's 20s request timeout across both upstream calls. */
 const TOTAL_UPSTREAM_BUDGET_MS = 18_000;
 
@@ -87,6 +101,45 @@ function sanitizeCrossMode(input: unknown): string[] {
     .map((line) => line.trim().slice(0, 240))
     .filter(Boolean)
     .slice(-8);
+}
+
+/**
+ * Mirrors MAX_FACT_CHARS in src/chat/improvised-canon.ts, which is module-private
+ * there. Kept as a literal rather than exported across the boundary because that
+ * file is the client's ledger writer and this is the untrusted-input edge; the
+ * two happening to agree on 160 is the point, not a coupling to formalise.
+ */
+const MAX_CANON_LINE_CHARS = 160;
+
+/**
+ * `improvisedCanon` arrives from the network, not from the ledger.
+ *
+ * The client budgets its retrieval in relevantImprovisedCanon, but a hand-rolled
+ * POST never runs that function, and whatever survives here is pasted under a
+ * heading that tells the model these lines are true. So every bound the client
+ * applies is re-applied on this side: without it a crafted body injects twelve
+ * unbounded strings into the system prompt and forwards them upstream on the
+ * operator's key.
+ */
+export function sanitizeImprovisedCanon(input: unknown): string[] {
+  const lines = (Array.isArray(input) ? input : [])
+    .filter((line): line is string => typeof line === 'string')
+    .map((line) => line.replace(/\s+/gu, ' ').trim().slice(0, MAX_CANON_LINE_CHARS))
+    .filter(Boolean)
+    .slice(0, IMPROVISED_CANON_MAX_ENTRIES);
+
+  // Same cost model as relevantImprovisedCanon: each line after the first also
+  // costs the newline that joins it. Stop at the budget rather than skipping
+  // past it, so what the server keeps is always a prefix of what it was sent.
+  const kept: string[] = [];
+  let used = 0;
+  for (const line of lines) {
+    const cost = line.length + (kept.length > 0 ? 1 : 0);
+    if (used + cost > IMPROVISED_CANON_CHAR_BUDGET) break;
+    kept.push(line);
+    used += cost;
+  }
+  return kept;
 }
 
 export default async function handler(req: Request): Promise<Response> {
@@ -129,9 +182,7 @@ export default async function handler(req: Request): Promise<Response> {
       ? buildSeedPrompt(
           body.residentId,
           session,
-          // The client already applied the 800-character retrieval budget; this
-          // slice only stops a hand-rolled request from reopening it.
-          (body.improvisedCanon ?? []).slice(0, IMPROVISED_CANON_MAX_ENTRIES),
+          sanitizeImprovisedCanon(body.improvisedCanon),
           sanitizeRapport(body.rapport ?? defaultRapport())
         )
       : buildSystemPrompt(
@@ -211,9 +262,20 @@ export default async function handler(req: Request): Promise<Response> {
         model: MODEL,
         messages,
         temperature: 0.92, // a distinct voice without generic/canon-drifting improvisation
+        // The trailer is mandatory on every Open Chat turn, idle ones included —
+        // "BẮT BUỘC Ở CUỐI MỖI LƯỢT" does not exempt them. Withholding the
+        // allowance on idle meant she was asked for the state line with no room
+        // to write it, so idle turns silently dropped their rapport update. That
+        // predates the seed path; canon on idle only made it visible. max_tokens
+        // is a ceiling, so granting it on idle costs nothing on turns that stay
+        // short.
         max_tokens:
           (MAX_TOKENS[session.length] ?? MAX_TOKENS.natural) +
-          (mode === 'open-chat' && !body.idle ? OPEN_CHAT_STATE_ALLOWANCE : 0),
+          (mode === 'open-chat'
+            ? useSeed
+              ? SEED_STATE_ALLOWANCE
+              : OPEN_CHAT_STATE_ALLOWANCE
+            : 0),
         // She speaks as herself; stop the model from writing the user's turn.
         stop: ['\nUser:', '\nYou:', '\nAnh:'],
       }),
