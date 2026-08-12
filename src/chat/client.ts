@@ -22,6 +22,7 @@ import {
   contextVisualIntentFromState,
   type ContextVisualIntent,
 } from './context-visual';
+import { improvisedCanonFromState, type ImprovisedFact } from './improvised-canon';
 
 export type ChatSource = 'model' | 'scripted';
 
@@ -31,6 +32,8 @@ export interface ChatOutcome extends ReplyResult {
   rapport?: unknown;
   /** Optional scene suggestion; generation and billing remain client policy. */
   visualIntent?: ContextVisualIntent;
+  /** What she just invented about her own world, for the caller to record. */
+  canon?: ImprovisedFact[];
 }
 
 /** Skip the network entirely once we know there is no endpoint here. */
@@ -49,6 +52,12 @@ export async function getReply(
     story?: PromptStoryState;
     bond?: unknown;
     rapport?: unknown;
+    /**
+     * Ledger lines the caller already retrieved and budgeted for this message.
+     * Retrieval stays here because the ledger lives in this browser, so the
+     * 800-character ceiling is enforced before the request leaves.
+     */
+    improvisedCanon?: string[];
   } = {}
 ): Promise<ChatOutcome> {
   const route = resolveCanonRoute();
@@ -93,6 +102,7 @@ export async function getReply(
         route,
         bond: opts.bond,
         rapport: opts.rapport,
+        improvisedCanon: opts.improvisedCanon ?? [],
         // Separate request fields make it impossible for the server to
         // accidentally consume Open Chat turns while operating in Quest Mode.
         history: mode === 'open-chat' ? mappedHistory : [],
@@ -112,6 +122,7 @@ export async function getReply(
       text?: string;
       rapport?: unknown;
       visualIntent?: unknown;
+      canon?: unknown;
     };
     if (!data.text) return { ...scripted, source: 'scripted' };
     // The reveal schedule stays owned by the app, not the model.
@@ -124,6 +135,13 @@ export async function getReply(
         mode === 'open-chat'
           ? contextVisualIntentFromState({ visualIntent: data.visualIntent }) ?? undefined
           : undefined,
+      // Re-sanitized on arrival rather than trusted: the server already
+      // filtered it, but this is the boundary the store is written from, and
+      // Quest must never grow the improvised ledger.
+      canon:
+        mode === 'open-chat'
+          ? improvisedCanonFromState({ canon: data.canon })
+          : [],
     };
   } catch {
     return { ...scripted, source: 'scripted' };

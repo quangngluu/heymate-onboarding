@@ -17,6 +17,12 @@ import {
 } from '../src/chat/addressing';
 import { splitModelState, trimModelProse } from '../src/chat/model-response';
 import { contextVisualIntentFromState } from '../src/chat/context-visual';
+import { buildSeedPrompt } from '../src/chat/seed-prompt';
+import { seedFor } from '../src/config/seed';
+import {
+  improvisedCanonFromState,
+  IMPROVISED_CANON_MAX_ENTRIES,
+} from '../src/chat/improvised-canon';
 import { DEFAULT_DARK_VARIANT, type DarkVariant } from '../src/config/dark-patterns';
 import { DEFAULT_MATURITY, type MaturityLevel } from '../src/config/maturity';
 import { DEFAULT_ROUTE, type CanonRoute } from '../src/config/canon-route';
@@ -50,6 +56,12 @@ interface ChatRequest {
   bond?: BondDna;
   /** Where the two of them stood before this turn. */
   rapport?: Rapport;
+  /**
+   * Ledger lines the client already budgeted. Retrieval happens client-side
+   * because the ledger lives in the visitor's browser, and the 800-character
+   * ceiling is enforced where the data is.
+   */
+  improvisedCanon?: string[];
   history: { role: 'user' | 'assistant'; content: string }[];
   questHistory?: { role: 'user' | 'assistant'; content: string }[];
   message: string;
@@ -100,29 +112,49 @@ export default async function handler(req: Request): Promise<Response> {
 
   const mode: ConversationMode = body.mode === 'quest' ? 'quest' : 'open-chat';
   const session = effectivePromptSession(body.session, mode);
+  // The flag is read here rather than in the browser because the prompt is
+  // assembled server-side; Vite's client env does not exist in this runtime.
+  // Quest keeps the authored path unconditionally — quests.ts content still
+  // depends on the full authored canon — and a resident with no seed falls
+  // back too, so the authored path stays the default whenever PERSONA_SEED is
+  // unset.
+  const useSeed =
+    process.env.PERSONA_SEED === 'on' &&
+    mode === 'open-chat' &&
+    seedFor(body.residentId) !== null;
+
   let system: string;
   try {
-    system = buildSystemPrompt(
-      body.residentId,
-      session,
-      // Quest never reads saved Open Chat memories. Approved cross-mode lines
-      // are delivered once, by the labelled guardrail block below, rather than
-      // also being poured into this slot where they would read as "context he
-      // once mentioned" and be stated twice.
-      mode === 'quest' ? [] : body.memories ?? [],
-      body.revealed ?? 0,
-      body.revealNow,
-      body.idle,
-      body.level ?? 0,
-      body.quest,
-      body.story,
-      body.dark ?? DEFAULT_DARK_VARIANT,
-      body.maturity === 'explicit' ? 'explicit' : DEFAULT_MATURITY,
-      body.bond ?? defaultBond(),
-      sanitizeRapport(body.rapport ?? defaultRapport()),
-      String(body.message ?? ''),
-      route
-    );
+    system = useSeed
+      ? buildSeedPrompt(
+          body.residentId,
+          session,
+          // The client already applied the 800-character retrieval budget; this
+          // slice only stops a hand-rolled request from reopening it.
+          (body.improvisedCanon ?? []).slice(0, IMPROVISED_CANON_MAX_ENTRIES),
+          sanitizeRapport(body.rapport ?? defaultRapport())
+        )
+      : buildSystemPrompt(
+          body.residentId,
+          session,
+          // Quest never reads saved Open Chat memories. Approved cross-mode lines
+          // are delivered once, by the labelled guardrail block below, rather than
+          // also being poured into this slot where they would read as "context he
+          // once mentioned" and be stated twice.
+          mode === 'quest' ? [] : body.memories ?? [],
+          body.revealed ?? 0,
+          body.revealNow,
+          body.idle,
+          body.level ?? 0,
+          body.quest,
+          body.story,
+          body.dark ?? DEFAULT_DARK_VARIANT,
+          body.maturity === 'explicit' ? 'explicit' : DEFAULT_MATURITY,
+          body.bond ?? defaultBond(),
+          sanitizeRapport(body.rapport ?? defaultRapport()),
+          String(body.message ?? ''),
+          route
+        );
   } catch {
     return Response.json({ error: 'unknown-resident' }, { status: 400 });
   }
@@ -207,11 +239,16 @@ export default async function handler(req: Request): Promise<Response> {
       mode === 'open-chat' && !body.idle
         ? contextVisualIntentFromState(state)
         : null;
+    // Only Open Chat may grow the ledger. Quest canon is authored and is
+    // written by its own path, so anything a Quest reply puts on the state
+    // line is discarded here rather than reaching the visitor's store.
+    const canon = mode === 'open-chat' ? improvisedCanonFromState(state) : [];
     const success = (nextText: string) =>
       Response.json({
         text: nextText,
         rapport,
         ...(visualIntent ? { visualIntent } : {}),
+        ...(canon.length > 0 ? { canon } : {}),
       });
     const deterministic = repairAddressingDeterministically(text);
     if (!deterministic.before.length) {
