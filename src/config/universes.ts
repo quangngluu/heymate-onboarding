@@ -8,6 +8,11 @@ import { RESIDENTS, type ResidentConfig } from './residents';
  */
 export type UniverseKind = 'companion' | 'creator';
 
+export interface UniverseGalleryPreview {
+  url: string;
+  label: string;
+}
+
 export interface UniverseConfig {
   id: string;
   name: string;
@@ -15,6 +20,8 @@ export interface UniverseConfig {
   kind: UniverseKind;
   /** Gallery tile art; rendered from the roster when absent. */
   posterUrl?: string;
+  /** Close, authored views used to make the gallery choice legible at a glance. */
+  galleryPreviews?: UniverseGalleryPreview[];
   accentColor: number;
   /** Populated for kind === 'creator'. */
   factions?: FactionConfig[];
@@ -34,10 +41,15 @@ export const UNIVERSES: UniverseConfig[] = [
   {
     id: 'waifu-universe',
     name: 'Vũ trụ Waifu',
-    tagline: 'Những nhân vật để anh trò chuyện. Các em sống trên bệ trưng bày, không chỉ trong ứng dụng.',
+    tagline: 'Gặp Rin, Momo và Kagura. Mỗi người có ký ức, giọng nói và câu chuyện riêng.',
     kind: 'companion',
     accentColor: 0xc98bb0,
     posterUrl: 'assets/posters/waifu-universe.webp',
+    galleryPreviews: [
+      { url: 'assets/open-chat/kagura-opening-reflection.webp', label: 'Kagura' },
+      { url: 'assets/open-chat/momo-opening-page.webp', label: 'Momo' },
+      { url: 'assets/open-chat/rin-opening-signal.webp', label: 'Rin' },
+    ],
     residents: RESIDENTS,
     env: {
       background: 0x14121a,
@@ -50,7 +62,7 @@ export const UNIVERSES: UniverseConfig[] = [
   {
     id: 'afterburn-city',
     name: 'Afterburn City',
-    tagline: 'Một ngôn ngữ máy, bốn cách kể chuyện. Tạo Mate của riêng anh.',
+    tagline: 'Chọn một trong bốn phe, rồi tạo Mate mang gương mặt và dấu ấn của riêng anh.',
     kind: 'creator',
     accentColor: 0xd8402c,
     posterUrl: 'assets/posters/afterburn-city.webp',

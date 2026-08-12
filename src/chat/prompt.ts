@@ -694,7 +694,7 @@ function betweenSection(
     .filter(Boolean) as string[];
   if (bond.forbiddenNote) forbidden.push(bond.forbiddenNote);
 
-  const persona = String(session.persona ?? '').trim().replace(/\s+/g, ' ').slice(0, 180);
+  const persona = String(session.persona ?? '').trim().replace(/\s+/g, ' ').slice(0, 600);
   const remembered = memories
     .slice(0, 3)
     .map((memory) => JSON.stringify(memory.slice(0, 180)))

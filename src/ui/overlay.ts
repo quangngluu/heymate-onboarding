@@ -10,12 +10,12 @@ import {
   joinedStep,
   revealStep,
   stageStep,
-  studioStep,
   type StepView,
 } from './steps';
 import { COPY } from '../config/copy';
 import { COST, CREDIT_CATALOG, CREDIT_LABEL, type Spend } from '../config/economy';
 import { resolveCanonRoute } from '../config/canon-route';
+import { worldformStep } from '../worldform/ui/step';
 
 /**
  * Which build and canon layer this page is actually running.
@@ -230,7 +230,7 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
     gallery: () => galleryStep(actions),
     stage: (s) => stageStep(actions, s),
     arrival: () => arrivalStep(actions),
-    studio: (s) => studioStep(actions, s),
+    studio: (s) => worldformStep(actions, s),
     reveal: (s) => revealStep(actions, s),
     joined: (s) => joinedStep(actions, s),
   };

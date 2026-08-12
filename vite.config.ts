@@ -158,6 +158,47 @@ function devSceneImageApi(writerKey: string, drawerKey: string): Plugin {
   };
 }
 
+/** Generic Vite bridge for the new Worldform edge adapters. */
+function devWorldformApi(
+  route: '/api/worldform-image' | '/api/worldform-3d',
+  modulePath: '/api/worldform-image.ts' | '/api/worldform-3d.ts',
+  environment: Record<string, string>
+): Plugin {
+  return {
+    name: `dev-${route.slice(1).replaceAll('/', '-')}`,
+    configureServer(server) {
+      server.middlewares.use(route, async (req, res) => {
+        try {
+          for (const [name, value] of Object.entries(environment)) {
+            process.env[name] ??= value;
+          }
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) chunks.push(chunk as Buffer);
+          const method = req.method ?? 'GET';
+          const contentType = Array.isArray(req.headers['content-type'])
+            ? req.headers['content-type'][0]
+            : req.headers['content-type'];
+          const { default: handler } = await server.ssrLoadModule(modulePath);
+          const response = await handler(
+            new Request(`http://localhost${req.url ?? route}`, {
+              method,
+              headers: { 'Content-Type': contentType ?? 'application/json' },
+              body: method === 'GET' || method === 'HEAD' ? undefined : Buffer.concat(chunks),
+            })
+          );
+          res.statusCode = response.status;
+          response.headers.forEach((value, header) => res.setHeader(header, value));
+          res.end(Buffer.from(await response.arrayBuffer()));
+        } catch {
+          res.statusCode = 502;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'unreachable' }));
+        }
+      });
+    },
+  };
+}
+
 /**
  * A build id the running page can report.
  *
@@ -191,6 +232,12 @@ export default defineConfig(({ mode }) => {
       devTtsApi(env.SPOON_API_KEY ?? '', env.SPOON_VOICE_ID ?? ''),
       devQuestApi(env.DEEPSEEK_API_KEY ?? ''),
       devSceneImageApi(env.DEEPSEEK_API_KEY ?? '', env.FAL_KEY ?? ''),
+      devWorldformApi('/api/worldform-image', '/api/worldform-image.ts', {
+        FAL_KEY: env.FAL_KEY ?? '',
+      }),
+      devWorldformApi('/api/worldform-3d', '/api/worldform-3d.ts', {
+        MESHY_API_KEY: env.MESHY_API_KEY ?? '',
+      }),
     ],
   };
 });

@@ -1,8 +1,8 @@
 export const COPY = {
   gallery: {
-    kicker: 'Chọn một vũ trụ',
-    headline: 'Mỗi vũ trụ đều có luật riêng.',
-    subline: 'Chọn nơi anh thuộc về, rồi biến nó thành của anh.',
+    kicker: 'Chọn cách bắt đầu',
+    headline: 'Anh muốn gặp một nhân vật, hay tạo Mate của riêng mình?',
+    subline: 'Mỗi vũ trụ là một trải nghiệm khác nhau. Anh có thể quay lại bất cứ lúc nào.',
     enter: 'Bước vào',
   },
   stage: {
@@ -27,9 +27,6 @@ export const COPY = {
     identityPlaceholder: 'Tên nhân vật anh muốn trở thành',
     identityNote:
       'Trong lần gặp này, em nhận ra anh là chính nhân vật đó trong thế giới của em — cùng vũ khí, năng lực và quá khứ của họ, không phải một người đang cosplay. Nếu một chi tiết chưa rõ, em sẽ hỏi anh trong vai.',
-    persona: 'Lần này anh muốn em ở bên anh thế nào?',
-    personaPlaceholder: 'Ví dụ: trêu nhẹ, nói thẳng và nhớ hỏi về ngày của anh.',
-    personaNote: 'Mô tả tự do; các gợi ý bối cảnh bên dưới chỉ giúp đặt nhịp cho lần gặp này.',
     resetSession: 'Đặt lại',
     applySession: 'Xong',
 
@@ -90,6 +87,53 @@ export const COPY = {
     lookPlaceholder: 'Tông trăng đêm, ánh sáng dịu hơn.',
     lookGenerate: 'Tạo lại diện mạo',
     lookRestore: 'Khôi phục ban đầu',
+  },
+  persona: {
+    title: 'Lần này anh muốn em ở bên anh thế nào?',
+    note: 'Anh chỉnh cách em hiện diện trong phiên này; con người, canon và ranh giới của em không đổi.',
+    tone: {
+      label: 'Giọng em với anh',
+      stops: ['Dịu dàng', 'Vừa phải', 'Thẳng thắn'],
+    },
+    problem: {
+      label: 'Khi anh có chuyện',
+      stops: ['Nghe anh trước', 'Cùng anh gỡ', 'Thách lại anh'],
+    },
+    energy: {
+      label: 'Năng lượng',
+      stops: ['Điềm tĩnh', 'Cân bằng', 'Sôi nổi'],
+    },
+    humor: {
+      label: 'Hài hước',
+      options: [
+        { id: 'dry', label: 'Tỉnh khô' },
+        { id: 'playful', label: 'Vui nhẹ' },
+        { id: 'chaotic', label: 'Lầy một chút' },
+        { id: 'minimal', label: 'Ít đùa' },
+      ],
+    },
+    proactive: {
+      label: 'Mức chủ động',
+      stops: ['Khi anh gọi', 'Thỉnh thoảng', 'Thường xuyên'],
+    },
+    relationship: {
+      label: 'Vai của em với anh',
+      options: [
+        { id: 'friend', label: 'Bạn' },
+        { id: 'companion', label: 'Đồng hành' },
+        { id: 'mentor', label: 'Dẫn dắt' },
+        { id: 'rival', label: 'Đối thủ' },
+        { id: 'custom', label: 'Khác…' },
+      ],
+      customPlaceholder: 'Ví dụ: người cùng anh giữ bí mật',
+      customLabel: 'Vai khác của em với anh',
+    },
+    previewLabel: 'Lời dặn em sẽ dùng',
+    overrideNote: 'Đang dùng bản chỉnh tay',
+    advancedSummary: 'Nâng cao → Chỉnh tay lời dặn',
+    advancedLabel: 'Lời dặn chỉnh tay cho em',
+    advancedPlaceholder: 'Anh viết lời dặn riêng cho em trong phiên này.',
+    restore: 'Khôi phục theo thanh trượt',
   },
   arrival: {
     headline: 'Mỗi vũ trụ đều có luật riêng.',

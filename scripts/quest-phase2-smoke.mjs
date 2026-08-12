@@ -674,9 +674,15 @@ async function runViewport(browser, viewport) {
       getComputedStyle(document.querySelector('.session-select')).fontSize
     ),
   }));
-  await page.type('[data-testid="session-persona"]', 'Trêu nhẹ và hỏi về ngày của anh.');
-  await page.click('[data-testid="session-scenario-latenight"]');
   await page.click('[data-testid="session-advanced"] summary');
+  await page.$eval('[data-testid="session-persona"]', (element) => {
+    if (!(element instanceof HTMLTextAreaElement)) {
+      throw new Error('persona manual override is not a textarea');
+    }
+    element.value = 'Trêu nhẹ và hỏi về ngày của anh.';
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.click('[data-testid="session-scenario-latenight"]');
   await page.$eval('[data-testid="session-length"]', (element) => {
     if (!(element instanceof HTMLInputElement) || element.type !== 'range') {
       throw new Error('response length is not a range input');
@@ -805,7 +811,7 @@ async function runViewport(browser, viewport) {
     failures.push(`settings primary rows=${state.settingsShape.primaryRows}`);
   }
   if (
-    state.settingsShape.contextLabel !== 'Lần này anh muốn em ở bên anh thế nào?' ||
+    state.settingsShape.contextLabel !== 'Giọng em với anh' ||
     JSON.stringify(state.settingsShape.scenarioLabels) !==
       JSON.stringify(['Thường ngày', 'Đêm riêng tư', 'Ở bên nhau', 'Chúc ngủ ngon'])
   ) {

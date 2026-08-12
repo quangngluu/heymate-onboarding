@@ -4,7 +4,7 @@
 
 import { h } from './dom';
 import type { UIActions } from './actions';
-import type { AppState, ChatTurn } from '../state/store';
+import type { AppState, ChatTurn, PersonaTraits, SessionSetup } from '../state/store';
 import { COPY } from '../config/copy';
 import { factionById } from '../config/factions';
 import { CHARACTERS, characterById, characterIndex } from '../config/characters';
@@ -56,36 +56,361 @@ function cssColor(hex: number): string {
   return `#${hex.toString(16).padStart(6, '0')}`;
 }
 
+function segment<T extends string>(
+  label: string,
+  options: readonly { id: T; label: string }[],
+  onPick: (id: T) => void
+): { el: HTMLElement; btns: HTMLButtonElement[] } {
+  const btns: HTMLButtonElement[] = [];
+  const seg = h('div', { role: 'radiogroup', 'aria-label': label, class: 'segment' });
+  for (const o of options) {
+    const b = h(
+      'button',
+      { role: 'radio', 'aria-checked': 'false', class: 'segment-btn', onClick: () => onPick(o.id) },
+      h('span', { class: 'segment-label' }, o.label)
+    ) as HTMLButtonElement;
+    btns.push(b);
+    seg.append(b);
+  }
+  return {
+    el: h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, label), seg),
+    btns,
+  };
+}
+
+interface TraitSliderView {
+  el: HTMLElement;
+  input: HTMLInputElement;
+  output: HTMLOutputElement;
+  sync(value: number): void;
+}
+
+function traitSlider(
+  label: string,
+  stops: readonly string[],
+  value: number,
+  onChange: (value: number) => void,
+  max = stops.length - 1,
+  activeIndex: (value: number) => number = (next) => Math.round(next)
+): TraitSliderView {
+  const output = h('output', { class: 'session-length-value' }) as HTMLOutputElement;
+  const input = h('input', {
+    type: 'range',
+    class: 'session-length-slider',
+    min: '0',
+    max: String(max),
+    step: '1',
+    'aria-label': label,
+  }) as HTMLInputElement;
+  const sync = (next: number) => {
+    const bounded = Math.min(max, Math.max(0, next));
+    const index = Math.min(stops.length - 1, Math.max(0, activeIndex(bounded)));
+    input.value = String(bounded);
+    input.setAttribute('aria-valuetext', stops[index]);
+    output.textContent = stops[index];
+  };
+  input.addEventListener('input', () => {
+    const next = Number(input.value);
+    sync(next);
+    onChange(next);
+  });
+  sync(value);
+  return {
+    el: h(
+      'div',
+      { class: 'session-length-field persona-trait-field' },
+      h(
+        'div',
+        { class: 'session-length-head' },
+        h('span', { class: 'session-setting-label' }, label),
+        output
+      ),
+      input,
+      h(
+        'div',
+        { class: 'session-length-marks', 'aria-hidden': 'true' },
+        ...stops.map((stop) => h('span', {}, stop))
+      )
+    ),
+    input,
+    output,
+    sync,
+  };
+}
+
+export interface PersonaBuilderView {
+  el: HTMLElement;
+  personaInput: HTMLTextAreaElement;
+  sync(session: SessionSetup): void;
+}
+
+const PROBLEM_IDS: readonly PersonaTraits['problem'][] = ['listen', 'solve', 'challenge'];
+const ENERGY_IDS: readonly PersonaTraits['energy'][] = ['calm', 'balanced', 'energetic'];
+const PROACTIVE_IDS: readonly PersonaTraits['proactive'][] = ['called', 'sometimes', 'often'];
+
+export function createPersonaBuilder(
+  session: SessionSetup,
+  updateSession: (patch: Partial<SessionSetup>) => void
+): PersonaBuilderView {
+  let current = session;
+  const updateTraits = (patch: Partial<PersonaTraits>) => {
+    const personaTraits = { ...current.personaTraits, ...patch };
+    current = { ...current, personaTraits };
+    updateSession({ personaTraits });
+  };
+
+  const tone = traitSlider(
+    COPY.persona.tone.label,
+    COPY.persona.tone.stops,
+    session.personaTraits.tone,
+    (value) => updateTraits({ tone: value }),
+    100,
+    (value) => (value < 34 ? 0 : value <= 66 ? 1 : 2)
+  );
+  tone.input.dataset.testid = 'persona-tone';
+  tone.input.dataset.personaControl = 'tone';
+
+  const problem = traitSlider(
+    COPY.persona.problem.label,
+    COPY.persona.problem.stops,
+    PROBLEM_IDS.indexOf(session.personaTraits.problem),
+    (value) => updateTraits({ problem: PROBLEM_IDS[value] ?? PROBLEM_IDS[1] })
+  );
+  problem.input.dataset.testid = 'persona-problem';
+  problem.input.dataset.personaControl = 'problem';
+
+  const energy = traitSlider(
+    COPY.persona.energy.label,
+    COPY.persona.energy.stops,
+    ENERGY_IDS.indexOf(session.personaTraits.energy),
+    (value) => updateTraits({ energy: ENERGY_IDS[value] ?? ENERGY_IDS[1] })
+  );
+  energy.input.dataset.testid = 'persona-energy';
+  energy.input.dataset.personaControl = 'energy';
+
+  const humor = segment(
+    COPY.persona.humor.label,
+    COPY.persona.humor.options as readonly { id: PersonaTraits['humor']; label: string }[],
+    (id) => updateTraits({ humor: id })
+  );
+  humor.el.dataset.testid = 'persona-humor';
+  humor.el.dataset.personaControl = 'humor';
+
+  const proactive = traitSlider(
+    COPY.persona.proactive.label,
+    COPY.persona.proactive.stops,
+    PROACTIVE_IDS.indexOf(session.personaTraits.proactive),
+    (value) => updateTraits({ proactive: PROACTIVE_IDS[value] ?? PROACTIVE_IDS[1] })
+  );
+  proactive.input.dataset.testid = 'persona-proactive';
+  proactive.input.dataset.personaControl = 'proactive';
+
+  const length = traitSlider(
+    COPY.stage.length,
+    LENGTHS.map((option) => option.label),
+    Math.max(0, LENGTHS.findIndex((option) => option.id === session.length)),
+    (value) => {
+      const next = LENGTHS[value] ?? LENGTHS[1];
+      current = { ...current, length: next.id };
+      updateSession({ length: next.id });
+    }
+  );
+  length.input.dataset.testid = 'session-length';
+  length.input.dataset.personaControl = 'length';
+  length.output.dataset.testid = 'session-length-label';
+
+  let relationshipCustom: HTMLInputElement;
+  let relationshipCustomWrap: HTMLElement;
+  const relationship = segment(
+    COPY.persona.relationship.label,
+    COPY.persona.relationship.options as readonly {
+      id: PersonaTraits['relationship'];
+      label: string;
+    }[],
+    (id) => {
+      updateTraits({ relationship: id });
+      relationshipCustomWrap.hidden = id !== 'custom';
+      if (id === 'custom') requestAnimationFrame(() => relationshipCustom.focus());
+    }
+  );
+  relationship.el.dataset.testid = 'persona-relationship';
+  relationship.el.dataset.personaControl = 'relationship';
+  relationshipCustom = h('input', {
+    type: 'text',
+    class: 'name-input persona-relationship-custom',
+    placeholder: COPY.persona.relationship.customPlaceholder,
+    'aria-label': COPY.persona.relationship.customLabel,
+    maxlength: '80',
+  }) as HTMLInputElement;
+  relationshipCustom.addEventListener('input', () =>
+    updateTraits({ relationshipCustom: relationshipCustom.value })
+  );
+  relationshipCustomWrap = h(
+    'div',
+    { class: 'session-inline-custom persona-relationship-custom-wrap', hidden: true },
+    relationshipCustom
+  );
+
+  const previewText = h('output', {
+    class: 'persona-preview-text',
+    'data-testid': 'persona-preview',
+    'aria-live': 'polite',
+  }) as HTMLOutputElement;
+  const overrideNote = h(
+    'span',
+    { class: 'persona-override-note', hidden: true },
+    COPY.persona.overrideNote
+  );
+  const preview = h(
+    'div',
+    { class: 'persona-preview' },
+    h('span', { class: 'session-setting-label' }, COPY.persona.previewLabel),
+    previewText,
+    overrideNote
+  );
+
+  const personaInput = h('textarea', {
+    class: 'persona-input',
+    rows: '5',
+    placeholder: COPY.persona.advancedPlaceholder,
+    'aria-label': COPY.persona.advancedLabel,
+    'data-testid': 'session-persona',
+    maxlength: '600',
+  }) as HTMLTextAreaElement;
+  personaInput.addEventListener('input', () => {
+    current = { ...current, persona: personaInput.value, personaOverride: true };
+    updateSession({ persona: personaInput.value, personaOverride: true });
+  });
+  const restore = h(
+    'button',
+    {
+      class: 'btn btn-ghost xs persona-restore',
+      'data-testid': 'persona-restore',
+      onClick: () => {
+        current = { ...current, personaOverride: false };
+        updateSession({ personaOverride: false });
+      },
+    },
+    COPY.persona.restore
+  ) as HTMLButtonElement;
+  const advanced = h(
+    'details',
+    { class: 'persona-advanced' },
+    h('summary', {}, h('span', {}, COPY.persona.advancedSummary)),
+    h('div', { class: 'persona-advanced-body' }, personaInput, restore)
+  );
+
+  const el = h(
+    'section',
+    { class: 'personalize-panel persona-builder', 'data-testid': 'persona-builder' },
+    h('h3', { class: 'group-label persona-builder-title' }, COPY.persona.title),
+    h('p', { class: 'hint faint persona-builder-note' }, COPY.persona.note),
+    tone.el,
+    problem.el,
+    energy.el,
+    humor.el,
+    proactive.el,
+    length.el,
+    relationship.el,
+    relationshipCustomWrap,
+    preview,
+    advanced
+  );
+
+  const sync = (next: SessionSetup) => {
+    current = next;
+    tone.sync(next.personaTraits.tone);
+    problem.sync(Math.max(0, PROBLEM_IDS.indexOf(next.personaTraits.problem)));
+    energy.sync(Math.max(0, ENERGY_IDS.indexOf(next.personaTraits.energy)));
+    proactive.sync(Math.max(0, PROACTIVE_IDS.indexOf(next.personaTraits.proactive)));
+    length.sync(Math.max(0, LENGTHS.findIndex((option) => option.id === next.length)));
+    humor.btns.forEach((button, index) => {
+      button.setAttribute(
+        'aria-checked',
+        String(COPY.persona.humor.options[index].id === next.personaTraits.humor)
+      );
+    });
+    relationship.btns.forEach((button, index) => {
+      button.setAttribute(
+        'aria-checked',
+        String(
+          COPY.persona.relationship.options[index].id === next.personaTraits.relationship
+        )
+      );
+    });
+    if (document.activeElement !== relationshipCustom) {
+      relationshipCustom.value = next.personaTraits.relationshipCustom;
+    }
+    relationshipCustomWrap.hidden = next.personaTraits.relationship !== 'custom';
+    if (document.activeElement !== personaInput) personaInput.value = next.persona;
+    previewText.textContent = next.persona;
+    preview.classList.toggle('is-override', next.personaOverride);
+    overrideNote.hidden = !next.personaOverride;
+    restore.disabled = !next.personaOverride;
+  };
+  sync(session);
+
+  return { el, personaInput, sync };
+}
+
 // ---------- GALLERY (outer: pick a universe) ----------
 
 export function galleryStep(actions: UIActions): StepView {
   const tiles = UNIVERSES.map((u) => {
+    const previews = u.galleryPreviews?.length
+      ? u.galleryPreviews
+      : u.posterUrl
+        ? [{ url: u.posterUrl, label: u.name }]
+        : [];
     const poster = h('div', {
-      class: 'tile-poster',
+      class: `tile-poster ${previews.length > 1 ? 'is-collage' : 'is-single'}`,
       style: `--accent:${cssColor(u.accentColor)}`,
+      'aria-hidden': 'true',
     });
-    if (u.posterUrl) {
-      const img = h('img', { alt: '', src: u.posterUrl, draggable: 'false' }) as HTMLImageElement;
+    previews.forEach((preview, index) => {
+      const img = h('img', { alt: '', src: preview.url, draggable: 'false' }) as HTMLImageElement;
       img.addEventListener('error', () => img.remove(), { once: true });
-      poster.append(img);
-    }
+      poster.append(
+        h(
+          'span',
+          { class: `tile-preview tile-preview-${index + 1}` },
+          img,
+          previews.length > 1 ? h('span', { class: 'tile-preview-label' }, preview.label) : null
+        )
+      );
+    });
+    const meta = u.kind === 'companion'
+      ? `${u.residents?.length ?? 0} nhân vật`
+      : `${u.factions?.length ?? 0} phe`;
+    const mode = u.kind === 'companion' ? 'Trò chuyện' : 'Tạo nhân vật';
+    const action = u.kind === 'companion' ? 'Chọn người để gặp' : 'Tạo Mate của anh';
     return h(
       'button',
       {
-        class: 'universe-tile',
+        class: `universe-tile universe-tile-${u.kind}`,
         'data-testid': `universe-${u.id}`,
         style: `--accent:${cssColor(u.accentColor)}`,
+        'aria-label': `${u.name}. ${action}`,
         onClick: () => actions.openUniverse(u.id),
       },
       poster,
-      h('h2', { class: 'tile-name' }, u.name),
-      h('p', { class: 'tile-tagline' }, u.tagline),
       h(
         'span',
-        { class: 'tile-meta' },
-        u.kind === 'companion'
-          ? `${u.residents?.length ?? 0} nhân vật để trò chuyện`
-          : `${u.factions?.length ?? 0} phe để tạo Mate`
+        { class: 'tile-body' },
+        h(
+          'span',
+          { class: 'tile-overline' },
+          h('span', { class: 'tile-mode' }, mode),
+          h('span', { class: 'tile-meta' }, meta)
+        ),
+        h('span', { class: 'tile-name' }, u.name),
+        h('span', { class: 'tile-tagline' }, u.tagline),
+        h(
+          'span',
+          { class: 'tile-action' },
+          h('span', {}, action),
+          h('span', { class: 'tile-action-arrow', 'aria-hidden': 'true' }, '→')
+        )
       )
     );
   });
@@ -96,9 +421,13 @@ export function galleryStep(actions: UIActions): StepView {
     h(
       'div',
       { class: 'gallery-wrap' },
-      h('p', { class: 'kicker' }, COPY.gallery.kicker),
-      h('h1', { class: 'headline' }, COPY.gallery.headline),
-      h('p', { class: 'subline' }, COPY.gallery.subline),
+      h(
+        'header',
+        { class: 'gallery-intro' },
+        h('p', { class: 'kicker' }, COPY.gallery.kicker),
+        h('h1', { class: 'headline' }, COPY.gallery.headline),
+        h('p', { class: 'subline' }, COPY.gallery.subline)
+      ),
       h('div', { class: 'universe-grid' }, ...tiles)
     )
   );
@@ -559,38 +888,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   identityInput.addEventListener('change', () =>
     actions.updateSession({ identity: identityInput.value })
   );
-  const personaInput = h('textarea', {
-    class: 'persona-input',
-    rows: '3',
-    placeholder: COPY.stage.personaPlaceholder,
-    'aria-label': COPY.stage.persona,
-    'data-testid': 'session-persona',
-    maxlength: '180',
-  }) as HTMLTextAreaElement;
-  personaInput.addEventListener('input', () => actions.updateSession({ persona: personaInput.value }));
-
-  function segment<T extends string>(
-    label: string,
-    options: { id: T; label: string }[],
-    onPick: (id: T) => void
-  ): { el: HTMLElement; btns: HTMLButtonElement[] } {
-    const btns: HTMLButtonElement[] = [];
-    const seg = h('div', { role: 'radiogroup', 'aria-label': label, class: 'segment' });
-    for (const o of options) {
-      const b = h(
-        'button',
-        { role: 'radio', 'aria-checked': 'false', class: 'segment-btn', onClick: () => onPick(o.id) },
-        h('span', { class: 'segment-label' }, o.label)
-      ) as HTMLButtonElement;
-      btns.push(b);
-      seg.append(b);
-    }
-    return {
-      el: h('div', { class: 'custom-group' }, h('h3', { class: 'group-label' }, label), seg),
-      btns,
-    };
-  }
-
   function selectField<T extends string>(
     label: string,
     options: readonly { id: T; label: string }[],
@@ -658,57 +955,14 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   scenarioSeg.btns.forEach((button, index) => {
     button.dataset.testid = `session-scenario-${SCENARIOS[index].id}`;
   });
+  const personaBuilder = createPersonaBuilder(state.session, (patch) =>
+    actions.updateSession(patch)
+  );
   const sessionContext = h(
     'div',
     { class: 'session-context-field', 'data-testid': 'session-context' },
-    h('span', { class: 'session-setting-label' }, COPY.stage.persona),
-    personaInput,
-    h('p', { class: 'hint faint' }, COPY.stage.personaNote),
+    personaBuilder.el,
     scenarioSeg.el
-  );
-  const lengthValue = h(
-    'output',
-    { class: 'session-length-value', 'data-testid': 'session-length-label' },
-    LENGTHS[1].label
-  ) as HTMLOutputElement;
-  const lengthSlider = h('input', {
-    type: 'range',
-    class: 'session-length-slider',
-    min: '0',
-    max: String(LENGTHS.length - 1),
-    step: '1',
-    value: '1',
-    'data-testid': 'session-length',
-    'aria-label': COPY.stage.length,
-    'aria-valuetext': LENGTHS[1].label,
-  }) as HTMLInputElement;
-  const syncLength = (id: (typeof LENGTHS)[number]['id']) => {
-    const index = Math.max(0, LENGTHS.findIndex((option) => option.id === id));
-    const option = LENGTHS[index];
-    lengthSlider.value = String(index);
-    lengthSlider.setAttribute('aria-valuetext', option.label);
-    lengthValue.textContent = option.label;
-  };
-  lengthSlider.addEventListener('input', () => {
-    const option = LENGTHS[Number(lengthSlider.value)] ?? LENGTHS[1];
-    syncLength(option.id);
-    actions.updateSession({ length: option.id });
-  });
-  const lengthField = h(
-    'div',
-    { class: 'session-length-field' },
-    h(
-      'div',
-      { class: 'session-length-head' },
-      h('span', { class: 'session-setting-label' }, COPY.stage.length),
-      lengthValue
-    ),
-    lengthSlider,
-    h(
-      'div',
-      { class: 'session-length-marks', 'aria-hidden': 'true' },
-      ...LENGTHS.map((option) => h('span', {}, option.label))
-    )
   );
 
   // --- the bond: how she is with him, not who she is ---
@@ -756,8 +1010,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h(
       'div',
       { class: 'session-advanced-body' },
-      lengthField,
-      h('div', { class: 'bond-divider' }),
       h(
         'p',
         { class: 'hint faint' },
@@ -814,7 +1066,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h(
       'div',
       { class: 'sheet-body' },
-      h('p', { class: 'session-impact-note' }, 'Hai lựa chọn này thay đổi cách em phản hồi rõ nhất.'),
+      h('p', { class: 'session-impact-note' }, COPY.stage.sessionNote),
       h(
         'div',
         { class: 'session-primary' },
@@ -1106,7 +1358,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       if (s.residentId !== lastResident) {
         lastResident = s.residentId;
         srOnlyName.textContent = r.name;
-        personaInput.value = s.session.persona;
         // The card carries three layers: the hook, who she is, and what the
         // user gets. Full canon stays behind the story list.
         info.replaceChildren(
@@ -1134,7 +1385,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         );
       }
       if (document.activeElement !== identityInput) identityInput.value = s.session.identity;
-      if (document.activeElement !== personaInput) personaInput.value = s.session.persona;
+      personaBuilder.sync(s.session);
       if (s.session.identity) identityCustomActive = true;
       if (s.sessionPanelOpen && !prev.sessionPanelOpen) {
         identityCustomActive = Boolean(s.session.identity);
@@ -1144,7 +1395,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       scenarioSeg.btns.forEach((button, index) => {
         button.setAttribute('aria-checked', String(SCENARIOS[index].id === s.session.scenario));
       });
-      syncLength(s.session.length);
       // Scenario belongs to Open Chat. Quest owns its authored scene, so this
       // control disappears rather than pretending it can tune the story face.
       scenarioSeg.el.hidden = s.activeQuestId !== null;
