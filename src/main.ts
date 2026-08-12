@@ -148,6 +148,7 @@ class App implements UIActions {
   private residentStage: WaifuStage | null = null;
   private speakTimer = 0;
   private idleTimer = 0;
+  private editionsTimer = 0;
   private revealTimer = 0;
   private cryoFlash: THREE.PointLight | null = null;
   private premiumRevealToken = 0;
@@ -1068,6 +1069,7 @@ class App implements UIActions {
     this.rig.cancel();
     this.transitionConversation();
     window.clearTimeout(this.genTimer);
+    window.clearTimeout(this.editionsTimer);
     this.controls.enabled = false;
     this.residentStage?.dispose();
     this.residentStage = null;
@@ -1126,6 +1128,14 @@ class App implements UIActions {
       const done = await this.rig.flyTo(stagePreset(), this.engine.reducedMotion ? 0 : 1.25);
       if (!done || store.get().step !== 'stage' || store.get().companionMode !== 'reveal') return;
       store.set({ companionMode: 'showcase' });
+      store.markWaifuUniverseEntered();
+      window.clearTimeout(this.editionsTimer);
+      this.editionsTimer = window.setTimeout(() => {
+        const current = store.get();
+        if (current.step === 'stage' && current.companionMode === 'showcase') {
+          store.revealEditions();
+        }
+      }, 12000);
       this.enableStageOrbit();
       })();
     };
@@ -1156,6 +1166,8 @@ class App implements UIActions {
   enterPlayground(): void {
     const s = store.get();
     if (s.step !== 'stage' || s.companionMode === 'playground' || s.figurineDisplayMode !== 'original') return;
+    window.clearTimeout(this.editionsTimer);
+    store.revealEditions();
     store.set({ companionMode: 'playground' });
     this.greet();
   }

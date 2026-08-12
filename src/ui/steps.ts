@@ -1385,6 +1385,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       'aria-label': 'Gặp nhân vật',
       'data-companion-mode': state.companionMode,
       'data-figurine-display': state.figurineDisplayMode,
+      'data-editions': state.editionsRevealed ? 'shown' : 'hidden',
     },
     srOnlyName,
     premiumTeaser,
@@ -1459,6 +1460,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       el.style.setProperty('--accent', cssColor(r.accentColor));
       el.dataset.companionMode = s.companionMode;
       el.dataset.figurineDisplay = s.figurineDisplayMode;
+      el.dataset.editions = s.editionsRevealed ? 'shown' : 'hidden';
       if (
         s.figurineDisplayMode === 'premium-preview' &&
         (prev.figurineDisplayMode !== 'premium-preview' ||
