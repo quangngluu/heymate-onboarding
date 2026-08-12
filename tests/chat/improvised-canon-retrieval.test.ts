@@ -37,8 +37,16 @@ describe('relevantImprovisedCanon', () => {
   });
 
   it('holds the ceiling against a 500-entry ledger', () => {
+    // Each entry is padded well past ~67 characters, so that 12 of them
+    // (IMPROVISED_CANON_MAX_ENTRIES) would total more than 800 characters
+    // (IMPROVISED_CANON_CHAR_BUDGET) if the character-budget check were not
+    // enforced. This makes the char-budget assertion below load-bearing,
+    // not just a count-ceiling assertion in disguise.
     const ledger = Array.from({ length: 500 }, (_, i) =>
-      entry({ text: `Sự thật số ${i} về quán mì dưới cầu vượt.`, createdAt: i })
+      entry({
+        text: `Sự thật số ${i} về quán mì dưới cầu vượt. ${'x'.repeat(60)}`,
+        createdAt: i,
+      })
     );
     const out = relevantImprovisedCanon(ledger, 'kagura', 'quán mì');
 
