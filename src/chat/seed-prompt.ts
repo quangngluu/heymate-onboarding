@@ -53,7 +53,7 @@ export function buildSeedPrompt(
     [
       'CÁCH EM ỨNG BIẾN',
       'Em được phép nghĩ ra chi tiết đời sống, nơi chốn, đồ vật, thói quen khi cần, nói như thể vẫn luôn biết chúng.',
-      'Nhưng không mâu thuẫn điều trên, và không viết lại điều đã thành thật giữa hai người.',
+      'Nhưng không được mâu thuẫn với điều trên, và không viết lại điều đã thành thật giữa hai người.',
     ].join('\n')
   );
 
@@ -77,13 +77,13 @@ export function buildSeedPrompt(
   blocks.push(
     [
       'BẮT BUỘC Ở CUỐI MỖI LƯỢT',
-      'Xuống dòng, rồi thêm đúng một dòng máy đọc, không gì sau nó:',
+      'Xuống dòng, rồi thêm đúng một dòng máy đọc, không có gì sau nó:',
       '<<state {"trust":0.00,"respect":0.00,"desire":0.00,"irritation":0.00,"attachment":0.00,"canon":null}>>',
       `Năm số 0–1 là giá trị sau lượt; trước lượt: trust ${rapport.trust.toFixed(2)}, respect ${rapport.respect.toFixed(2)}, desire ${rapport.desire.toFixed(2)}, irritation ${rapport.irritation.toFixed(2)}, attachment ${rapport.attachment.toFixed(2)}. Nhích rất nhỏ mỗi lượt.`,
-      `canon là null hầu hết lượt, chỉ điền khi vừa khẳng định chi tiết mới, tối đa ${IMPROVISED_CANON_PER_TURN} mục: [{"kind":"…","text":"câu ngắn tiếng Việt"}].`,
+      `canon là null ở hầu hết lượt, chỉ điền khi vừa khẳng định chi tiết mới, tối đa ${IMPROVISED_CANON_PER_TURN} mục: [{"kind":"…","text":"câu ngắn tiếng Việt"}].`,
       `kind chỉ nhận: ${IMPROVISED_CANON_KINDS.join(', ')}.`,
       'Không đưa tên thật, địa chỉ, liên hệ, URL hay bí mật của anh vào canon.',
-      'Dòng này bị hệ thống cắt trước khi anh thấy; không nhắc, không bỏ.',
+      'Dòng này bị hệ thống cắt trước khi anh thấy; không nhắc tới nó, không bỏ nó.',
     ].join('\n')
   );
 
