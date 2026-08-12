@@ -153,8 +153,10 @@ Four assertions, one per place this design can rot:
 
 Existing suite must stay green: `npm run build && npm test`.
 
-## 9. Open risk
+## 9. Resolved: IP anchor
 
-Kagura is currently anchored to a rights-holder's world — the prompt states she belongs to *"INUYASHA — AKAGANE"* and [`kagari-inuyasha.ts`](../../../src/config/kagari-inuyasha.ts) binds her to it. Selling premium figurines of such a character is a real legal exposure, and [`CONTEXT.md`](../../../CONTEXT.md) already carries the invariant that a World Archetype *"is not a licensed canon character"* along with the `commercialUse: false` flag.
+Kagura is currently anchored to a rights-holder's world — the prompt states she belongs to *"INUYASHA — AKAGANE"* and [`kagari-inuyasha.ts`](../../../src/config/kagari-inuyasha.ts) binds her to it.
 
-Cutting canon down to a seed is the natural moment to cut that anchor. This spec does not decide it; it flags it as a decision that should be made before the commerce workstream ships.
+**Decision (2026-08-12, K): not a concern — the character does not resemble the source work's characters. No de-anchoring work is in scope.**
+
+Practical consequence for seed authoring: the world-anchor line is treated like every other non-core detail. It is not part of the invariant core (§4), so it simply falls out with the rest of the removed canon rather than being deliberately excised. `kagari-inuyasha.ts` moves to `canon-archive/` unchanged.
