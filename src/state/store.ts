@@ -457,6 +457,13 @@ type Listener = (state: AppState, prev: AppState) => void;
 // explicitly chose a clean v3 cutover, so no legacy story state is migrated.
 const STORAGE_KEY = 'heymate.progress.sao.v1';
 
+// Uniqueness for chat-born canon ids cannot come from canonLedger.length: once
+// the ledger passes its 240-entry cap, .slice(-240) holds that length steady
+// forever, so a length-based suffix starts colliding across calls. A counter
+// that only ever increments — independent of how many entries survive
+// truncation — stays unique for the life of the module.
+let improvisedCanonSequence = 0;
+
 function legacyAddress(value: unknown): string {
   return typeof value === 'string'
     ? value.trim().replace(/\s+/g, ' ').slice(0, 28)
@@ -1523,8 +1530,8 @@ export class Store {
   recordImprovisedCanon(residentId: ResidentId, facts: ImprovisedFact[]): void {
     if (facts.length === 0) return;
     const createdAt = Date.now();
-    const added = facts.map((fact, i) => ({
-      id: `chat:${residentId}:${createdAt}:${this.state.canonLedger.length + i}`,
+    const added = facts.map((fact) => ({
+      id: `chat:${residentId}:${createdAt}:${improvisedCanonSequence++}`,
       residentId,
       canonType: 'player-created' as CanonType,
       text: fact.text,

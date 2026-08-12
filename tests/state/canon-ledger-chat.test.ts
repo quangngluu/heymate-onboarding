@@ -58,6 +58,18 @@ describe('chat-born canon ledger entries', () => {
     expect(store.get().canonLedger.at(-1)?.text).toBe('thói quen 129');
   });
 
+  it('keeps ids unique once the 240 cap starts truncating', () => {
+    const store = new Store();
+    for (let i = 0; i < 130; i += 1) {
+      store.recordImprovisedCanon('kagura', [
+        { kind: 'object', text: `vật thể ${i}` },
+        { kind: 'habit', text: `thói quen ${i}` },
+      ]);
+    }
+    const ids = store.get().canonLedger.map((entry) => entry.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it('defaults legacy persisted entries to the quest source', () => {
     localStorage.setItem(
       'heymate.progress.sao.v1',
