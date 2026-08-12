@@ -1499,7 +1499,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
                 h(
                   'span',
                   { class: 'product-variant-image' },
-                  h('img', { src: variant.previewUrl, alt: `${r.name} — ${variant.styleLabel}`, loading: 'eager', draggable: 'false' }),
+                  h('img', { src: variant.previewUrl, alt: `${r.name}, ${variant.styleLabel}`, loading: 'eager', draggable: 'false' }),
                   h('span', {}, String(index + 1).padStart(2, '0'))
                 ),
                 h(
