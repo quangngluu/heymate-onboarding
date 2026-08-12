@@ -266,6 +266,10 @@ export interface AppState {
   companionMode: CompanionMode;
   figurineDisplayMode: FigurineDisplayMode;
   kaguraFigurineVariantId: KaguraFigurineVariantId;
+  /** True once the Waifu universe reveal has completed (persisted). */
+  waifuUniverseEntered: boolean;
+  /** True once premium editions have surfaced for this entry (session-only). */
+  editionsRevealed: boolean;
   residentId: ResidentId;
   session: SessionSetup;
   /** Saved-and-paid progress, keyed by resident. */
@@ -412,6 +416,8 @@ const initialState: AppState = {
   companionMode: 'showcase',
   figurineDisplayMode: 'original',
   kaguraFigurineVariantId: DEFAULT_KAGURA_FIGURINE_VARIANT,
+  waifuUniverseEntered: false,
+  editionsRevealed: false,
   residentId: RESIDENTS[0].id,
   session: defaultSession(),
   progress: {},
@@ -557,6 +563,7 @@ export class Store {
           questCheckpoints?: Record<string, string>;
           openChatRewards?: Record<string, OpenChatRewardProgress>;
           openChatContext?: Record<string, OpenChatContextProgress>;
+          waifuUniverseEntered?: boolean;
         };
         this.state = {
           ...this.state,
@@ -578,6 +585,7 @@ export class Store {
           })),
           crossModeMemory: saved.crossModeMemory ?? [],
           questCheckpoints: saved.questCheckpoints ?? {},
+          waifuUniverseEntered: saved.waifuUniverseEntered ?? false,
           openChatRewards: saved.openChatRewards ?? {},
           openChatContext: Object.fromEntries(
             Object.entries(saved.openChatContext ?? {}).map(([residentId, progress]) => [
@@ -644,6 +652,7 @@ export class Store {
           canonLedger: this.state.canonLedger,
           crossModeMemory: this.state.crossModeMemory,
           questCheckpoints: this.state.questCheckpoints,
+          waifuUniverseEntered: this.state.waifuUniverseEntered,
           openChatRewards: this.state.openChatRewards,
           openChatContext: this.state.openChatContext,
         })
@@ -654,6 +663,17 @@ export class Store {
   }
 
   // ---- companion ----
+
+  markWaifuUniverseEntered(): void {
+    if (this.state.waifuUniverseEntered) return;
+    this.set({ waifuUniverseEntered: true });
+    this.persist();
+  }
+
+  revealEditions(): void {
+    if (this.state.editionsRevealed) return;
+    this.set({ editionsRevealed: true });
+  }
 
   progressFor(id = this.state.residentId): SavedProgress {
     const saved = this.state.progress[id];
@@ -1599,6 +1619,7 @@ export class Store {
       sceneShots: this.state.sceneShots,
       openChatRewards: this.state.openChatRewards,
       openChatContext: this.state.openChatContext,
+      waifuUniverseEntered: this.state.waifuUniverseEntered,
     });
   }
 
