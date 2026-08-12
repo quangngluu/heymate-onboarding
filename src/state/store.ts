@@ -45,9 +45,16 @@ import type {
   GeneratedOpenChatVisual,
   OpenChatContextProgress,
 } from '../chat/context-visual';
+import {
+  compilePersona,
+  defaultPersonaTraits,
+  type PersonaTraits,
+} from '../config/persona';
+import type { ImprovisedFact } from '../chat/improvised-canon';
 
 export { COST } from '../config/economy';
 export type { Spend } from '../config/economy';
+export type { PersonaTraits } from '../config/persona';
 
 export type Step =
   | 'gallery' // universe picker (outer)
@@ -100,11 +107,19 @@ export type CanonType =
 export interface CanonLedgerEntry {
   id: string;
   residentId: ResidentId;
-  questId: string;
-  nodeId: string;
+  /** Absent for facts improvised during free chat. */
+  questId?: string;
+  /** Absent for facts improvised during free chat. */
+  nodeId?: string;
   canonType: CanonType;
   text: string;
   createdAt: number;
+  /** Where this fact came from. Legacy persisted entries default to 'quest'. */
+  source: 'quest' | 'chat';
+  /** How many times retrieval has surfaced this entry. Ranking input. */
+  refCount?: number;
+  /** When retrieval last surfaced it. Ranking input. */
+  lastUsedAt?: number;
 }
 
 /**
@@ -134,6 +149,9 @@ export interface CrossModeMemory {
 export interface SessionSetup {
   /** Visitor preference for the resident's conversational presence, never canon. */
   persona: string;
+  personaTraits: PersonaTraits;
+  /** A hand-edited persona wins until the visitor restores the trait compiler. */
+  personaOverride: boolean;
   /** Open Chat context. Quest scenes ignore it and supply their own setting. */
   scenario: ScenarioId;
   length: LengthId;
@@ -148,6 +166,9 @@ export interface SavedProgress {
   /** Legacy only: migrated into bond.address when a v1 save is loaded. */
   nickname?: string;
   persona: string;
+  /** Optional so legacy free-text persona saves remain distinguishable. */
+  personaTraits?: PersonaTraits;
+  personaOverride?: boolean;
   /** Who he came in as last time, so she can greet that person again. */
   identity: string;
   visits: number;
@@ -192,11 +213,39 @@ export interface QuestChoiceResult {
 }
 
 function defaultSession(): SessionSetup {
+  const personaTraits = defaultPersonaTraits();
   return {
-    persona: '',
+    persona: compilePersona(personaTraits, 'natural'),
+    personaTraits,
+    personaOverride: false,
     scenario: 'casual',
     length: 'natural',
     identity: '',
+  };
+}
+
+function fromSaved(saved: Pick<SavedProgress, 'persona' | 'personaTraits' | 'personaOverride' | 'identity'>): SessionSetup {
+  const base = defaultSession();
+  if (saved.personaTraits) {
+    const personaTraits = { ...defaultPersonaTraits(), ...saved.personaTraits };
+    const personaOverride = saved.personaOverride === true;
+    return {
+      ...base,
+      personaTraits,
+      personaOverride,
+      persona: personaOverride
+        ? saved.persona ?? ''
+        : compilePersona(personaTraits, base.length),
+      identity: saved.identity ?? '',
+    };
+  }
+
+  const legacyPersona = typeof saved.persona === 'string' ? saved.persona : '';
+  return {
+    ...base,
+    persona: legacyPersona.trim() ? legacyPersona : base.persona,
+    personaOverride: Boolean(legacyPersona.trim()),
+    identity: saved.identity ?? '',
   };
 }
 
@@ -481,7 +530,7 @@ export class Store {
           questHistory?: Record<string, string[]>;
           transcripts?: Record<string, ChatTurn[]>;
           questTranscripts?: Record<string, ChatTurn[]>;
-          canonLedger?: CanonLedgerEntry[];
+          canonLedger?: (Omit<CanonLedgerEntry, 'source'> & { source?: 'quest' | 'chat' })[];
           crossModeMemory?: CrossModeMemory[];
           questCheckpoints?: Record<string, string>;
           openChatRewards?: Record<string, OpenChatRewardProgress>;
@@ -501,7 +550,10 @@ export class Store {
           questOutcomes: saved.questOutcomes ?? {},
           questEndings: saved.questEndings ?? {},
           questHistory: saved.questHistory ?? {},
-          canonLedger: saved.canonLedger ?? [],
+          canonLedger: (saved.canonLedger ?? []).map((entry) => ({
+            ...entry,
+            source: entry.source ?? 'quest',
+          })),
           crossModeMemory: saved.crossModeMemory ?? [],
           questCheckpoints: saved.questCheckpoints ?? {},
           openChatRewards: saved.openChatRewards ?? {},
@@ -641,11 +693,7 @@ export class Store {
       questInterruptible: false,
       saveGateOpen: false,
       unlockGateOpen: false,
-      session: {
-        ...defaultSession(),
-        persona: saved.persona,
-        identity: saved.identity,
-      },
+      session: fromSaved(saved),
     });
   }
 
@@ -682,13 +730,36 @@ export class Store {
   }
 
   updateSession(patch: Partial<SessionSetup>): void {
-    this.set({ session: { ...this.state.session, ...patch } });
+    const current = this.state.session;
+    const next: SessionSetup = {
+      ...current,
+      ...patch,
+      personaTraits: patch.personaTraits
+        ? { ...current.personaTraits, ...patch.personaTraits }
+        : current.personaTraits,
+    };
+    this.set({
+      session: next.personaOverride
+        ? next
+        : { ...next, persona: compilePersona(next.personaTraits, next.length) },
+    });
+  }
+
+  recompilePersona(): void {
+    const session = this.state.session;
+    if (session.personaOverride) return;
+    this.set({
+      session: {
+        ...session,
+        persona: compilePersona(session.personaTraits, session.length),
+      },
+    });
   }
 
   resetSession(): void {
     const saved = this.progressFor();
     this.set({
-      session: { ...defaultSession(), persona: saved.persona },
+      session: { ...fromSaved(saved), identity: '' },
     });
   }
 
@@ -1100,7 +1171,9 @@ export class Store {
       [id]: {
         memories: [...prev.memories, ...conversational].slice(-8),
         revealed: this.state.revealed,
-        persona: this.state.session.persona || prev.persona,
+        persona: this.state.session.persona,
+        personaTraits: { ...this.state.session.personaTraits },
+        personaOverride: this.state.session.personaOverride,
         identity: this.state.session.identity || prev.identity,
         visits: prev.visits + 1,
         completedQuests: prev.completedQuests,
@@ -1359,6 +1432,7 @@ export class Store {
       canonType: choice.playerAuthored ? 'player-created' : 'branch',
       text: choice.outcome,
       createdAt,
+      source: 'quest',
     };
     // Grow the bond BEFORE snapshotting it into progress. The other order
     // persists a bond one entry behind, so the newest branch would be missing
@@ -1440,6 +1514,26 @@ export class Store {
     });
     this.persist();
     return { quest, choice, completed: true, ending };
+  }
+
+  /**
+   * Record what she just invented in free chat. Quest keeps its own writer;
+   * this one exists because improvised facts have no quest or node to hang on.
+   */
+  recordImprovisedCanon(residentId: ResidentId, facts: ImprovisedFact[]): void {
+    if (facts.length === 0) return;
+    const createdAt = Date.now();
+    const added = facts.map((fact, i) => ({
+      id: `chat:${residentId}:${createdAt}:${this.state.canonLedger.length + i}`,
+      residentId,
+      canonType: 'player-created' as CanonType,
+      text: fact.text,
+      createdAt,
+      source: 'chat' as const,
+      refCount: 0,
+    }));
+    this.set({ canonLedger: [...this.state.canonLedger, ...added].slice(-240) });
+    this.persist();
   }
 
   // ---- creator ----
