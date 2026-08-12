@@ -51,6 +51,10 @@ import {
   type PersonaTraits,
 } from '../config/persona';
 import type { ImprovisedFact } from '../chat/improvised-canon';
+import {
+  DEFAULT_KAGURA_FIGURINE_VARIANT,
+  type KaguraFigurineVariantId,
+} from '../config/figurine-products';
 
 export { COST } from '../config/economy';
 export type { Spend } from '../config/economy';
@@ -58,11 +62,16 @@ export type { PersonaTraits } from '../config/persona';
 
 export type Step =
   | 'gallery' // universe picker (outer)
+  | 'companion-teaser' // cinematic gate; companion scene has not loaded yet
   | 'arrival' // creator universe: portal intro
   | 'studio' // creator universe: pick character + generate
   | 'reveal' // creator universe: your Mate
   | 'joined' // creator universe: lineup
   | 'stage'; // companion universe: resident on the base
+
+/** Presentation layer inside the companion stage. Conversation state stays intact. */
+export type CompanionMode = 'teaser' | 'reveal' | 'showcase' | 'playground';
+export type FigurineDisplayMode = 'original' | 'premium-preview' | 'premium';
 
 export type GenMode = 'text' | 'photo';
 
@@ -254,6 +263,9 @@ export interface AppState {
   universeId: string | null;
 
   // --- companion universe ---
+  companionMode: CompanionMode;
+  figurineDisplayMode: FigurineDisplayMode;
+  kaguraFigurineVariantId: KaguraFigurineVariantId;
   residentId: ResidentId;
   session: SessionSetup;
   /** Saved-and-paid progress, keyed by resident. */
@@ -397,6 +409,9 @@ export function availableCredits(
 const initialState: AppState = {
   step: 'gallery',
   universeId: null,
+  companionMode: 'showcase',
+  figurineDisplayMode: 'original',
+  kaguraFigurineVariantId: DEFAULT_KAGURA_FIGURINE_VARIANT,
   residentId: RESIDENTS[0].id,
   session: defaultSession(),
   progress: {},

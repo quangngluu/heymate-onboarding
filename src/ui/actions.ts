@@ -1,4 +1,5 @@
 import type { SessionSetup, Step } from '../state/store';
+import type { KaguraFigurineVariantId } from '../config/figurine-products';
 
 /** Contract between the HTML overlay and the scene/app controller. */
 export interface UIActions {
@@ -7,6 +8,11 @@ export interface UIActions {
   leaveUniverse(): void;
 
   // --- companion universe ---
+  finishCompanionTeaser(): void;
+  enterPlayground(): void;
+  selectKaguraFigurineVariant(id: KaguraFigurineVariantId): void;
+  finishKaguraFigurineTransition(id: KaguraFigurineVariantId): void;
+  returnToOriginalFigurine(): void;
   selectResident(id: string): void;
   sendMessage(text: string): void;
   requestOpenChatImage(turnId: string): void;

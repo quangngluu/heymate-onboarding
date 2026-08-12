@@ -13,12 +13,16 @@ const BASE_PRESETS: Record<string, CamPreset> = {
   gallery: { pos: [0, 1.6, 7.2], target: [0, 1.1, 0], fov: 42 },
   // Desktop conversation owns the right rail. Keep her full silhouette just
   // left of it, with her feet above the bottom composer.
-  stage: { pos: [0.4, 1.5, 4.9], target: [-0.08, 0.85, 0], fov: 37 },
+  stage: { pos: [0.82, 1.5, 4.7], target: [0.48, 0.85, 0], fov: 36 },
   // Portrait. The wide framing left her a thumbnail in the corner: a phone's
   // narrow horizontal field plus a target pushed a long way left put her at the
   // edge, with the top half of the screen empty stage. This comes in closer and
   // keeps only enough left bias to clear the column her words sit in.
   'stage-portrait': { pos: [0.55, 1.38, 3.8], target: [-0.42, 0.84, 0], fov: 35 },
+  // The product rail starts at x=826 on a 1200px canvas, so the optical centre
+  // is ~413 rather than the canvas centre (600). Aim through that usable region.
+  'premium-inspect': { pos: [0.48, 1.42, 3.35], target: [0.45, 0.86, 0], fov: 32 },
+  'premium-inspect-portrait': { pos: [-0.38, 1.42, 3.08], target: [-0.12, 0.88, 0], fov: 32 },
   arrival: { pos: [0, 1.7, 9.6], target: [0, 1.35, 0], fov: 40 },
   hall: { pos: [0, 2.5, 7.4], target: [0, 1.0, -2.8], fov: 46 },
   reveal: { pos: [1.0, 1.5, 3.2], target: [-0.1, 1.05, 0], fov: 38 },
@@ -60,6 +64,12 @@ export function stagePreset(): CamPreset {
   const portrait =
     typeof window !== 'undefined' && window.matchMedia?.('(max-width: 700px)').matches;
   return portrait ? CAMERA_PRESETS['stage-portrait'] : CAMERA_PRESETS.stage;
+}
+
+export function premiumInspectPreset(): CamPreset {
+  const portrait =
+    typeof window !== 'undefined' && window.matchMedia?.('(max-width: 700px)').matches;
+  return portrait ? CAMERA_PRESETS['premium-inspect-portrait'] : CAMERA_PRESETS['premium-inspect'];
 }
 
 /** Fixed cinematic grammar for Quest Mode; no free orbit during a story beat. */

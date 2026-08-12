@@ -29,6 +29,10 @@ export class CameraRig {
   private flight: Flight | null = null;
   private controls: OrbitControls | null = null;
   private baseFov = 40;
+  private impactTime = 0;
+  private impactDuration = 0;
+  private impactStrength = 0;
+  private impactBaseTarget = new THREE.Vector3();
 
   constructor(
     private camera: THREE.PerspectiveCamera,
@@ -111,20 +115,41 @@ export class CameraRig {
     f.resolve(false);
   }
 
+  /** Short camera impulse for a pressure release or a physical stage impact. */
+  impulse(strength = 0.065, duration = 0.34): void {
+    if (this.reducedMotion) return;
+    this.impactTime = 0;
+    this.impactDuration = duration;
+    this.impactStrength = strength;
+    this.impactBaseTarget.copy(this.target);
+  }
+
   update(dt: number): void {
     const f = this.flight;
-    if (!f) return;
-    f.t = Math.min(f.t + dt / f.dur, 1);
-    const k = easeInOutCubic(f.t);
-    this.camera.position.lerpVectors(f.fromPos, f.toPos, k);
-    this.target.lerpVectors(f.fromTarget, f.toTarget, k);
-    this.camera.fov = f.fromFov + (f.toFov - f.fromFov) * k;
-    this.camera.updateProjectionMatrix();
-    this.syncLook();
-    if (f.t >= 1) {
-      this.flight = null;
-      f.resolve(true);
+    if (f) {
+      f.t = Math.min(f.t + dt / f.dur, 1);
+      const k = easeInOutCubic(f.t);
+      this.camera.position.lerpVectors(f.fromPos, f.toPos, k);
+      this.target.lerpVectors(f.fromTarget, f.toTarget, k);
+      this.camera.fov = f.fromFov + (f.toFov - f.fromFov) * k;
+      this.camera.updateProjectionMatrix();
+      if (f.t >= 1) {
+        this.flight = null;
+        f.resolve(true);
+      }
     }
+    if (this.impactTime < this.impactDuration) {
+      this.impactTime = Math.min(this.impactDuration, this.impactTime + dt);
+      const p = this.impactTime / this.impactDuration;
+      const envelope = Math.pow(1 - p, 2);
+      this.target.copy(this.impactBaseTarget);
+      this.target.y += Math.sin(p * Math.PI * 5) * this.impactStrength * envelope;
+      if (p >= 1) {
+        this.target.copy(this.impactBaseTarget);
+        this.impactDuration = 0;
+      }
+    }
+    if (f || this.impactDuration > 0) this.syncLook();
   }
 
   /** Keep OrbitControls (when enabled) and lookAt coherent with one target. */

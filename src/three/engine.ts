@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 export type UpdateFn = (dt: number, elapsed: number) => void;
 
@@ -11,6 +15,9 @@ export class Engine {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
   readonly canvas: HTMLCanvasElement;
+  private readonly composer: EffectComposer;
+  private readonly bloomPass: UnrealBloomPass;
+  private bloomEnabled = false;
 
   private updates = new Set<UpdateFn>();
   private clock = new THREE.Clock();
@@ -34,6 +41,14 @@ export class Engine {
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 80);
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    // Threshold 1 keeps the world and skin out of bloom; only HDR emissive
+    // values authored for the figurine and display rings contribute.
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.34, 0.28, 1.45);
+    this.bloomPass.enabled = false;
+    this.composer.addPass(this.bloomPass);
+    this.composer.addPass(new OutputPass());
 
     this.reducedMotion =
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -47,6 +62,11 @@ export class Engine {
     return () => this.updates.delete(fn);
   }
 
+  setBloomEnabled(enabled: boolean): void {
+    this.bloomEnabled = enabled;
+    this.bloomPass.enabled = enabled;
+  }
+
   start(): void {
     if (this.running) return;
     this.running = true;
@@ -55,7 +75,10 @@ export class Engine {
       const dt = Math.min(this.clock.getDelta(), 0.05);
       const t = this.clock.elapsedTime;
       for (const fn of this.updates) fn(dt, t);
-      this.renderer.render(this.scene, this.camera);
+      // Keep the normal showroom on the renderer's shortest path. The extra
+      // framebuffer and bloom work only belongs to the premium inspection.
+      if (this.bloomEnabled) this.composer.render(dt);
+      else this.renderer.render(this.scene, this.camera);
     };
     const loop = () => {
       if (!this.running) return;
@@ -83,6 +106,7 @@ export class Engine {
     const w = window.innerWidth;
     const h = window.innerHeight;
     this.renderer.setSize(w, h, false);
+    this.composer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -94,6 +118,8 @@ export class Engine {
     if (this.onVisibility) document.removeEventListener('visibilitychange', this.onVisibility);
     window.removeEventListener('resize', this.onResizeBound);
     this.updates.clear();
+    this.composer.dispose();
+    this.bloomPass.dispose();
     this.renderer.dispose();
   }
 }

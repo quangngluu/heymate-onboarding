@@ -6,6 +6,7 @@ import type { UIActions } from './actions';
 import { availableCredits, type AppState, type Step, type Store } from '../state/store';
 import {
   arrivalStep,
+  companionTeaserStep,
   galleryStep,
   joinedStep,
   revealStep,
@@ -228,6 +229,7 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
 
   const factories: Record<Step, (s: AppState) => StepView> = {
     gallery: () => galleryStep(actions),
+    'companion-teaser': () => companionTeaserStep(actions),
     stage: (s) => stageStep(actions, s),
     arrival: () => arrivalStep(actions),
     studio: (s) => worldformStep(actions, s),
@@ -240,9 +242,10 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
     const balance = availableCredits(state);
     walletBalance.textContent = `${balance} credit`;
     wallet.classList.toggle('is-low', balance < 20);
-    wallet.hidden = state.step !== 'stage' || !!state.activeQuestId;
+    const inPlayground = state.step === 'stage' && state.companionMode === 'playground';
+    wallet.hidden = !inPlayground || !!state.activeQuestId;
     wallet.setAttribute('aria-expanded', String(state.walletOpen));
-    questBtn.hidden = state.step !== 'stage' || !!state.activeQuestId;
+    questBtn.hidden = !inPlayground || !!state.activeQuestId;
     const waiting = !state.activeQuestId && !!store.nextQuest();
     questBtn.classList.toggle('is-active', !!state.activeQuestId);
     (questBtn.querySelector('.quest-dot') as HTMLElement).hidden = !waiting;

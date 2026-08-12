@@ -210,9 +210,9 @@ export function buildStage(
   });
 
   // Global lighting — sculptural, warm key + cool fill
-  const hemi = new THREE.HemisphereLight(0x2a313b, 0x0a0b0d, 0.85);
+  const hemi = new THREE.HemisphereLight(0x343d49, 0x0a0b0d, 1.0);
   group.add(hemi);
-  const key = new THREE.DirectionalLight(0xf3e9d5, 1.4);
+  const key = new THREE.DirectionalLight(0xf3e9d5, 1.15);
   key.position.set(3.2, 6.5, 4.5);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
@@ -222,8 +222,10 @@ export function buildStage(
   key.shadow.camera.bottom = -2.5;
   key.shadow.bias = -0.00025;
   key.shadow.normalBias = 0.02;
+  key.shadow.radius = 5;
+  key.shadow.blurSamples = 16;
   group.add(key);
-  const fill = new THREE.DirectionalLight(0x5b6b85, 0.5);
+  const fill = new THREE.DirectionalLight(0x71829b, 0.62);
   fill.position.set(-4, 3, -2);
   group.add(fill);
 

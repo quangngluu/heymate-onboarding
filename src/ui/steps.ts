@@ -34,7 +34,8 @@ import { ONBOARDING_QUESTS } from '../config/onboarding-quests';
 import { segments, segmentsUpTo } from '../chat/dialogue';
 import {
   dialogueBlocksFromSegments,
-  visualById,
+  OPEN_CHAT_VISUALS,
+  openingVisualFor,
 } from '../chat/open-chat-visuals';
 import {
   COST,
@@ -45,6 +46,10 @@ import {
 } from '../state/store';
 import { extractMemories } from '../chat/memory';
 import { endingPresentation, terminalEndingIds } from '../quest/endings';
+import {
+  KAGURA_FIGURINE_VARIANTS,
+  kaguraFigurineVariantById,
+} from '../config/figurine-products';
 
 export interface StepView {
   el: HTMLElement;
@@ -384,14 +389,13 @@ export function galleryStep(actions: UIActions): StepView {
       : `${u.factions?.length ?? 0} phe`;
     const mode = u.kind === 'companion' ? 'Trò chuyện' : 'Tạo nhân vật';
     const action = u.kind === 'companion' ? 'Chọn người để gặp' : 'Tạo Mate của anh';
-    return h(
+    const tile = h(
       'button',
       {
         class: `universe-tile universe-tile-${u.kind}`,
         'data-testid': `universe-${u.id}`,
         style: `--accent:${cssColor(u.accentColor)}`,
         'aria-label': `${u.name}. ${action}`,
-        onClick: () => actions.openUniverse(u.id),
       },
       poster,
       h(
@@ -412,7 +416,20 @@ export function galleryStep(actions: UIActions): StepView {
           h('span', { class: 'tile-action-arrow', 'aria-hidden': 'true' }, '→')
         )
       )
-    );
+    ) as HTMLButtonElement;
+    tile.addEventListener('click', () => {
+      const gallery = tile.closest('.step-gallery');
+      if (gallery?.classList.contains('is-entering')) return;
+      const rect = tile.getBoundingClientRect();
+      const scale = Math.max(window.innerWidth / rect.width, window.innerHeight / rect.height) * 1.05;
+      tile.style.setProperty('--enter-x', `${window.innerWidth / 2 - (rect.left + rect.width / 2)}px`);
+      tile.style.setProperty('--enter-y', `${window.innerHeight / 2 - (rect.top + rect.height / 2)}px`);
+      tile.style.setProperty('--enter-scale', String(scale));
+      gallery?.classList.add('is-entering');
+      tile.classList.add('is-entering');
+      window.setTimeout(() => actions.openUniverse(u.id), 520);
+    });
+    return tile;
   });
 
   const el = h(
@@ -432,6 +449,74 @@ export function galleryStep(actions: UIActions): StepView {
     )
   );
   return { el };
+}
+
+// The cinematic gate is its own step. No companion GLB, backdrop, lights or
+// sidebar are created until this video ends (or the visitor skips it).
+export function companionTeaserStep(actions: UIActions): StepView {
+  const video = h('video', {
+    class: 'stage-teaser-video',
+    src: 'assets/kagura-teaser-v2.mp4',
+    poster: 'assets/open-chat/kagura-opening-reflection.webp',
+    preload: 'auto',
+    playsinline: 'true',
+    'aria-label': 'Teaser điện ảnh của Kagura Akagane',
+  }) as HTMLVideoElement;
+  video.muted = true;
+  video.playsInline = true;
+  const play = h('button', { class: 'btn btn-primary teaser-play', hidden: true }, 'Phát teaser') as HTMLButtonElement;
+  const skip = h(
+    'button',
+    { class: 'teaser-skip', hidden: true },
+    'Bỏ qua teaser',
+    h('span', { 'aria-hidden': 'true' }, ' →')
+  ) as HTMLButtonElement;
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    video.pause();
+    actions.finishCompanionTeaser();
+  };
+  const playVideo = () => {
+    void video.play().catch(() => {
+      play.hidden = false;
+    });
+  };
+  video.addEventListener('ended', finish);
+  video.addEventListener('error', finish);
+  play.addEventListener('click', playVideo);
+  skip.addEventListener('click', finish);
+  const startTimer = window.setTimeout(playVideo, 180);
+  const skipTimer = window.setTimeout(() => {
+    skip.hidden = false;
+  }, 1800);
+  const el = h(
+    'section',
+    { class: 'step step-companion-teaser', 'aria-label': 'Teaser mở vũ trụ Kagura' },
+    h(
+      'div',
+      { class: 'stage-teaser', 'data-testid': 'kagura-teaser' },
+      h('div', { class: 'stage-teaser-vignette', 'aria-hidden': 'true' }),
+      video,
+      h(
+        'div',
+        { class: 'stage-teaser-brand' },
+        h('span', {}, 'KAGURA AKAGANE'),
+        h('small', {}, 'THE RED EDGE AWAKENS')
+      ),
+      play,
+      skip
+    )
+  );
+  return {
+    el,
+    destroy() {
+      window.clearTimeout(startTimer);
+      window.clearTimeout(skipTimer);
+      video.pause();
+    },
+  };
 }
 
 // ---------- COMPANION STAGE ----------
@@ -461,11 +546,12 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   });
 
   // --- roster ---
-  const roster = h('div', { role: 'radiogroup', 'aria-label': 'Các nhân vật', class: 'roster' });
+  const roster = h('div', { role: 'radiogroup', 'aria-label': 'Các nhân vật', class: 'roster character-screen' });
   const rosterBtns: HTMLButtonElement[] = [];
   const canonRoute = resolveCanonRoute();
   RESIDENTS.forEach((base) => {
     const r = canonViewFor(base.id, canonRoute);
+    const portrait = openingVisualFor(base.id);
     const b = h(
       'button',
       {
@@ -475,11 +561,26 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         style: `--accent:${cssColor(r.accentColor)}`,
         onClick: () => actions.selectResident(r.id),
       },
-      h('span', { class: 'dot', 'aria-hidden': 'true' }),
-      // Both spellings ship; the stylesheet decides which one is on screen, so
-      // the button's accessible name stays the full one on every width.
-      h('span', { class: 'chip-full' }, r.name),
-      h('span', { class: 'chip-short', 'aria-hidden': 'true' }, r.name.split(' ')[0])
+      h(
+        'span',
+        { class: 'roster-portrait', 'aria-hidden': 'true' },
+        h('img', { class: 'roster-world', src: portrait.src, alt: '', draggable: 'false' }),
+        h('img', {
+          class: 'roster-figure',
+          src: `assets/residents/${r.id}.webp`,
+          alt: '',
+          draggable: 'false',
+        }),
+        h('span', { class: 'roster-glow' })
+      ),
+      h(
+        'span',
+        { class: 'roster-copy' },
+        h('span', { class: 'roster-index', 'aria-hidden': 'true' }, String(rosterBtns.length + 1).padStart(2, '0')),
+        h('span', { class: 'chip-full' }, r.name),
+        h('span', { class: 'chip-short', 'aria-hidden': 'true' }, r.name.split(' ')[0]),
+        h('small', {}, r.series.split(' - ')[0])
+      )
     ) as HTMLButtonElement;
     b.setAttribute('aria-label', r.name);
     rosterBtns.push(b);
@@ -492,47 +593,129 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   // in one dock at the bottom centre, so the scene is never behind a box.
   const log = h('div', { class: 'speech-log', 'aria-live': 'polite' });
 
-  const openChatVisualCard = (visualId: string, state: AppState): HTMLElement | null => {
-    const visual = visualById(visualId);
-    if (!visual || visual.residentId !== state.residentId) return null;
-    const blocked = state.thinking || state.voicing || state.reveal !== null || !!state.activeQuestId;
-    const ask = (prompt: string) => {
-      const current = store.get();
-      if (current.thinking || current.voicing || current.reveal || current.activeQuestId) return;
-      actions.sendMessage(prompt);
-    };
-    // The frame itself now plays on the backdrop behind the name; the transcript
-    // keeps only the caption and the follow-up prompts, as a compact note.
-    return h(
-      'figure',
-      {
-        class: `open-chat-visual open-chat-visual-compact is-${visual.frame}`,
-        'data-testid': 'open-chat-visual',
-        'data-visual-id': visual.id,
-      },
-      h(
-        'figcaption',
-        { class: 'open-chat-visual-caption' },
-        h('span', { class: 'open-chat-visual-label' }, visual.label),
-        h('span', { class: 'open-chat-visual-caption-text' }, visual.caption)
-      ),
-      h(
-        'div',
-        { class: 'open-chat-visual-actions', 'aria-label': 'Hỏi tiếp về hình ảnh' },
-        ...visual.prompts.map((prompt) =>
-          h(
-            'button',
-            {
-              class: 'open-chat-visual-action',
-              disabled: blocked,
-              onClick: () => ask(prompt),
-            },
-            prompt
-          )
-        )
-      )
-    );
-  };
+  // --- cinematic hand-off: gallery camera push → teaser → thawed figurine ---
+  const teaserVideo = h('video', {
+    class: 'stage-teaser-video',
+    src: 'assets/kagura-teaser-v2.mp4',
+    poster: 'assets/open-chat/kagura-opening-reflection.webp',
+    preload: 'auto',
+    playsinline: 'true',
+    'aria-label': 'Teaser điện ảnh của Kagura Akagane',
+  }) as HTMLVideoElement;
+  teaserVideo.muted = true;
+  teaserVideo.playsInline = true;
+  const teaserPlay = h(
+    'button',
+    { class: 'btn btn-primary teaser-play', hidden: true },
+    'Phát teaser'
+  ) as HTMLButtonElement;
+  const teaserSkip = h(
+    'button',
+    { class: 'teaser-skip', hidden: true },
+    'Bỏ qua teaser',
+    h('span', { 'aria-hidden': 'true' }, ' →')
+  ) as HTMLButtonElement;
+  const teaser = h(
+    'div',
+    { class: 'stage-teaser', 'data-testid': 'kagura-teaser' },
+    h('div', { class: 'stage-teaser-vignette', 'aria-hidden': 'true' }),
+    teaserVideo,
+    h(
+      'div',
+      { class: 'stage-teaser-brand' },
+      h('span', {}, 'KAGURA AKAGANE'),
+      h('small', {}, 'THE RED EDGE AWAKENS')
+    ),
+    teaserPlay,
+    teaserSkip
+  );
+  const finalFrame = h('div', {
+    class: 'teaser-final-frame',
+    'aria-hidden': 'true',
+    style: `background-image:url('assets/kagura-teaser-v2-final.webp')`,
+  });
+  const premiumTeaserImage = h('img', {
+    class: 'premium-teaser-image',
+    src: KAGURA_FIGURINE_VARIANTS[0].transitionImageUrl,
+    alt: '',
+    draggable: 'false',
+  }) as HTMLImageElement;
+  const premiumTeaserName = h('strong', { class: 'premium-teaser-name' });
+  const premiumTeaser = h(
+    'div',
+    { class: 'premium-teaser', 'aria-hidden': 'true', 'data-testid': 'premium-teaser' },
+    h('div', { class: 'premium-teaser-visual' }, premiumTeaserImage),
+    h('div', { class: 'premium-teaser-slash slash-a', 'aria-hidden': 'true' }),
+    h('div', { class: 'premium-teaser-slash slash-b', 'aria-hidden': 'true' }),
+    h(
+      'div',
+      { class: 'premium-teaser-copy' },
+      h('span', {}, 'KAGURA · LIMITED DISPLAY'),
+      premiumTeaserName,
+      h('small', {}, 'RODIN PBR · 15 CM')
+    )
+  );
+
+  const productName = h('h2', { class: 'showcase-name' });
+  const productSeries = h('p', { class: 'showcase-series' });
+  const productHook = h('p', { class: 'showcase-hook' });
+  const productVariants = h('div', {
+    class: 'product-variants',
+    role: 'list',
+    'aria-label': 'Ba visual edition',
+  });
+  const productRail = h(
+    'aside',
+    { class: 'product-rail', 'data-testid': 'figurine-product-rail' },
+    h(
+      'div',
+      { class: 'showcase-heading' },
+      h('p', { class: 'showcase-kicker' }, 'CHARACTER SELECT · COLLECTIBLE PROTOTYPE'),
+      productName,
+      productSeries,
+      productHook
+    ),
+    h(
+      'div',
+      { class: 'product-rail-label' },
+      h('span', {}, '3 PREMIUM EDITIONS'),
+      h('span', {}, '15 CM')
+    ),
+    productVariants,
+    h(
+      'p',
+      { class: 'product-estimate' },
+      h('span', {}, 'Giá dự kiến'),
+      h('strong', {}, '6.999.000 ₫')
+    )
+  );
+
+  const pressToTalk = h(
+    'button',
+    {
+      class: 'hero-talk-prompt',
+      'data-testid': 'press-to-talk',
+      onClick: () => actions.enterPlayground(),
+    },
+    h('span', { class: 'talk-pulse', 'aria-hidden': 'true' }),
+    h('span', { class: 'talk-copy' }, h('strong', {}, 'PRESS TO TALK'), h('small', {}, 'Mở chat & voice playground'))
+  ) as HTMLButtonElement;
+  const returnOriginal = h(
+    'button',
+    {
+      class: 'return-original',
+      'data-testid': 'return-original',
+      onClick: () => actions.returnToOriginalFigurine(),
+    },
+    h('span', { 'aria-hidden': 'true' }, '←'),
+    h('span', {}, h('strong', {}, 'VỀ KAGURA ORIGINAL'), h('small', {}, 'Quay lại center base & playground'))
+  ) as HTMLButtonElement;
+
+  const thawFx = h(
+    'div',
+    { class: 'stage-thaw-fx', 'aria-hidden': 'true' },
+    h('div', { class: 'thaw-door-light' })
+  );
 
   const contextVisualCard = (turn: ChatTurn, state: AppState): HTMLElement | null => {
     const visual = turn.contextVisual;
@@ -847,6 +1030,49 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       sendBtn
     )
   );
+
+  let teaserStartTimer = 0;
+  let teaserSkipTimer = 0;
+  let teaserFinishTimer = 0;
+  let thawTimer = 0;
+  let teaserFinishing = false;
+  const clearTeaserTimers = () => {
+    window.clearTimeout(teaserStartTimer);
+    window.clearTimeout(teaserSkipTimer);
+    window.clearTimeout(teaserFinishTimer);
+  };
+  const finishTeaser = () => {
+    if (teaserFinishing) return;
+    teaserFinishing = true;
+    clearTeaserTimers();
+    teaserVideo.pause();
+    // The dedicated final-frame layer owns the mapping; fade the video without
+    // waiting so there is no black flash between the two identical silhouettes.
+    teaser.style.transition = 'none';
+    teaser.classList.add('is-ending');
+    actions.finishCompanionTeaser();
+  };
+  const playTeaser = () => {
+    if (store.get().companionMode !== 'teaser') return;
+    teaser.classList.add('is-playing');
+    teaserPlay.hidden = true;
+    void teaserVideo.play().catch(() => {
+      teaser.classList.add('needs-play');
+      teaserPlay.hidden = false;
+    });
+  };
+  teaserVideo.addEventListener('ended', finishTeaser);
+  teaserVideo.addEventListener('error', finishTeaser);
+  teaserPlay.addEventListener('click', playTeaser);
+  teaserSkip.addEventListener('click', finishTeaser);
+  if (state.companionMode === 'teaser') {
+    // Let the Three.js camera begin its push into the universe before the film
+    // takes over. The overlap masks GLB streaming without adding a loading UI.
+    teaserStartTimer = window.setTimeout(playTeaser, 780);
+    teaserSkipTimer = window.setTimeout(() => {
+      teaserSkip.hidden = false;
+    }, 2000);
+  }
   // Left is her dossier, right is her voice, bottom is what you do. The card
   // can step off the frame entirely when the visitor wants the stage clear.
   // On a phone she gets the screen and her dossier starts out of the way: one
@@ -1292,8 +1518,17 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
 
   const el = h(
     'section',
-    { class: 'step step-stage', 'aria-label': 'Gặp nhân vật' },
+    {
+      class: 'step step-stage',
+      'aria-label': 'Gặp nhân vật',
+      'data-companion-mode': state.companionMode,
+      'data-figurine-display': state.figurineDisplayMode,
+    },
     srOnlyName,
+    teaser,
+    finalFrame,
+    premiumTeaser,
+    thawFx,
     h(
       'header',
       { class: 'stage-top' },
@@ -1304,11 +1539,18 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     sessionSheet,
     questHub,
     roster,
+    productRail,
+    pressToTalk,
+    returnOriginal,
     rail,
     dock,
     saveGate,
     unlockGate
   );
+  if (state.companionMode === 'reveal') {
+    el.classList.add('is-thawing');
+    thawTimer = window.setTimeout(() => el.classList.remove('is-thawing'), 3900);
+  }
 
   const keepLatestTurnVisible = () => {
     log.scrollTop = log.scrollHeight;
@@ -1348,16 +1590,92 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     destroy() {
       watchDock.disconnect();
       window.removeEventListener('resize', onStageResize);
+      clearTeaserTimers();
+      window.clearTimeout(thawTimer);
+      teaserVideo.pause();
       stopGateCountdown();
     },
     update(s, prev) {
       const r = canonViewFor(s.residentId, canonRoute);
       const saved = s.progress[s.residentId];
       el.style.setProperty('--accent', cssColor(r.accentColor));
+      el.dataset.companionMode = s.companionMode;
+      el.dataset.figurineDisplay = s.figurineDisplayMode;
+      if (
+        s.figurineDisplayMode === 'premium-preview' &&
+        (prev.figurineDisplayMode !== 'premium-preview' ||
+          prev.kaguraFigurineVariantId !== s.kaguraFigurineVariantId)
+      ) {
+        const variant = kaguraFigurineVariantById(s.kaguraFigurineVariantId);
+        premiumTeaserImage.src = variant.transitionImageUrl;
+        premiumTeaserName.textContent = variant.label;
+        window.setTimeout(
+          () => actions.finishKaguraFigurineTransition(variant.id),
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 820
+        );
+      }
 
       if (s.residentId !== lastResident) {
         lastResident = s.residentId;
         srOnlyName.textContent = r.name;
+        productName.textContent = r.name;
+        productSeries.textContent = r.series.split(' - ')[0];
+        productHook.textContent = r.card.hook;
+        if (r.id === 'kagura') {
+          productVariants.replaceChildren(
+            ...KAGURA_FIGURINE_VARIANTS.map((variant, index) => {
+              const selected =
+                (s.figurineDisplayMode === 'premium' || s.figurineDisplayMode === 'premium-preview') &&
+                variant.id === s.kaguraFigurineVariantId;
+              return h(
+                'button',
+                {
+                  class: `product-variant${selected ? ' is-active' : ''}`,
+                  role: 'listitem',
+                  'data-variant-id': variant.id,
+                  'aria-pressed': String(selected),
+                  onClick: () => actions.selectKaguraFigurineVariant(variant.id),
+                },
+                h(
+                  'span',
+                  { class: 'product-variant-image' },
+                  h('img', { src: variant.previewUrl, alt: `${r.name} — ${variant.styleLabel}`, loading: 'eager', draggable: 'false' }),
+                  h('span', {}, String(index + 1).padStart(2, '0'))
+                ),
+                h(
+                  'span',
+                  { class: 'product-variant-copy' },
+                  h('strong', {}, variant.label),
+                  h('small', {}, `${variant.styleLabel} · ${variant.sizeLabel}`),
+                  h('b', {}, variant.priceLabel)
+                )
+              );
+            })
+          );
+        } else {
+          const editions = OPEN_CHAT_VISUALS.filter((visual) => visual.residentId === r.id);
+          productVariants.replaceChildren(
+            ...editions.map((visual, index) =>
+              h(
+                'article',
+                { class: `product-variant is-${visual.frame}`, role: 'listitem' },
+                h(
+                  'div',
+                  { class: 'product-variant-image' },
+                  h('img', { src: visual.src, alt: visual.alt, loading: 'eager', draggable: 'false' }),
+                  h('span', {}, String(index + 1).padStart(2, '0'))
+                ),
+                h(
+                  'div',
+                  { class: 'product-variant-copy' },
+                  h('strong', {}, visual.label),
+                  h('small', {}, 'VISUAL EDITION · 15 CM'),
+                  h('b', {}, '6.999.000 ₫')
+                )
+              )
+            )
+          );
+        }
         // The card carries three layers: the hook, who she is, and what the
         // user gets. Full canon stays behind the story list.
         info.replaceChildren(
@@ -1437,6 +1755,15 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           b.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
         }
       });
+      if (s.residentId === 'kagura') {
+        for (const button of productVariants.querySelectorAll<HTMLButtonElement>('.product-variant')) {
+          const active =
+            (s.figurineDisplayMode === 'premium' || s.figurineDisplayMode === 'premium-preview') &&
+            button.dataset.variantId === s.kaguraFigurineVariantId;
+          button.classList.toggle('is-active', active);
+          button.setAttribute('aria-pressed', String(active));
+        }
+      }
       // The fantasy options are per-resident, so the list is rebuilt whenever
       // the resident changes rather than filtered on every frame.
       if (bondFantasy.childElementCount === 0 || s.residentId !== lastFantasyFor) {
@@ -1597,14 +1924,30 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         lastContextVisualKey = contextVisualKey;
         // Her actions and her words look different, because they are: one is
         // the room, the other is her voice. Only the second is ever spoken.
+        // Open Chat is a live exchange, not an archive: keep only the newest
+        // turn above the composer. The full transcript remains in state for
+        // memory/model context, while Quest retains its authored sequence.
+        const chatEntries = openQuest
+          ? visibleChat.map((turn, index) => ({ turn, index }))
+          : visibleChat.length
+            ? [{ turn: visibleChat[visibleChat.length - 1], index: visibleChat.length - 1 }]
+            : [];
         log.replaceChildren(
-          ...visibleChat.flatMap((t, i) => {
+          ...chatEntries.flatMap(({ turn: t, index: i }) => {
             if (t.from !== 'resident') return [h('p', { class: 'bubble bubble-user' }, t.text)];
             const partial = s.reveal?.turn === i;
             const parts = partial ? segmentsUpTo(t.text, s.reveal!.words) : segments(t.text);
+            if (!openQuest) {
+              const line = parts.map((part) => part.text).join(' ').trim();
+              if (!line) return [];
+              const tail = partial ? ' is-typing' : '';
+              const contextCard = !partial ? contextVisualCard(t, s) : null;
+              const bubble = h('p', { class: `bubble bubble-resident${tail}` }, line);
+              return contextCard ? [bubble, contextCard] : [bubble];
+            }
             const dialogue = dialogueBlocksFromSegments(
               parts,
-              openQuest ? undefined : t.visualId,
+              undefined,
               t.visualAfterSentence ?? 2,
               !partial
             );
@@ -1613,10 +1956,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
               -1
             );
             const rendered = dialogue.flatMap((seg, k) => {
-              if (seg.kind === 'visual') {
-                const card = openChatVisualCard(seg.visualId, s);
-                return card ? [card] : [];
-              }
+              if (seg.kind === 'visual') return [];
               const tail = partial && k === lastTextIndex ? ' is-typing' : '';
               return seg.kind === 'beat'
                 ? [h('p', { class: `beat-line${tail}` }, seg.text)]

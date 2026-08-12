@@ -46,12 +46,21 @@ import { Ambience } from './audio/ambience';
 import { COST, store, type ChatTurn, type SessionSetup, type Step } from './state/store';
 import { mountUI } from './ui/overlay';
 import type { UIActions } from './ui/actions';
-import { CAMERA_PRESETS, QUEST_CAMERA_PRESETS, stagePreset } from './config/cameras';
+import {
+  CAMERA_PRESETS,
+  QUEST_CAMERA_PRESETS,
+  premiumInspectPreset,
+  stagePreset,
+} from './config/cameras';
 import { COPY } from './config/copy';
 import { factionById } from './config/factions';
 import { CHARACTERS, characterById, characterIndex } from './config/characters';
 import { universeById } from './config/universes';
 import { fnv1a } from './util/hash';
+import {
+  kaguraFigurineVariantById,
+  type KaguraFigurineVariantId,
+} from './config/figurine-products';
 
 const PLINTHS = plinthPositions(CHARACTERS.length);
 
@@ -137,6 +146,14 @@ class App implements UIActions {
   private speakTimer = 0;
   private idleTimer = 0;
   private revealTimer = 0;
+  private cryoFlash: THREE.PointLight | null = null;
+  private premiumRevealToken = 0;
+  private premiumPending: {
+    id: KaguraFigurineVariantId;
+    token: number;
+    modelReady: boolean;
+    videoReady: boolean;
+  } | null = null;
   /** Bumped whenever a newer line takes over, so a late clip stays quiet. */
   private speechToken = 0;
   /** She breaks a silence at most twice per encounter. */
@@ -151,6 +168,7 @@ class App implements UIActions {
   private portalTarget = 0.12;
   /** Height of the loaded center base's top surface (Mate stands here). */
   private centerTopY = 0.09;
+  private centerBase: THREE.Group | null = null;
   private errorTimer = 0;
 
   private conversationToken(): ConversationToken {
@@ -243,14 +261,13 @@ class App implements UIActions {
     this.engine.onUpdate((dt, t) => this.tick(dt, t));
     this.engine.start();
 
-    // Gallery costs nothing but the center base: character models are only
-    // fetched once a universe is opened.
+    // Gallery stays model-free. Even the center base waits until the visitor
+    // has crossed the cinematic gate into an actual universe.
     let booted = false;
     const off = this.engine.onUpdate(() => {
       if (booted) return;
       booted = true;
       window.setTimeout(() => {
-        this.loadCenterBase();
         this.setPlinthsVisible(false);
         document.getElementById('boot')?.classList.add('is-done');
         off();
@@ -261,7 +278,10 @@ class App implements UIActions {
       if (s.characterId !== prev.characterId || s.step !== prev.step) this.updateLiftTargets();
       this.picker.enabled =
         !s.transitioning &&
-        (s.step === 'studio' || (s.step === 'stage' && !s.activeQuestId));
+        (s.step === 'studio' ||
+          (s.step === 'stage' &&
+            (s.companionMode === 'showcase' || s.companionMode === 'playground') &&
+            !s.activeQuestId));
     });
 
     mountUI(document.getElementById('ui')!, store, this);
@@ -359,6 +379,8 @@ class App implements UIActions {
           if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).receiveShadow = true;
         });
         this.engine.scene.add(base);
+        this.centerBase = base;
+        base.visible = store.get().figurineDisplayMode !== 'premium';
         this.centerTopY = box2.max.y - box2.min.y;
         this.stage.centerPedestal.visible = false;
         this.mate?.root.position.setY(this.centerTopY);
@@ -399,6 +421,14 @@ class App implements UIActions {
     this.revealFx?.update(dt);
     this.nameplate.update(dt);
     this.backdrop.update(dt);
+    if (this.cryoFlash) {
+      this.cryoFlash.intensity *= Math.max(0, 1 - dt * 8.5);
+      if (this.cryoFlash.intensity < 0.03) {
+        this.engine.scene.remove(this.cryoFlash);
+        this.cryoFlash.dispose();
+        this.cryoFlash = null;
+      }
+    }
 
     this.portalActivation += (this.portalTarget - this.portalActivation) * Math.min(1, dt * 2.2);
     this.stage.setPortalActivation(this.portalActivation);
@@ -486,14 +516,16 @@ class App implements UIActions {
       // transcript sat in storage — the saved thread has to be picked up here,
       // not only when the visitor changes who is on the plinth.
       resetSpeechEmotion();
-      store.beginEncounter(store.get().residentId);
-      const first = canonViewFor(store.get().residentId, resolveCanonRoute());
-      this.backdrop.showStudio(first.visual.domeTop, first.visual.domeBottom, 0.8);
+      // Kagura owns the cinematic hook. Opening on another resident after the
+      // teaser made the hand-off feel like two unrelated experiences.
+      store.beginEncounter('kagura');
+      // The cinematic gate is mounted before any companion scene/model. The
+      // universe only starts streaming after the film ends or is skipped.
+      store.set({ companionMode: 'teaser', figurineDisplayMode: 'original' });
       this.setPlinthsVisible(false);
-      this.portalTarget = 0.35;
-      store.goto('stage');
-      this.openStage();
+      store.goto('companion-teaser');
     } else {
+      if (!this.centerBase) this.loadCenterBase();
       this.setPlinthsVisible(true);
       this.buildCharacters();
       store.goto('arrival');
@@ -501,7 +533,7 @@ class App implements UIActions {
     }
   }
 
-  private openStage(): void {
+  private openStage(flyCamera = true, onHeroReady?: () => void): void {
     const s = store.get();
     if (!this.residentStage) {
       this.residentStage = new WaifuStage(
@@ -513,17 +545,23 @@ class App implements UIActions {
         if (id === store.get().residentId) {
           this.residentStage!.setHero(id);
           this.applyStageAccent();
-          this.greet();
+          onHeroReady?.();
         }
         this.picker.setPickSet(this.residentStage!.pickTargets());
       });
     } else {
-      this.residentStage.setHero(s.residentId);
-      this.applyStageAccent();
+      void this.residentStage.load(s.residentId, (id) => {
+        if (id !== store.get().residentId) return;
+        this.residentStage!.setHero(id);
+        this.applyStageAccent();
+        onHeroReady?.();
+      });
     }
-    void this.rig.flyTo(stagePreset(), this.engine.reducedMotion ? 0 : 1.4).then((done) => {
-      if (done && store.get().step === 'stage') this.enableStageOrbit();
-    });
+    if (flyCamera) {
+      void this.rig.flyTo(stagePreset(), this.engine.reducedMotion ? 0 : 1.4).then((done) => {
+        if (done && store.get().step === 'stage') this.enableStageOrbit();
+      });
+    }
   }
 
   /** Let the visitor lean around her; the turntable itself is an unlock. */
@@ -591,12 +629,19 @@ class App implements UIActions {
     this.residentStage?.setAccent(r.accentColor);
     this.residentStage?.setMotes(v.moteColor, v.moteMotif);
     this.backdrop.showStudio(v.domeTop, v.domeBottom, 0.8);
-    const camPos = new THREE.Vector3(...stagePreset().pos);
-    const heroPos = new THREE.Vector3(0, 0, 0);
+    const premium = store.get().figurineDisplayMode === 'premium';
+    const cameraPreset = premium ? premiumInspectPreset() : stagePreset();
+    const camPos = new THREE.Vector3(...cameraPreset.pos);
+    const heroPos = this.residentStage?.displayFocus() ?? new THREE.Vector3(0, 0, 0);
     this.placeRims(heroPos, camPos, v.rimKey);
     this.rimB.color.setHex(v.rimFill);
     // Her display name is her given name, not the full series title.
     this.nameplate.transitionTo(r.name.split(' ')[0], r.accentColor, heroPos, camPos);
+  }
+
+  private setPremiumDisplay(enabled: boolean): void {
+    this.engine.setBloomEnabled(enabled);
+    if (this.centerBase) this.centerBase.visible = !enabled;
   }
 
   /**
@@ -1005,6 +1050,9 @@ class App implements UIActions {
     this.nameplate.hide();
     this.backdrop.hide();
     this.rimTarget = 0;
+    this.setPremiumDisplay(false);
+    this.premiumRevealToken++;
+    this.premiumPending = null;
     this.portalTarget = 0.12;
     this.setPlinthsVisible(false);
     store.leaveUniverse();
@@ -1013,17 +1061,168 @@ class App implements UIActions {
 
   // ---------- Companion actions ----------
 
+  finishCompanionTeaser(): void {
+    const s = store.get();
+    if (s.step !== 'companion-teaser' || s.companionMode !== 'teaser') return;
+    const first = canonViewFor(s.residentId, resolveCanonRoute());
+    if (!this.centerBase) this.loadCenterBase();
+    this.backdrop.showStudio(first.visual.domeTop, first.visual.domeBottom, 0.8);
+    this.portalTarget = 0.35;
+    store.set({ companionMode: 'reveal', figurineDisplayMode: 'original' });
+
+    // Prepare the close camera while the final video frame holds. The stage is
+    // mounted only when the GLB is ready, so the pod opening cannot finish
+    // behind a loading model.
+    const revealPreset = stagePreset();
+    const closePreset = {
+      ...revealPreset,
+      pos: [0, revealPreset.pos[1], revealPreset.pos[2] * 0.82] as [number, number, number],
+      target: [0, revealPreset.target[1], 0] as [number, number, number],
+      fov: Math.max(29, (revealPreset.fov ?? 37) - 5),
+    };
+    this.rig.applyPreset(closePreset);
+    let revealStarted = false;
+    let pullOutStarted = false;
+    const pullOut = () => {
+      if (pullOutStarted) return;
+      pullOutStarted = true;
+      void (async () => {
+      if (store.get().step !== 'stage' || store.get().companionMode !== 'reveal') return;
+      const done = await this.rig.flyTo(stagePreset(), this.engine.reducedMotion ? 0 : 1.25);
+      if (!done || store.get().step !== 'stage' || store.get().companionMode !== 'reveal') return;
+      store.set({ companionMode: 'showcase' });
+      this.enableStageOrbit();
+      })();
+    };
+    const beginReveal = () => {
+      if (revealStarted) return;
+      revealStarted = true;
+      store.goto('stage');
+      this.residentStage?.beginCryoReveal('kagura', pullOut);
+      window.setTimeout(() => {
+        this.rig.impulse(0.026, 0.28);
+        if (this.cryoFlash) {
+          this.engine.scene.remove(this.cryoFlash);
+          this.cryoFlash.dispose();
+        }
+        const flash = new THREE.PointLight(0xdff9ff, 5.8, 4.2, 2);
+        flash.position.set(0, this.centerTopY + 0.12, 0.42);
+        this.engine.scene.add(flash);
+        this.cryoFlash = flash;
+      }, this.engine.reducedMotion ? 0 : 760);
+      if (this.engine.reducedMotion) pullOut();
+    };
+    this.openStage(false, beginReveal);
+    // A broken asset must not trap the visitor in the held final frame forever.
+    window.setTimeout(beginReveal, 7000);
+  }
+
+  enterPlayground(): void {
+    const s = store.get();
+    if (s.step !== 'stage' || s.companionMode === 'playground' || s.figurineDisplayMode !== 'original') return;
+    store.set({ companionMode: 'playground' });
+    this.greet();
+  }
+
+  selectKaguraFigurineVariant(id: KaguraFigurineVariantId): void {
+    const s = store.get();
+    if (
+      s.step !== 'stage' ||
+      s.residentId !== 'kagura' ||
+      ((s.figurineDisplayMode === 'premium' || s.figurineDisplayMode === 'premium-preview') &&
+        s.kaguraFigurineVariantId === id)
+    ) return;
+    const variant = kaguraFigurineVariantById(id);
+    const revealToken = ++this.premiumRevealToken;
+    this.residentStage?.hideHero();
+    store.set({ kaguraFigurineVariantId: id, figurineDisplayMode: 'premium-preview' });
+    this.premiumPending = {
+      id,
+      token: revealToken,
+      modelReady: false,
+      videoReady: false,
+    };
+    void this.residentStage?.loadKaguraVariant(
+      variant.id,
+      variant.modelUrl,
+      variant.glowMapUrl,
+      () => {
+        if (!this.premiumPending || this.premiumPending.token !== revealToken) return;
+        this.premiumPending.modelReady = true;
+        this.revealPremiumWhenReady();
+      }
+    );
+    window.setTimeout(() => {
+      if (!this.premiumPending || this.premiumPending.token !== revealToken) return;
+      this.premiumPending = null;
+      store.set({ figurineDisplayMode: 'original' });
+      this.residentStage?.setHero('kagura');
+      this.flashError('Không tải được figurine premium. Đã quay lại Kagura original.');
+    }, 45000);
+    this.revealPremiumWhenReady();
+  }
+
+  finishKaguraFigurineTransition(id: KaguraFigurineVariantId): void {
+    if (!this.premiumPending || this.premiumPending.id !== id) return;
+    this.premiumPending.videoReady = true;
+    this.revealPremiumWhenReady();
+  }
+
+  private revealPremiumWhenReady(): void {
+    const pending = this.premiumPending;
+    const current = store.get();
+    if (
+      !pending ||
+      !pending.modelReady ||
+      !pending.videoReady ||
+      pending.token !== this.premiumRevealToken ||
+      current.step !== 'stage' ||
+      current.residentId !== 'kagura' ||
+      current.kaguraFigurineVariantId !== pending.id
+    ) return;
+    this.premiumPending = null;
+    store.set({ figurineDisplayMode: 'premium' });
+    this.residentStage!.setKaguraVariantHero(pending.id);
+    this.residentStage!.setPremiumInspection(true);
+    this.setPremiumDisplay(true);
+    this.applyStageAccent();
+    void this.rig.flyTo(premiumInspectPreset(), this.engine.reducedMotion ? 0 : 0.82);
+  }
+
+  returnToOriginalFigurine(): void {
+    const s = store.get();
+    if (
+      s.step !== 'stage' ||
+      s.residentId !== 'kagura' ||
+      (s.figurineDisplayMode !== 'premium' && s.figurineDisplayMode !== 'premium-preview')
+    ) return;
+    this.premiumRevealToken++;
+    this.premiumPending = null;
+    store.set({ figurineDisplayMode: 'original' });
+    this.setPremiumDisplay(false);
+    this.residentStage?.setHero('kagura');
+    void this.rig.flyTo(stagePreset(), this.engine.reducedMotion ? 0 : 0.82);
+  }
+
   selectResident(id: string): void {
     if (store.get().step !== 'stage' || store.get().residentId === id) return;
     this.controls.enabled = false;
+    this.premiumRevealToken++;
+    this.premiumPending = null;
+    this.setPremiumDisplay(false);
     this.transitionConversation();
     // Her mood does not travel to the next person on the plinth.
     resetSpeechEmotion();
+    this.residentStage?.hideHero();
     store.beginEncounter(id as ResidentId);
+    store.set({ figurineDisplayMode: 'original' });
     this.residentStage?.restoreHero();
-    this.residentStage?.setHero(id);
-    this.applyStageAccent();
-    this.greet();
+    void this.residentStage?.load(id, (loadedId) => {
+      if (loadedId !== store.get().residentId) return;
+      this.residentStage!.setHero(loadedId);
+      this.applyStageAccent();
+      if (store.get().companionMode === 'playground') this.greet();
+    });
     // Picking someone new must not leave the camera frozen.
     this.returnToFront();
     this.picker.setPickSet(this.residentStage?.pickTargets() ?? []);
@@ -1207,7 +1406,8 @@ class App implements UIActions {
     this.picker.enabled = false;
     this.ambience.stopQuestSoundscape();
     this.residentStage?.setQuestMode(false);
-    this.residentStage?.setHero(store.get().residentId);
+    const state = store.get();
+    this.residentStage?.setHero(state.residentId);
     this.applyStageAccent();
     void this.rig.flyTo(stagePreset(), this.engine.reducedMotion ? 0 : 1.1).then((done) => {
       if (done && store.get().step === 'stage' && !store.get().activeQuestId) {

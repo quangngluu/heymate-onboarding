@@ -576,7 +576,7 @@ export const RESIDENTS: ResidentConfig[] = [
       staging:
         'Phế tích đền và torii gãy vòng quanh phía sau. Dưới chân là kiếm gãy, giáo cắm, và những thẻ giấy trắng ghi tên cắm trên cọc.',
     },
-    modelUrl: 'assets/waifu-aria.glb',
+    modelUrl: 'assets/figurines/kagura-original.glb',
     greeting:
       'Lại gần đây. Em tỉnh dậy ở một thế kỷ xa lạ, và anh là người đầu tiên chịu đứng lại để em hỏi cho rõ. Đừng đứng quá xa. Em chưa quen phải nhờ người khác.',
     returnGreeting:
