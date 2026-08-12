@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import handler from '../../api/chat';
 
 const originalKey = process.env.DEEPSEEK_API_KEY;
+const originalPersonaSeed = process.env.PERSONA_SEED;
 
-function request(): Request {
+function request(overrides: Record<string, unknown> = {}): Request {
   return new Request('http://local/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -23,6 +24,7 @@ function request(): Request {
       questHistory: [],
       message: 'Nói tiếp đi.',
       route: 'sao',
+      ...overrides,
     }),
   });
 }
@@ -227,5 +229,77 @@ describe('chat addressing repair ladder', () => {
     const response = await handler(request());
     expect(response.status).toBe(502);
     expect(await response.json()).toEqual({ error: 'upstream', status: 429 });
+  });
+});
+
+// The state trailer is mandatory on every Open Chat turn, so every Open Chat
+// turn has to be given room to write it. These numbers are stated literally
+// rather than rebuilt from MAX_TOKENS + the allowance constants: a test that
+// recomputes the value it is checking agrees with any change made to those
+// constants, including a mistaken one. Spelled out, a change has to come here
+// and be justified.
+//
+// Base for `length: 'natural'` is 220.
+//   authored path: 220 + OPEN_CHAT_STATE_ALLOWANCE (80)  = 300
+//   seed path:     220 + SEED_STATE_ALLOWANCE     (400)  = 620
+describe('Open Chat state-line token allowance', () => {
+  beforeEach(() => {
+    process.env.DEEPSEEK_API_KEY = 'test-only';
+    delete process.env.PERSONA_SEED;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    if (originalKey === undefined) delete process.env.DEEPSEEK_API_KEY;
+    else process.env.DEEPSEEK_API_KEY = originalKey;
+    if (originalPersonaSeed === undefined) delete process.env.PERSONA_SEED;
+    else process.env.PERSONA_SEED = originalPersonaSeed;
+  });
+
+  async function maxTokensFor(overrides: Record<string, unknown>): Promise<number> {
+    const fetchMock = vi.fn().mockResolvedValue(upstream('Em vẫn nghe anh.'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await handler(request(overrides));
+    expect(response.status).toBe(200);
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    return (JSON.parse(String(init.body)) as { max_tokens: number }).max_tokens;
+  }
+
+  it('gives an idle authored turn the same room as a spoken one', async () => {
+    // Idle turns used to be denied the allowance while still being asked for
+    // the trailer, so their rapport update had nowhere to go. This is the only
+    // behaviour change on the default path, and it ships with PERSONA_SEED
+    // unset — hence pinned here.
+    expect(await maxTokensFor({ idle: true })).toBe(300);
+  });
+
+  it('keeps the spoken authored turn at its existing allowance', async () => {
+    expect(await maxTokensFor({ idle: false })).toBe(300);
+  });
+
+  it('charges Quest nothing for a trailer it never asks for', async () => {
+    expect(await maxTokensFor({ mode: 'quest', residentId: 'rin' })).toBe(220);
+  });
+
+  it('gives the seed path its own larger allowance, spoken and idle alike', async () => {
+    process.env.PERSONA_SEED = 'on';
+    expect(await maxTokensFor({ residentId: 'kagura', idle: false })).toBe(620);
+    expect(await maxTokensFor({ residentId: 'kagura', idle: true })).toBe(620);
+  });
+
+  it('does not widen the allowance for a resident that has no seed', async () => {
+    // The flag alone must not move the authored path. `rin` has no seed yet, so
+    // `useSeed` stays false and the 80-token allowance still applies.
+    process.env.PERSONA_SEED = 'on';
+    expect(await maxTokensFor({ residentId: 'rin' })).toBe(300);
+  });
+
+  it('leaves the authored allowance in place when the flag is unset', async () => {
+    // Same resident, same request, flag off: the seed allowance is reached only
+    // through the flag, never through the resident.
+    expect(await maxTokensFor({ residentId: 'kagura' })).toBe(300);
   });
 });
