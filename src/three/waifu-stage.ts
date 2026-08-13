@@ -148,8 +148,6 @@ export class WaifuStage {
   private premiumKey: THREE.SpotLight;
   private premiumFill: THREE.SpotLight;
   private cryoPod = new THREE.Group();
-  private cryoDoorLeft = new THREE.Group();
-  private cryoDoorRight = new THREE.Group();
   private cryoInnerLight: THREE.PointLight;
   private cryoSmoke: THREE.Points;
   private cryoSmokeMaterial: THREE.ShaderMaterial;
@@ -272,59 +270,32 @@ export class WaifuStage {
       emissive: 0x07131b,
       emissiveIntensity: 0.7,
     });
-    const podGlass = new THREE.MeshPhysicalMaterial({
-      color: 0xb8e8f4,
-      metalness: 0.08,
-      roughness: 0.18,
-      transparent: true,
-      opacity: 0.19,
-      transmission: 0.22,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    const podBack = new THREE.Mesh(new THREE.BoxGeometry(1.56, 1.92, 0.08), podMetal);
-    podBack.position.set(0, baseTopY + 0.96, -0.42);
+    // Open lit niche, not a closed capsule: a recessed back wall, an overhead
+    // hood and a floor lip she thaws out of. No side rails or glass doors —
+    // those sat at her sides and in front of her and sliced through the
+    // sword-and-flame silhouette. The thaw is now carried by the inner light
+    // blooming and the cold smoke clearing, not by doors swinging open.
+    const podBack = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.98, 0.08), podMetal);
+    podBack.position.set(0, baseTopY + 0.99, -0.72);
     this.cryoPod.add(podBack);
-    for (const x of [-0.83, 0.83]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.13, 2.08, 0.18), podMetal);
-      rail.position.set(x, baseTopY + 0.98, -0.14);
-      this.cryoPod.add(rail);
-    }
-    const canopy = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.17, 0.5), podMetal);
-    canopy.position.set(0, baseTopY + 2.01, -0.15);
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 0.6), podMetal);
+    canopy.position.set(0, baseTopY + 2.04, -0.45);
     this.cryoPod.add(canopy);
-    const threshold = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.18, 0.62), podMetal);
-    threshold.position.set(0, baseTopY + 0.04, -0.08);
+    const threshold = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 0.66), podMetal);
+    threshold.position.set(0, baseTopY + 0.04, -0.2);
     this.cryoPod.add(threshold);
     const coldStripMaterial = new THREE.MeshBasicMaterial({ color: 0x9be9ff, toneMapped: false });
-    for (const x of [-0.73, 0.73]) {
-      const strip = new THREE.Mesh(new THREE.BoxGeometry(0.018, 1.68, 0.025), coldStripMaterial);
-      strip.position.set(x, baseTopY + 1.02, 0.085);
+    for (const x of [-1.1, 1.1]) {
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(0.02, 1.72, 0.025), coldStripMaterial);
+      strip.position.set(x, baseTopY + 1.05, -0.58);
       this.cryoPod.add(strip);
     }
     const ventMaterial = new THREE.MeshStandardMaterial({ color: 0x050709, metalness: 0.8, roughness: 0.36 });
     for (let i = -2; i <= 2; i++) {
-      const vent = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.025, 0.09), ventMaterial);
-      vent.position.set(i * 0.24, baseTopY + 1.99, 0.13);
+      const vent = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.025, 0.09), ventMaterial);
+      vent.position.set(i * 0.3, baseTopY + 2.0, -0.28);
       this.cryoPod.add(vent);
     }
-    const makeDoor = (side: -1 | 1): THREE.Group => {
-      const hinge = new THREE.Group();
-      hinge.position.set(side * 0.77, baseTopY + 1.02, 0.03);
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.72, 1.76, 0.035), podGlass);
-      panel.position.x = side * -0.36;
-      hinge.add(panel);
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.042, 1.84, 0.055), podMetal);
-      edge.position.x = side * -0.7;
-      hinge.add(edge);
-      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.34, 0.07), coldStripMaterial);
-      handle.position.set(side * -0.08, 0, 0.045);
-      hinge.add(handle);
-      this.cryoPod.add(hinge);
-      return hinge;
-    };
-    this.cryoDoorLeft = makeDoor(-1);
-    this.cryoDoorRight = makeDoor(1);
     this.cryoPod.visible = false;
     scene.add(this.cryoPod);
     this.cryoInnerLight = new THREE.PointLight(0xbfefff, 0, 4.3, 1.7);
@@ -678,8 +649,6 @@ export class WaifuStage {
     this.cryoSpawnBudget = 0;
     this.cryoPod.visible = true;
     this.cryoSmoke.visible = true;
-    this.cryoDoorLeft.rotation.y = 0;
-    this.cryoDoorRight.rotation.y = 0;
     this.cryoInnerLight.intensity = 0.35;
     entry.group.visible = true;
     entry.group.position.set(0, this.heroY, -0.03);
@@ -914,12 +883,10 @@ export class WaifuStage {
     if (this.cryoRevealTime >= 0) {
       this.cryoRevealTime += dt;
       const p = this.cryoRevealTime;
-      // The mapped final video frame clears first; the audience still sees the
-      // pod closed for one beat before the two doors release.
-      const doorP = THREE.MathUtils.smoothstep(p, 0.62, 1.38);
-      this.cryoDoorLeft.rotation.y = doorP * -1.38;
-      this.cryoDoorRight.rotation.y = doorP * 1.38;
-      this.cryoInnerLight.intensity = p < 0.62 ? 0.35 : Math.max(0, 2.8 * (1 - Math.max(0, p - 1.35) / 1.8));
+      // The mapped final video frame clears first; the audience holds on the
+      // smoke-filled niche for one beat, then the inner light blooms and the
+      // cold smoke clears to reveal her standing in it.
+      this.cryoInnerLight.intensity = p < 0.4 ? 0.35 : Math.max(0, 2.8 * (1 - Math.max(0, p - 1.35) / 1.8));
       if (p > 0.72 && p < 1.9) {
         this.cryoSpawnBudget += dt * (p < 1.22 ? 138 : 62);
         const spawnCount = Math.floor(this.cryoSpawnBudget);
