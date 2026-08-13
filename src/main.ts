@@ -35,6 +35,7 @@ import {
 } from './chat/open-chat-visuals';
 import { OpenChatVisualRuntime } from './chat/open-chat-visual-runtime';
 import type { ResidentId } from './config/residents';
+import { residentById } from './config/residents';
 import { canonViewFor } from './config/canon-view';
 import { resolveCanonRoute } from './config/canon-route';
 import {
@@ -546,7 +547,9 @@ class App implements UIActions {
       // teaser made the hand-off feel like two unrelated experiences.
       store.beginEncounter('kagura');
       // The cinematic gate is mounted before any companion scene/model. The
-      // universe only starts streaming after the film ends or is skipped.
+      // full scene is still built only after the film ends, but the hero GLB is
+      // warmed into cache at low priority during playback so the reveal never
+      // waits on the download (and the 7s failsafe can't fire on an empty stage).
       this.galleryPortal.setVisible(false);
       store.set({
         companionMode: 'teaser',
@@ -555,7 +558,9 @@ class App implements UIActions {
       });
       this.setPlinthsVisible(false);
       store.goto('companion-teaser');
-      if (!shouldPlayTeaser(store.get().waifuUniverseEntered)) {
+      if (shouldPlayTeaser(store.get().waifuUniverseEntered)) {
+        this.prefetchModel(residentById('kagura').modelUrl);
+      } else {
         this.finishCompanionTeaser();
       }
     } else {
@@ -1097,6 +1102,25 @@ class App implements UIActions {
   }
 
   // ---------- Companion actions ----------
+
+  /**
+   * Warm a model into the browser cache without building any scene.
+   *
+   * `rel="prefetch"` sits below the playing teaser's range requests, so the
+   * film keeps bandwidth priority and the GLB fills the idle remainder of the
+   * ~15s window. By the time the film ends and `openStage` asks for the same
+   * URL, the bytes are local and `onHeroReady` fires without a download stall.
+   * Guarded so re-entering the teaser never stacks duplicate links.
+   */
+  private prefetchModel(url: string): void {
+    const existing = document.head.querySelector(`link[rel="prefetch"][href="${url}"]`);
+    if (existing) return;
+    const link = document.createElement('link');
+    link.rel = 'prefetch';
+    link.as = 'fetch';
+    link.href = url;
+    document.head.append(link);
+  }
 
   finishCompanionTeaser(): void {
     const s = store.get();
