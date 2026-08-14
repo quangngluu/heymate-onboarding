@@ -235,17 +235,21 @@ export class WaifuStage {
     this.glow.position.set(0, baseTopY + 0.35, 0.3);
     scene.add(this.glow);
 
-    // Three-point product lighting. Key sits 45 degrees high camera-left;
-    // fill is roughly half its strength; rim separates the black silhouette.
-    this.upLight = new THREE.SpotLight(0xffead8, 2.1, 7, Math.PI / 3.7, 0.9, 1.25);
-    this.upLightFill = new THREE.SpotLight(0xdce9ff, 1.0, 6.5, Math.PI / 3.45, 0.94, 1.3);
-    this.rimLight = new THREE.SpotLight(0xff5548, 1.65, 6.5, Math.PI / 3.8, 0.92, 1.4);
-    this.upLight.position.set(-1.7, baseTopY + 2.55, 2.15);
-    this.upLightFill.position.set(1.75, baseTopY + 1.75, 1.8);
-    this.rimLight.position.set(0.75, baseTopY + 2.15, -1.85);
-    this.upLight.target.position.set(-0.08, baseTopY + 0.92, 0);
-    this.upLightFill.target.position.set(0.12, baseTopY + 0.86, 0);
-    this.rimLight.target.position.set(0, baseTopY + 1.02, 0);
+    // Rim-led hero rig for a near-black character floating in the void. A
+    // single high top-down wash lost the black armour and hair against the
+    // dark. Instead: a modest warm key rakes the front planes from 3/4 camera-
+    // left to reveal the face and chest, and two strong back rims — cool
+    // camera-left, warm-orange camera-right — trace the whole silhouette so the
+    // sword-and-flame outline reads as clean lit edges, not a flat top wash.
+    this.upLight = new THREE.SpotLight(0xffe9d2, 5.6, 9, Math.PI / 3.4, 0.72, 1.0);
+    this.upLightFill = new THREE.SpotLight(0x9fd8ff, 4.7, 9, Math.PI / 3.7, 0.82, 1.2);
+    this.rimLight = new THREE.SpotLight(0xff6a40, 4.6, 9, Math.PI / 3.7, 0.82, 1.2);
+    this.upLight.position.set(-1.45, baseTopY + 1.62, 2.65);
+    this.upLightFill.position.set(-1.9, baseTopY + 2.05, -1.75);
+    this.rimLight.position.set(1.95, baseTopY + 2.05, -1.7);
+    this.upLight.target.position.set(-0.05, baseTopY + 0.98, 0);
+    this.upLightFill.target.position.set(-0.1, baseTopY + 1.05, 0);
+    this.rimLight.target.position.set(0.1, baseTopY + 1.0, 0);
     for (const light of [this.upLight, this.upLightFill, this.rimLight]) {
       light.castShadow = false;
       scene.add(light, light.target);
@@ -458,12 +462,12 @@ export class WaifuStage {
     this.ring.position.y = y + 0.01;
     this.premiumPedestal.position.y = y - 0.06;
     this.glow.position.y = y + 0.35;
-    this.upLight.position.y = y + 2.55;
-    this.upLight.target.position.y = y + 0.92;
-    this.upLightFill.position.y = y + 1.75;
-    this.upLightFill.target.position.y = y + 0.86;
-    this.rimLight.position.y = y + 2.15;
-    this.rimLight.target.position.y = y + 1.02;
+    this.upLight.position.y = y + 1.62;
+    this.upLight.target.position.y = y + 0.98;
+    this.upLightFill.position.y = y + 2.05;
+    this.upLightFill.target.position.y = y + 1.05;
+    this.rimLight.position.y = y + 2.05;
+    this.rimLight.target.position.y = y + 1.0;
     const hero = this.heroId && this.entries.get(this.heroId);
     if (hero) hero.group.position.y = y;
     if (this.questRig) this.questRig.position.y = y;
@@ -587,7 +591,7 @@ export class WaifuStage {
     for (const material of entry.materials) {
       const pbr = material as THREE.MeshStandardMaterial;
       if (!pbr.isMeshStandardMaterial) continue;
-      pbr.envMapIntensity = 1.05;
+      pbr.envMapIntensity = 1.75;
       pbr.normalScale?.setScalar(1.06);
       pbr.roughness = Math.min(pbr.roughness, 0.88);
       // Rodin's Shaded export carries the authored red-energy mask. Using it

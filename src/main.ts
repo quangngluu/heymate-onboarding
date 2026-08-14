@@ -45,7 +45,7 @@ import {
 } from './config/quests';
 import { QuestVisualRuntime } from './quest/visual-runtime';
 import { Ambience } from './audio/ambience';
-import { COST, store, type ChatTurn, type SessionSetup, type Step } from './state/store';
+import { COST, store, type AppState, type ChatTurn, type SessionSetup, type Step } from './state/store';
 import { mountUI } from './ui/overlay';
 import type { UIActions } from './ui/actions';
 import {
@@ -287,6 +287,7 @@ class App implements UIActions {
 
     store.subscribe((s, prev) => {
       if (s.characterId !== prev.characterId || s.step !== prev.step) this.updateLiftTargets();
+      this.applyHeroStaging(s);
       this.galleryPortal.setVisible(s.step === 'gallery');
       this.picker.enabled =
         !s.transitioning &&
@@ -668,7 +669,7 @@ class App implements UIActions {
     const v = r.visual;
     this.residentStage?.setAccent(r.accentColor);
     this.residentStage?.setMotes(v.moteColor, v.moteMotif);
-    this.backdrop.showStudio(v.domeTop, v.domeBottom, 0.8);
+    this.showHeroVoidDome(v.domeTop, v.domeBottom);
     const premium = store.get().figurineDisplayMode === 'premium';
     const cameraPreset = premium ? premiumInspectPreset() : stagePreset();
     const camPos = new THREE.Vector3(...cameraPreset.pos);
@@ -682,6 +683,34 @@ class App implements UIActions {
   private setPremiumDisplay(enabled: boolean): void {
     this.engine.setBloomEnabled(enabled);
     if (this.centerBase) this.centerBase.visible = !enabled;
+  }
+
+  /**
+   * Float the Mate in the void for her hero moment. Hiding the ground disc and
+   * the white plinth leaves her suspended in the smoke sky, which the rim-led
+   * rig then carves her out of. Scoped to the waifu stage once she is revealed;
+   * every other step keeps its floor so the room still reads as a room, and
+   * premium/playground keep owning the plinth in their own paths.
+   */
+  /**
+   * The Mate's hero backdrop: her canon dome colours crushed toward a dark
+   * atmospheric void so she reads as floating in her own smoke sky, not
+   * standing in a lit grey room. Dark enough that the back rims trace her
+   * silhouette; the boosted envMapIntensity keeps the black armour reflective.
+   */
+  private showHeroVoidDome(top: number, bottom: number): void {
+    const voidTop = new THREE.Color(top).multiplyScalar(0.26).getHex();
+    const voidBottom = new THREE.Color(bottom).multiplyScalar(0.44).getHex();
+    this.backdrop.showStudio(voidTop, voidBottom, 1.2);
+  }
+
+  private applyHeroStaging(s: AppState): void {
+    const inWaifuHero =
+      s.step === 'stage' &&
+      s.universeId === 'waifu-universe' &&
+      (s.companionMode === 'reveal' || s.companionMode === 'showcase');
+    this.stage.floor.visible = !inWaifuHero;
+    if (inWaifuHero && this.centerBase) this.centerBase.visible = false;
   }
 
   /**
@@ -1127,7 +1156,7 @@ class App implements UIActions {
     if (s.step !== 'companion-teaser' || s.companionMode !== 'teaser') return;
     const first = canonViewFor(s.residentId, resolveCanonRoute());
     if (!this.centerBase) this.loadCenterBase();
-    this.backdrop.showStudio(first.visual.domeTop, first.visual.domeBottom, 0.8);
+    this.showHeroVoidDome(first.visual.domeTop, first.visual.domeBottom);
     this.portalTarget = 0.35;
     store.set({ companionMode: 'reveal', figurineDisplayMode: 'original' });
 

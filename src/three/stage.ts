@@ -13,6 +13,9 @@ export interface StageHandles {
   group: THREE.Group;
   skyline: THREE.Group;
   portal: THREE.Group;
+  /** Ground disc, rim and holo rings, grouped so a hero moment can float the
+   *  Mate in the void by hiding the floor without disturbing the rest. */
+  floor: THREE.Group;
   /** Placeholder center pedestal; hidden once the portal-base GLB loads. */
   centerPedestal: THREE.Mesh;
   plinths: THREE.Mesh[];
@@ -47,6 +50,11 @@ export function buildStage(
   const group = new THREE.Group();
   scene.add(group);
 
+  // Floor as one group so a hero moment can hide it wholesale (float the Mate
+  // in the void) and restore it without touching plinths, portal or skyline.
+  const floor = new THREE.Group();
+  group.add(floor);
+
   // Ground: a compact glossy stage disc, small enough that the faction
   // panorama's lower hemisphere stays visible beyond it, reflective enough
   // to pick up the environment.
@@ -56,14 +64,14 @@ export function buildStage(
   );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
-  group.add(ground);
+  floor.add(ground);
   const groundRim = new THREE.Mesh(
     new THREE.TorusGeometry(9.5, 0.03, 8, 96),
     new THREE.MeshBasicMaterial({ color: env.coreColor, transparent: true, opacity: 0.18 })
   );
   groundRim.rotation.x = -Math.PI / 2;
   groundRim.position.y = 0.01;
-  group.add(groundRim);
+  floor.add(groundRim);
 
   // Concentric holo rings around the center pedestal (restrained)
   for (const [r, opacity] of [
@@ -82,7 +90,7 @@ export function buildStage(
     );
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.005;
-    group.add(ring);
+    floor.add(ring);
   }
 
   // Skyline silhouettes with sparse emissive strips (placeholder city;
@@ -260,6 +268,7 @@ export function buildStage(
     group,
     skyline,
     portal,
+    floor,
     centerPedestal: centerPed,
     plinths,
     plinthLights,
