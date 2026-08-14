@@ -47,6 +47,13 @@ import {
 import { extractMemories } from '../chat/memory';
 import { endingPresentation, terminalEndingIds } from '../quest/endings';
 import {
+  endEviCall,
+  isEviCallConfigured,
+  startEviCall,
+  subscribeEviCall,
+  type EviCallState,
+} from '../chat/evi-call';
+import {
   KAGURA_FIGURINE_VARIANTS,
   kaguraFigurineVariantById,
 } from '../config/figurine-products';
@@ -361,104 +368,158 @@ export function createPersonaBuilder(
 // ---------- GALLERY (outer: pick a universe) ----------
 
 export function galleryStep(actions: UIActions): StepView {
-  const tiles = visibleUniverses().map((u) => {
-    const preview = u.galleryPreviews?.[0] ?? (u.posterUrl ? { url: u.posterUrl, label: u.name } : null);
-    const poster = h('div', {
-      class: 'tile-poster is-single',
-      style: `--accent:${cssColor(u.accentColor)}`,
-      'aria-hidden': 'true',
-    });
-    if (preview) {
-      const img = h('img', { alt: '', src: preview.url, draggable: 'false' }) as HTMLImageElement;
-      img.addEventListener('error', () => img.remove(), { once: true });
-      poster.append(h('span', { class: 'tile-preview tile-preview-1' }, img));
-    }
-    const tile = h(
-      'button',
-      {
-        class: `universe-tile universe-tile-${u.kind}`,
-        'data-testid': `universe-${u.id}`,
-        style: `--accent:${cssColor(u.accentColor)}`,
-        'aria-label': u.name,
-      },
-      poster,
-      h('span', { class: 'tile-name' }, u.name)
-    ) as HTMLButtonElement;
-    tile.addEventListener('click', () => actions.openUniverse(u.id));
-    return tile;
-  });
+  const universe = visibleUniverses()[0];
+  const enter = h(
+    'button',
+    {
+      class: 'btn btn-primary universe-enter-button',
+      'data-testid': `universe-${universe.id}`,
+      style: `--accent:${cssColor(universe.accentColor)}`,
+      'aria-label': `Enter ${universe.name}`,
+    },
+    'ENTER UNIVERSE'
+  ) as HTMLButtonElement;
+  enter.addEventListener('click', () => actions.openUniverse(universe.id));
 
   const el = h(
     'section',
-    { class: 'step step-gallery', 'aria-label': 'Chọn một vũ trụ' },
-    h(
-      'div',
-      { class: 'gallery-wrap' },
-      h(
-        'header',
-        { class: 'gallery-intro' },
-        h('p', { class: 'kicker' }, COPY.gallery.kicker),
-        h('h1', { class: 'headline' }, COPY.gallery.headline),
-        h('p', { class: 'subline' }, COPY.gallery.subline)
-      ),
-      h('div', { class: 'universe-grid' }, ...tiles)
-    )
+    { class: 'step step-gallery', 'aria-label': 'Enter Universe' },
+    h('div', { class: 'universe-entry' }, enter)
   );
   return { el };
 }
 
-// The cinematic gate is its own step. No companion GLB, backdrop, lights or
-// sidebar are created until this video ends (or the visitor skips it).
+// The cinematic gate owns the UI while the live 3D desk renders underneath.
+// The last clip dissolves into that actual scene before the stage UI mounts.
 export function companionTeaserStep(actions: UIActions): StepView {
-  const video = h('video', {
-    class: 'stage-teaser-video',
-    src: 'assets/kagura-teaser-v2.mp4',
-    poster: 'assets/open-chat/kagura-opening-reflection.webp',
-    preload: 'auto',
-    playsinline: 'true',
-    'aria-label': 'Teaser điện ảnh của Kagura Akagane',
-  }) as HTMLVideoElement;
-  video.muted = true;
-  video.playsInline = true;
+  const segments = [
+    {
+      id: 'office-to-eye',
+      src: '/assets/teaser/office-to-eye-v3.mp4',
+      poster: '/assets/stage/office-entry-empty-landscape.webp',
+    },
+    {
+      id: 'main-teaser',
+      src: '/assets/kagura-teaser-v2.mp4',
+      poster: '/assets/open-chat/kagura-opening-reflection.webp',
+    },
+    {
+      id: 'world-lights-up',
+      src: '/assets/teaser/world-lights-up.mp4',
+      poster: '/assets/kagura-teaser-v2-final.webp',
+    },
+  ] as const;
+  const videos = segments.map((segment, index) => {
+    const video = h('video', {
+      class: `stage-teaser-video${index === 0 ? ' is-entry-segment' : ''}`,
+      src: segment.src,
+      poster: segment.poster,
+      preload: 'auto',
+      playsinline: 'true',
+      'data-teaser-segment': segment.id,
+      'aria-hidden': String(index !== 0),
+    }) as HTMLVideoElement;
+    video.muted = true;
+    video.playsInline = true;
+    return video;
+  });
   const play = h('button', { class: 'btn btn-primary teaser-play', hidden: true }, 'Phát teaser') as HTMLButtonElement;
+  const lastIndex = videos.length - 1;
+  const handoffDurationMs = 720;
+  const handoffLeadSeconds = 1.05;
   let finished = false;
+  let activeIndex = -1;
+  let handoffStarted = false;
+  let handoffStartedAt = 0;
+  let handoffTimer = 0;
   const finish = () => {
     if (finished) return;
     finished = true;
-    video.pause();
+    for (const video of videos) video.pause();
     actions.finishCompanionTeaser();
   };
   const playVideo = () => {
-    void video.play().catch(() => {
+    if (activeIndex < 0) return;
+    void videos[activeIndex].play().catch(() => {
       play.hidden = false;
     });
   };
-  video.addEventListener('ended', finish);
-  video.addEventListener('error', finish);
+  const activate = (index: number) => {
+    if (finished) return;
+    activeIndex = index;
+    teaser.classList.add('is-playing');
+    videos.forEach((video, videoIndex) => {
+      const active = videoIndex === index;
+      video.classList.toggle('is-active', active);
+      video.setAttribute('aria-hidden', String(!active));
+      if (!active) video.pause();
+    });
+    const next = videos[index];
+    next.currentTime = 0;
+    play.hidden = true;
+    playVideo();
+  };
+  const advance = (index: number) => {
+    if (finished || index !== activeIndex) return;
+    if (index + 1 < videos.length) {
+      activate(index + 1);
+      return;
+    }
+    if (handoffStarted) {
+      const elapsed = performance.now() - handoffStartedAt;
+      // Keep the transparent gate mounted until the dissolve is certainly
+      // complete. Slow `timeupdate` cadence must never cause a last-frame jump.
+      handoffTimer = window.setTimeout(finish, Math.max(80, handoffDurationMs - elapsed + 40));
+    } else if (startHandoff()) {
+      handoffTimer = window.setTimeout(finish, handoffDurationMs + 40);
+    } else {
+      finish();
+    }
+  };
+  const startHandoff = () => {
+    if (handoffStarted || activeIndex !== lastIndex) return handoffStarted;
+    if (document.documentElement.dataset.deskHeroReady !== 'true') return false;
+    handoffStarted = true;
+    handoffStartedAt = performance.now();
+    teaser.classList.add('is-handing-off');
+    return true;
+  };
+  videos.forEach((video, index) => {
+    video.addEventListener('ended', () => advance(index));
+    video.addEventListener('error', () => advance(index));
+    if (index === lastIndex) {
+      video.addEventListener('timeupdate', () => {
+        if (video.duration - video.currentTime <= handoffLeadSeconds) startHandoff();
+      });
+    }
+  });
   play.addEventListener('click', playVideo);
-  const startTimer = window.setTimeout(playVideo, 180);
+  const teaser = h(
+    'div',
+    { class: 'stage-teaser', 'data-testid': 'kagura-teaser' },
+    h('div', { class: 'stage-teaser-vignette', 'aria-hidden': 'true' }),
+    ...videos,
+    h(
+      'div',
+      { class: 'stage-teaser-brand' },
+      h('span', {}, 'KAGURA AKAGANE'),
+      h('small', {}, 'THE RED EDGE AWAKENS')
+    ),
+    play
+  );
   const el = h(
     'section',
     { class: 'step step-companion-teaser', 'aria-label': 'Teaser mở vũ trụ Kagura' },
-    h(
-      'div',
-      { class: 'stage-teaser', 'data-testid': 'kagura-teaser' },
-      h('div', { class: 'stage-teaser-vignette', 'aria-hidden': 'true' }),
-      video,
-      h(
-        'div',
-        { class: 'stage-teaser-brand' },
-        h('span', {}, 'KAGURA AKAGANE'),
-        h('small', {}, 'THE RED EDGE AWAKENS')
-      ),
-      play
-    )
+    teaser
   );
+  const blackoutMs = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 360;
+  const startTimer = window.setTimeout(() => activate(0), blackoutMs);
   return {
     el,
     destroy() {
       window.clearTimeout(startTimer);
-      video.pause();
+      window.clearTimeout(handoffTimer);
+      for (const video of videos) video.pause();
     },
   };
 }
@@ -614,12 +675,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h('span', {}, h('strong', {}, 'VỀ KAGURA ORIGINAL'), h('small', {}, 'Quay lại center base & playground'))
   ) as HTMLButtonElement;
 
-  const thawFx = h(
-    'div',
-    { class: 'stage-thaw-fx', 'aria-hidden': 'true' },
-    h('div', { class: 'thaw-door-light' })
-  );
-
   const contextVisualCard = (turn: ChatTurn, state: AppState): HTMLElement | null => {
     const visual = turn.contextVisual;
     if (!turn.id || !visual) return null;
@@ -753,6 +808,18 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h('span', { class: 'mic-glyph', 'aria-hidden': 'true' }, '\u25cf'),
     COPY.stage.voiceChat
   ) as HTMLButtonElement;
+  const eviConfigured = isEviCallConfigured();
+  const eviCallChip = h(
+    'button',
+    {
+      class: 'dock-chip evi-call-start',
+      hidden: true,
+      'aria-label': 'Start an English voice call with Rin',
+      onClick: () => void startEviCall(),
+    },
+    h('span', { class: 'evi-call-glyph', 'aria-hidden': 'true' }, '●'),
+    'Call Rin'
+  ) as HTMLButtonElement;
 
   // Desktop keeps the labelled chips. On a phone the same secondary actions
   // sit behind one small control beside the composer, so the message stays
@@ -803,7 +870,28 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     ),
     COPY.stage.voiceChat
   ) as HTMLButtonElement;
-  const mobileToolsMenu = h('div', { class: 'mobile-tools-menu', hidden: true }, mobileQuestBtn, mobileSpeakBtn, mobileMicBtn);
+  const mobileEviBtn = h(
+    'button',
+    {
+      class: 'mobile-tool-item mobile-evi-call',
+      hidden: true,
+      'aria-label': 'Start an English voice call with Rin',
+      onClick: () => {
+        setMobileToolsOpen(false);
+        void startEviCall();
+      },
+    },
+    h('span', { class: 'mobile-tool-symbol evi-call-glyph', 'aria-hidden': 'true' }, '●'),
+    'Call Rin'
+  ) as HTMLButtonElement;
+  const mobileToolsMenu = h(
+    'div',
+    { class: 'mobile-tools-menu', hidden: true },
+    mobileQuestBtn,
+    mobileSpeakBtn,
+    mobileMicBtn,
+    mobileEviBtn
+  );
   const mobileToolsToggle = h(
     'button',
     {
@@ -916,11 +1004,44 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     questEnding
   );
 
+  // EVI is an English-only call lane. It is deliberately separate from the
+  // Vietnamese composer and its Spoon/MiniMax voice controls.
+  const eviPhase = h('strong', { class: 'evi-call-phase' });
+  const eviActivity = h('span', { class: 'evi-call-activity' });
+  const eviCountdown = h('time', { class: 'evi-call-countdown' });
+  const eviWarning = h('p', { class: 'evi-call-warning', hidden: true }, '10 seconds left — this call will end automatically.');
+  const eviCaption = h('p', { class: 'evi-call-caption' });
+  const eviEnd = h(
+    'button',
+    { class: 'btn btn-ghost xs evi-call-end', onClick: () => endEviCall() },
+    'End call'
+  ) as HTMLButtonElement;
+  const eviCallPanel = h(
+    'section',
+    { class: 'evi-call-panel', hidden: true, 'aria-live': 'polite', 'aria-label': 'Rin voice call' },
+    h(
+      'div',
+      { class: 'evi-call-head' },
+      h('span', { class: 'evi-live-dot', 'aria-hidden': 'true' }),
+      h('div', { class: 'evi-call-copy' }, eviPhase, eviActivity),
+      eviCountdown,
+      eviEnd
+    ),
+    eviWarning,
+    eviCaption
+  );
+
   const dock = h(
     'div',
     { class: 'stage-dock' },
+    eviCallPanel,
     questStrip,
-    h('div', { class: 'dock-top' }, h('div', { class: 'dock-chips' }, speakChip, micChip, setChip), turnsLeft),
+    h(
+      'div',
+      { class: 'dock-top' },
+      h('div', { class: 'dock-chips' }, speakChip, micChip, eviCallChip, setChip),
+      turnsLeft
+    ),
     dockHint,
     h(
       'div',
@@ -934,7 +1055,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     )
   );
 
-  let thawTimer = 0;
   // Left is her dossier, right is her voice, bottom is what you do. The card
   // can step off the frame entirely when the visitor wants the stage clear.
   // On a phone she gets the screen and her dossier starts out of the way: one
@@ -1340,44 +1460,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   }
   applyDockMode();
 
-  // --- turn-around unlock gate ---
-  const codeInput = h('input', {
-    type: 'text',
-    class: 'name-input',
-    placeholder: 'MÃ TRONG HỘP',
-    'aria-label': COPY.stage.unlockCode,
-    maxlength: '16',
-  }) as HTMLInputElement;
-  const unlockGate = h(
-    'div',
-    { class: 'save-gate', hidden: true, role: 'dialog', 'aria-label': COPY.stage.unlockTitle },
-    h(
-      'div',
-      { class: 'panel gate-card' },
-      h('h2', { class: 'panel-title' }, COPY.stage.unlockTitle),
-      h('p', { class: 'hint' }, COPY.stage.unlockBody),
-      h(
-        'div',
-        { class: 'row gate-choices' },
-        h('button', { class: 'btn btn-secondary', onClick: () => actions.makeYourVersion() }, COPY.stage.unlockOwn),
-        h('button', { class: 'btn btn-primary', onClick: () => actions.unlockView() }, COPY.stage.unlockCta)
-      ),
-      h('p', { class: 'hint faint' }, COPY.stage.unlockOwnNote),
-      h('p', { class: 'group-label' }, COPY.stage.unlockCode),
-      h(
-        'div',
-        { class: 'chat-row' },
-        codeInput,
-        h('button', { class: 'btn btn-secondary', onClick: () => actions.unlockView(codeInput.value) }, COPY.stage.unlockCodeCta)
-      ),
-      h(
-        'div',
-        { class: 'row' },
-        h('button', { class: 'btn btn-ghost xs', onClick: () => actions.closeUnlockGate() }, COPY.stage.unlockSkip)
-      )
-    )
-  );
-
   const el = h(
     'section',
     {
@@ -1389,7 +1471,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     },
     srOnlyName,
     premiumTeaser,
-    thawFx,
     h(
       'header',
       { class: 'stage-top' },
@@ -1405,14 +1486,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     returnOriginal,
     rail,
     dock,
-    saveGate,
-    unlockGate
+    saveGate
   );
-  if (state.companionMode === 'reveal') {
-    el.classList.add('is-thawing');
-    thawTimer = window.setTimeout(() => el.classList.remove('is-thawing'), 3900);
-  }
-
   const keepLatestTurnVisible = () => {
     log.scrollTop = log.scrollHeight;
     requestAnimationFrame(() => {
@@ -1444,17 +1519,66 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   let lastRevealKey = '';
   let lastContextVisualKey = '';
   let lastGateOpen = false;
+  let selectedResident = state.residentId;
+  let questIsOpen = state.activeQuestId !== null;
+  let latestEviState: EviCallState;
   watchDock.observe(dock);
+
+  const renderEviCall = (call: EviCallState) => {
+    latestEviState = call;
+    const availableHere = eviConfigured && selectedResident === 'rin' && !questIsOpen;
+    const ongoing = call.phase === 'connecting' || call.phase === 'live';
+    eviCallChip.hidden = !availableHere || ongoing;
+    mobileEviBtn.hidden = !availableHere || ongoing;
+    eviCallChip.disabled = ongoing;
+    mobileEviBtn.disabled = ongoing;
+    eviCallPanel.hidden = !availableHere || call.phase === 'idle';
+    dock.classList.toggle('is-evi-call', availableHere && ongoing);
+
+    const labels: Record<EviCallState['phase'], string> = {
+      idle: 'READY',
+      connecting: 'CONNECTING',
+      live: 'LIVE · RIN',
+      ended: 'CALL ENDED',
+      error: 'CALL ERROR',
+    };
+    eviPhase.textContent = labels[call.phase];
+    eviActivity.textContent = call.activity;
+    eviCountdown.textContent = `00:${String(call.secondsRemaining).padStart(2, '0')}`;
+    eviCountdown.hidden = !ongoing;
+    eviWarning.hidden = !ongoing || !call.warning;
+    eviEnd.hidden = !ongoing;
+    eviCallPanel.classList.toggle('is-live', call.phase === 'live');
+    eviCallPanel.classList.toggle('is-warning', call.warning);
+    eviCallPanel.classList.toggle('is-error', call.phase === 'error');
+    eviCaption.textContent = call.assistantText
+      ? `Rin: ${call.assistantText}`
+      : call.userText
+        ? `You: ${call.userText}`
+        : 'English-only EVI demo · microphone audio is sent only during this call.';
+  };
+  const unsubscribeEviCall = subscribeEviCall(renderEviCall);
 
   return {
     el,
     destroy() {
+      unsubscribeEviCall();
+      if (latestEviState.phase === 'connecting' || latestEviState.phase === 'live') endEviCall();
       watchDock.disconnect();
       window.removeEventListener('resize', onStageResize);
-      window.clearTimeout(thawTimer);
       stopGateCountdown();
     },
     update(s, prev) {
+      selectedResident = s.residentId;
+      questIsOpen = s.activeQuestId !== null;
+      if (
+        (latestEviState.phase === 'connecting' || latestEviState.phase === 'live') &&
+        (selectedResident !== 'rin' || questIsOpen)
+      ) {
+        endEviCall();
+      } else {
+        renderEviCall(latestEviState);
+      }
       const r = canonViewFor(s.residentId, canonRoute);
       const saved = s.progress[s.residentId];
       el.style.setProperty('--accent', cssColor(r.accentColor));
@@ -1842,7 +1966,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         keepLatestTurnVisible();
       }
 
-      (unlockGate as HTMLElement).hidden = !s.unlockGateOpen;
       (saveGate as HTMLElement).hidden = !s.saveGateOpen;
       if (s.saveGateOpen && !lastGateOpen) {
         const candidates = extractMemories(s.chat);

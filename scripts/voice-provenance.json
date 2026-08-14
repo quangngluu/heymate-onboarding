@@ -1,0 +1,67 @@
+[
+  {
+    "method": "voice_design",
+    "note": "synthetic voice generated from a text description; no human reference audio used; not modeled on any real or public person",
+    "voice_id": "ttv-voice-2026081314380826-dfIVms9r",
+    "prompt": "A calm, gender-neutral adult narrator with a clear, warm mid-range timbre. Even, unhurried pace; natural and friendly but composed, never dramatic or salesy. Clean studio sound, neutral accent, easy to understand in short spoken prompts. An original synthetic voice, not modeled on any real, public, or celebrity person.",
+    "preview_text": "Xin chào. Thiết bị đã sẵn sàng. Đã kết nối. Chào buổi sáng.",
+    "model": "speech-2.8-turbo",
+    "created": "2026-08-13T06:38:19.698Z",
+    "commercial_route": "MiniMax Open Platform / API (voice_design), per platform.minimax.io"
+  },
+  {
+    "method": "voice_design",
+    "note": "synthetic voice generated from a text description; no human reference audio used; not modeled on any real or public person",
+    "voice_id": "ttv-voice-2026081314425526-VQ2DMZsn",
+    "prompt": "A calm, gender-neutral adult narrator with a clear, warm mid-range timbre. Even, unhurried pace; natural and friendly but composed, never dramatic or salesy. Clean studio sound, neutral accent, easy to understand in short spoken prompts. An original synthetic voice, not modeled on any real, public, or celebrity person.",
+    "preview_text": "Hi, I'm your Heymate base. Let's get you online for fastest setup — open the Heymates app and tap Set Up a New Device.",
+    "language": "English",
+    "model": "speech-2.8-turbo",
+    "created": "2026-08-13T06:43:07.195Z",
+    "commercial_route": "MiniMax Open Platform / API (voice_design), per platform.minimax.io"
+  },
+  {
+    "method": "voice_design",
+    "note": "synthetic voice generated from a text description; no human reference audio used; not modeled on any real or public person",
+    "voice_id": "ttv-voice-2026081314442726-4VFFXRYB",
+    "prompt": "A warm, friendly adult female narrator with a clear, natural mid-range voice. Calm and welcoming with an easy conversational pace, composed and never salesy. Clean studio sound, neutral accent, easy to understand in short spoken device prompts. An original synthetic voice, not modeled on any real, public, or celebrity person.",
+    "preview_text": "Hi, I'm your Heymate base. Let's get you online for fastest setup — open the Heymates app and tap Set Up a New Device.",
+    "language": "English",
+    "model": "speech-2.8-turbo",
+    "created": "2026-08-13T06:44:38.121Z",
+    "commercial_route": "MiniMax Open Platform / API (voice_design), per platform.minimax.io"
+  },
+  {
+    "method": "voice_design",
+    "note": "synthetic voice generated from a text description; no human reference audio used; not modeled on any real or public person",
+    "voice_id": "ttv-voice-2026081314461426-NmYfM7JO",
+    "prompt": "A warm, gentle adult narrator speaking Vietnamese. Slow, deliberate, and very clearly enunciated, with crisp consonants and well-separated syllables for maximum intelligibility. Soothing and reassuring, unhurried, natural. Clean studio sound, neutral Vietnamese accent, easy to understand in short device prompts. An original synthetic voice, not modeled on any real, public, or celebrity person.",
+    "preview_text": "Xin chào. Thiết bị đã sẵn sàng. Đã kết nối. Chào buổi sáng.",
+    "language": "Vietnamese",
+    "model": "speech-2.8-turbo",
+    "created": "2026-08-13T06:46:25.923Z",
+    "commercial_route": "MiniMax Open Platform / API (voice_design), per platform.minimax.io"
+  },
+  {
+    "method": "voice_design",
+    "note": "synthetic voice generated from a text description; no human reference audio used; not modeled on any real or public person",
+    "voice_id": "ttv-voice-2026081314475126-w1N1Xn3g",
+    "prompt": "A bright, clear adult female narrator speaking Vietnamese. Light, airy timbre with minimal low-end and little bass, sitting in the upper-mid range. Crisp, decisive, firm articulation with precise consonants and clean, definite word endings. Confident and friendly, steady moderate pace, natural. Clean studio sound, neutral Vietnamese accent, easy to understand in short device prompts. An original synthetic voice, not modeled on any real, public, or celebrity person.",
+    "preview_text": "Xin chào. Thiết bị đã sẵn sàng. Đã kết nối. Chào buổi sáng.",
+    "language": "Vietnamese",
+    "model": "speech-2.8-turbo",
+    "created": "2026-08-13T06:48:02.355Z",
+    "commercial_route": "MiniMax Open Platform / API (voice_design), per platform.minimax.io"
+  },
+  {
+    "method": "voice_design",
+    "note": "synthetic voice generated from a text description; no human reference audio used; not modeled on any real or public person",
+    "voice_id": "ttv-voice-2026081314500326-cDPynbIN",
+    "prompt": "Female voice with a neutral, clear, and pleasant tone, designed for use in a consumer device. Native or near-native standard English pronunciation with a neutral international accent. Medium pitch, balanced resonance, natural pacing, and clear articulation. The voice should feel calm, approachable, reliable, and easy to listen to repeatedly throughout the day. Friendly without sounding overly cheerful, emotional, theatrical, or promotional. Use subtle natural warmth and a light conversational quality while maintaining consistency across short system messages, notifications, confirmations, and everyday interactions. Avoid strong regional accents, exaggerated personality, excessive breathiness, high-pitched or childish qualities, robotic delivery, announcer-style speech, and distinctive celebrity-like mannerisms. Overall character: neutral, modern, clear, trustworthy, unobtrusive, and suitable for long-term use as a device voice.",
+    "preview_text": "Hi, I'm your Heymate base. Let's get you online for fastest setup — open the Heymates app and tap Set Up a New Device.",
+    "language": "English",
+    "model": "speech-2.8-turbo",
+    "created": "2026-08-13T06:50:14.205Z",
+    "commercial_route": "MiniMax Open Platform / API (voice_design), per platform.minimax.io"
+  }
+]

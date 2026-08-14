@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-08-14",
+  "skills": [
+    {
+      "name": "frontend-design",
+      "category": "core",
+      "source": "https://github.com/anthropics/skills",
+      "commit": "f6656c1256d5a8adfa37db9110046ef20bac644c",
+      "sourcePath": "skills/frontend-design",
+      "license": "Apache-2.0",
+      "modified": false
+    },
+    {
+      "name": "web-interface-guidelines",
+      "category": "quality",
+      "source": "https://github.com/vercel-labs/web-interface-guidelines",
+      "commit": "4e799d45c17aec1498c269287a83b9dba22b966b",
+      "sourcePath": "command.md",
+      "license": "MIT",
+      "modified": true,
+      "modification": "Added portable SKILL.md wrapper; original command preserved at references/guidelines.md"
+    },
+    {
+      "name": "make-interfaces-feel-better",
+      "category": "core",
+      "source": "https://github.com/jakubkrehel/make-interfaces-feel-better",
+      "commit": "5a4076ac611d6610b9cb4d67f5275cb4f869411b",
+      "sourcePath": "skills/make-interfaces-feel-better",
+      "license": "MIT",
+      "modified": false
+    },
+    {
+      "name": "responsive-design",
+      "category": "core",
+      "source": "https://github.com/wshobson/agents",
+      "commit": "c4b82b0ad771190355eb8e204b1329732a18449a",
+      "sourcePath": "plugins/ui-design/skills/responsive-design",
+      "license": "MIT",
+      "modified": false
+    },
+    {
+      "name": "tailwind-design-system",
+      "category": "stack",
+      "source": "https://github.com/wshobson/agents",
+      "commit": "c4b82b0ad771190355eb8e204b1329732a18449a",
+      "sourcePath": "plugins/frontend-mobile-development/skills/tailwind-design-system",
+      "license": "MIT",
+      "modified": true,
+      "modification": "Corrected two broken relative links in references/details.md; instructional content unchanged"
+    },
+    {
+      "name": "shadcn",
+      "category": "stack",
+      "source": "https://github.com/shadcn-ui/ui",
+      "commit": "d4fc45b1fbabfccb7a6a4333d8004cf19481caa9",
+      "sourcePath": "skills/shadcn",
+      "license": "MIT",
+      "modified": false
+    },
+    {
+      "name": "gsap-core",
+      "category": "motion",
+      "source": "https://github.com/greensock/gsap-skills",
+      "commit": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+      "sourcePath": "skills/gsap-core",
+      "license": "MIT",
+      "modified": false
+    },
+    {
+      "name": "gsap-timeline",
+      "category": "motion",
+      "source": "https://github.com/greensock/gsap-skills",
+      "commit": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+      "sourcePath": "skills/gsap-timeline",
+      "license": "MIT",
+      "modified": false
+    },
+    {
+      "name": "gsap-react",
+      "category": "motion",
+      "source": "https://github.com/greensock/gsap-skills",
+      "commit": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+      "sourcePath": "skills/gsap-react",
+      "license": "MIT",
+      "modified": false
+    },
+    {
+      "name": "gsap-scrolltrigger",
+      "category": "motion",
+      "source": "https://github.com/greensock/gsap-skills",
+      "commit": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+      "sourcePath": "skills/gsap-scrolltrigger",
+      "license": "MIT",
+      "modified": false
+    },
+    {
+      "name": "gsap-performance",
+      "category": "motion",
+      "source": "https://github.com/greensock/gsap-skills",
+      "commit": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+      "sourcePath": "skills/gsap-performance",
+      "license": "MIT",
+      "modified": false
+    },
+    {
+      "name": "copywriting",
+      "category": "optional",
+      "source": "https://github.com/coreyhaines31/marketingskills",
+      "commit": "7868cb9251fad80a73d26e488a5ad5f6c4a9f335",
+      "sourcePath": "skills/copywriting",
+      "license": "MIT",
+      "modified": false
+    }
+  ]
+}

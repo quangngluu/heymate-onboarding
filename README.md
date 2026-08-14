@@ -18,6 +18,26 @@ QA harness: with the dev server running, `node scripts/qa-capture.mjs` drives
 the full journey in headless system Chrome at 1440×900 and 390×844 and writes
 step screenshots to `screenshots/`.
 
+## Design & UI skills
+
+Any task that touches UI, visual design, layout, responsiveness, or motion must
+**start at the router**, not by improvising:
+
+```text
+.claude/skills/website-design/ROUTER.md
+```
+
+The router pins each skill's status for this stack (vanilla Three.js + Vite,
+no Tailwind/shadcn/GSAP). `frontend-design`, `responsive-design`,
+`make-interfaces-feel-better`, and `web-interface-guidelines` are active;
+Tailwind/shadcn/GSAP skills stay dormant until the repo actually adopts them.
+Read only the one or two `SKILL.md` files the router selects — never load all 12.
+Validate the pack after edits with:
+
+```bash
+node .claude/skills/website-design/scripts/validate-pack.mjs
+```
+
 ## Flow
 
 ```text
@@ -48,6 +68,12 @@ Worldform defaults to deterministic local adapters so the complete flow can be
 tested without credentials or provider spend. Copy `.env.example` to
 `.env.local`, set `VITE_WORLDFORM_PROVIDER=live`, and provide both `FAL_KEY` and
 `MESHY_API_KEY` to exercise the production adapters.
+
+The English-only **Call Rin** EVI demo is enabled when `VITE_HUME_CONFIG_ID`,
+`HUME_API_KEY`, and `HUME_SECRET_KEY` are present. The config id is public; the
+two credentials remain server-side. Vite does not normally execute `api/*`, so
+`vite.config.ts` mirrors `/api/hume-token` through the real edge handler during
+`npm run dev`.
 
 ## What is real vs. simulated
 

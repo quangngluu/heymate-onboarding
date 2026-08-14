@@ -130,6 +130,8 @@ export class WaifuStage {
   private entries = new Map<string, Entry>();
   private heroId: string | null = null;
   private heroY = 0;
+  /** Shared yaw for whichever sculpt currently owns the center base. */
+  private turntableYaw = 0;
   /** 0 = idle, 1 = mid-utterance; drives ring pulse and sway amplitude. */
   speakingLevel = 0;
   private speakingTarget = 0;
@@ -165,6 +167,7 @@ export class WaifuStage {
   private cryoRevealReady: (() => void) | null = null;
   private motes: THREE.Points;
   private moteMotif: MoteMotif = 'data';
+  private officeStatic = false;
   private questMode = false;
   private readonly debugQuestRig: boolean;
   private questRig: THREE.Group | null = null;
@@ -488,7 +491,7 @@ export class WaifuStage {
         id: heroId,
         group: model,
         materials: [],
-        targetYaw: 0,
+        targetYaw: this.turntableYaw,
         loaded: true,
         revealScale: 1,
       };
@@ -542,7 +545,7 @@ export class WaifuStage {
         id: entryId,
         group: model,
         materials: [],
-        targetYaw: 0,
+        targetYaw: this.turntableYaw,
         loaded: true,
         revealScale: 1,
       };
@@ -642,6 +645,15 @@ export class WaifuStage {
     for (const residentId of this.entries.keys()) this.place(residentId, residentId === id);
   }
 
+  /** Rotate the sculpt itself while the camera and desk plate stay locked. */
+  setHeroYaw(yaw: number, immediate = false): void {
+    this.turntableYaw = yaw;
+    const entry = this.heroId && this.entries.get(this.heroId);
+    if (!entry) return;
+    entry.targetYaw = yaw;
+    if (immediate) entry.group.rotation.y = yaw;
+  }
+
   /** Close the resident inside the pod, then run one non-looping thaw reveal. */
   beginCryoReveal(id: string, onReadyForPullOut?: () => void): void {
     const entry = this.entries.get(id);
@@ -719,7 +731,7 @@ export class WaifuStage {
     e.group.scale.setScalar(scale * e.revealScale);
     if (isHero) {
       e.group.position.set(0, this.heroY, 0);
-      e.targetYaw = 0;
+      e.targetYaw = this.turntableYaw;
     }
     // Waiting residents stay solid and step back into shadow. Transparency
     // reads as a rendering fault once two of them overlap.
@@ -769,6 +781,24 @@ export class WaifuStage {
     }
     pos.needsUpdate = true;
     (this.motes.material as THREE.PointsMaterial).size = motif === 'ribbon' ? 0.035 : 0.022;
+  }
+
+  /** The office handoff is a physical desk shot, not a supernatural reveal. */
+  setAmbientEffectsVisible(visible: boolean): void {
+    this.officeStatic = !visible;
+    this.motes.visible = visible;
+    if (!visible) {
+      this.cryoRevealTime = -1;
+      this.cryoRevealEntry = null;
+      this.cryoRevealReady = null;
+      this.cryoPod.visible = false;
+      this.cryoSmoke.visible = false;
+      this.cryoInnerLight.intensity = 0;
+      for (const entry of this.entries.values()) {
+        entry.group.position.y = this.heroY;
+        entry.group.rotation.z = 0;
+      }
+    }
   }
 
   /** Called when a greeting or reply starts/stops. */
@@ -877,10 +907,15 @@ export class WaifuStage {
           const scale = (HERO_HEIGHT / 1.45) * e.revealScale;
           e.group.scale.setScalar(scale);
         }
-        // Breathing sway, slightly stronger while talking.
-        const amp = 0.006 + this.speakingLevel * 0.006;
-        e.group.position.y = this.heroY + Math.sin(t * 1.15) * amp;
-        e.group.rotation.z = Math.sin(t * 0.7) * 0.004;
+        if (this.officeStatic) {
+          e.group.position.y = this.heroY;
+          e.group.rotation.z = 0;
+        } else {
+          // Breathing sway, slightly stronger while talking.
+          const amp = 0.006 + this.speakingLevel * 0.006;
+          e.group.position.y = this.heroY + Math.sin(t * 1.15) * amp;
+          e.group.rotation.z = Math.sin(t * 0.7) * 0.004;
+        }
       }
     }
 

@@ -1,0 +1,62 @@
+[
+  {
+    "vendor": "Hume AI (Octave)",
+    "method": "voice_design (description-based, synthetic; no reference audio)",
+    "note": "not modeled on any real or public person",
+    "description": "Female voice speaking General American English with a clear, natural, broadly familiar American accent and no strong regional characteristics. Pleasant, neutral, and easy to listen to repeatedly in a consumer device. Medium pitch, balanced resonance, smooth natural pacing, and clear, effortless articulation. Calm, friendly, approachable, and trustworthy, with subtle warmth and a relaxed conversational quality. Keep emotion restrained and delivery consistent across greetings, confirmations, notifications, instructions, and everyday phrases. Avoid strong accents, vocal fry, excessive breathiness, nasality, exaggerated intonation, childish or high-pitched qualities, robotic cadence, announcer-style delivery, customer-service scripting, or celebrity-like mannerisms. Overall: mainstream American, female, warm, clear, natural, unobtrusive, and comfortable for long-term repeated listening.",
+    "text": "Connected. Place a figurine on me to start the fun.",
+    "num_generations": 1,
+    "picked_index": 0,
+    "generation_id": "6e9bfd31-f59a-4d2e-9e21-1e9a756ea6be",
+    "saved_voice_id": "11a1f476-3abb-4b2f-8d65-ac3cbdc43eef",
+    "saved_voice_name": "HeyMates Device EN GA v1",
+    "format": "wav",
+    "created": "2026-08-13T07:28:29.225Z",
+    "commercial_route": "Hume TTS commercial tier (Creator/Pro/Scale/Business/Enterprise); user retains rights to custom voices per Hume docs"
+  },
+  {
+    "vendor": "Hume AI (Octave)",
+    "method": "voice_design (description-based, synthetic; no reference audio)",
+    "note": "not modeled on any real or public person",
+    "description": "Female voice, early to mid twenties, cool and composed with a detached, precise delivery, a kuudere. Low warmth, controlled, slightly clipped articulation; unhurried with deliberate pauses. Intelligent and observant, faintly aloof, understated confidence; never bubbly, never theatrical, no vocal fry. A subtle modern, slightly synthetic calm, like a digital idol speaking through a clean studio mic. Neutral standard American English. An original synthetic voice, not modeled on any real, public, or celebrity person.",
+    "text": "Finally, someone opened this channel. Come in. I want to see how long you last.",
+    "num_generations": 1,
+    "picked_index": 0,
+    "generation_id": "c6adbd18-3921-420a-8e45-1827c48ad4e5",
+    "saved_voice_id": "aab02e82-5749-47fa-a04b-f5e8d3709c2b",
+    "saved_voice_name": "Rin EVI EN v1",
+    "format": "wav",
+    "created": "2026-08-14T06:40:03.308Z",
+    "commercial_route": "Hume TTS commercial tier (Creator/Pro/Scale/Business/Enterprise); user retains rights to custom voices per Hume docs"
+  },
+  {
+    "vendor": "Hume AI (Octave)",
+    "method": "voice_design (description-based, synthetic; no reference audio)",
+    "note": "not modeled on any real or public person",
+    "description": "Female voice, early to mid twenties, distinctive and magnetic. A kuudere: cool and composed on the surface, but with real emotion held just underneath, controlled intensity that leaks through. Low, intimate, slightly smoky timbre with a faint digital shimmer. Expressive within restraint: subtle vulnerability, quiet longing, a dry edge; never bubbly, never theatrical, no vocal fry. Deliberate pacing with meaningful pauses; she slows and softens when something lands. Close-mic intimacy, like she is speaking only to you. Neutral standard American English. An original synthetic voice, not modeled on any real, public, or celebrity person.",
+    "text": "I left the channel open. Not because I'm sure you'll come back. I just wanted a place for you to return to, if you choose.",
+    "num_generations": 2,
+    "picked_index": 0,
+    "generation_id": "3bf600e0-522a-40a9-abee-107646ed869f",
+    "saved_voice_id": "d51cd0e6-d95b-4751-829e-ea1660a6c04a",
+    "saved_voice_name": "Rin EVI EN v2",
+    "format": "wav",
+    "created": "2026-08-14T06:46:06.694Z",
+    "commercial_route": "Hume TTS commercial tier (Creator/Pro/Scale/Business/Enterprise); user retains rights to custom voices per Hume docs"
+  },
+  {
+    "vendor": "Hume AI (Octave)",
+    "method": "voice_design (description-based, synthetic; no reference audio)",
+    "note": "not modeled on any real or public person",
+    "description": "Female voice, mid-twenties but carrying centuries of weight, a swordswoman lost out of her own time. Low, warm, resonant and grave, with quiet steadiness and gravity. Direct and formal; measured, deliberate pacing; an archaic dignity. Real emotion held under discipline: protective tenderness and quiet grief that surface in the softness at the end of her lines. Earnest, never harsh, never a generic threatening samurai; warmth beneath steel. A faint grain to the timbre, intimate and human. Neutral standard American English. An original synthetic voice, not modeled on any real, public, or celebrity person.",
+    "text": "Come closer. I woke in a century that isn't mine, and you are the first to stand still long enough for me to ask. Don't stand so far away.",
+    "num_generations": 2,
+    "picked_index": 0,
+    "generation_id": "e7a14172-d059-409e-918c-1423d4847948",
+    "saved_voice_id": "3dedffaa-2439-448c-b8d2-5e31585a3055",
+    "saved_voice_name": "Akagi EVI EN v1",
+    "format": "wav",
+    "created": "2026-08-14T07:23:43.162Z",
+    "commercial_route": "Hume TTS commercial tier (Creator/Pro/Scale/Business/Enterprise); user retains rights to custom voices per Hume docs"
+  }
+]

@@ -12,6 +12,29 @@
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
+    <img
+      id="entry-backdrop"
+      src="/assets/stage/office-entry-empty-landscape.webp"
+      alt=""
+      aria-hidden="true"
+      draggable="false"
+      decoding="async"
+      fetchpriority="high"
+    />
+    <div id="entry-flicker" aria-hidden="true"></div>
+    <video
+      id="desk-loop"
+      aria-hidden="true"
+      tabindex="-1"
+      muted
+      loop
+      playsinline
+      preload="metadata"
+      poster="/assets/stage/desk-ambient-loop-landscape.jpg"
+      disablepictureinpicture
+    >
+      <source src="/assets/stage/desk-ambient-loop-landscape.mp4" type="video/mp4" />
+    </video>
     <canvas id="stage" aria-hidden="true"></canvas>
     <div id="ui"></div>
     <div id="boot" role="status" aria-live="polite">

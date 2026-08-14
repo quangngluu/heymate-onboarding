@@ -13,12 +13,12 @@ const BASE_PRESETS: Record<string, CamPreset> = {
   gallery: { pos: [0, 1.6, 7.2], target: [0, 1.1, 0], fov: 42 },
   // Desktop conversation owns the right rail. Keep her full silhouette just
   // left of it, with her feet above the bottom composer.
-  stage: { pos: [0.82, 1.5, 4.7], target: [0.48, 0.85, 0], fov: 36 },
+  stage: { pos: [0.82, 1.5, 4.7], target: [0.48, 0.73, 0], fov: 36 },
   // Portrait. The wide framing left her a thumbnail in the corner: a phone's
   // narrow horizontal field plus a target pushed a long way left put her at the
   // edge, with the top half of the screen empty stage. This comes in closer and
   // keeps only enough left bias to clear the column her words sit in.
-  'stage-portrait': { pos: [0.55, 1.38, 3.8], target: [-0.42, 0.84, 0], fov: 35 },
+  'stage-portrait': { pos: [0.55, 1.38, 3.8], target: [-0.42, 0.72, 0], fov: 35 },
   // The product rail starts at x=826 on a 1200px canvas, so the optical centre
   // is ~413 rather than the canvas centre (600). Aim through that usable region.
   'premium-inspect': { pos: [0.48, 1.42, 3.35], target: [0.45, 0.86, 0], fov: 32 },
@@ -56,7 +56,7 @@ export const CAMERA_PRESETS: Record<string, CamPreset> = {
  * How she is framed on the companion stage, for the viewport in front of us.
  *
  * Read through this rather than off `CAMERA_PRESETS.stage` directly: the rim
- * lights, the nameplate and the free-inspection arc are all derived from the
+ * lights, the nameplate and the turntable framing are all derived from the
  * camera position, so a second framing has to reach all of them or the lighting
  * ends up aimed at where she used to stand.
  */

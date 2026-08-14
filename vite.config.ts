@@ -86,6 +86,39 @@ function devTtsApi(key: string, defaultVoice: string): Plugin {
 }
 
 /**
+ * Vite does not execute files under /api by itself. Mirror the deployed Hume
+ * token exchange here so `npm run dev` never needs to expose either Hume
+ * credential through a VITE_ variable or a browser-side proxy.
+ */
+function devHumeTokenApi(apiKey: string, secretKey: string): Plugin {
+  return {
+    name: 'dev-hume-token-api',
+    configureServer(server) {
+      server.middlewares.use('/api/hume-token', async (req, res) => {
+        try {
+          // Only fill absent values so explicitly exported credentials win.
+          process.env.HUME_API_KEY ??= apiKey;
+          process.env.HUME_SECRET_KEY ??= secretKey;
+          const method = req.method ?? 'GET';
+          const { default: handler } = await server.ssrLoadModule('/api/hume-token.ts');
+          const response = await handler(
+            new Request(`http://localhost${req.url ?? '/api/hume-token'}`, { method })
+          );
+
+          res.statusCode = response.status;
+          response.headers.forEach((value, header) => res.setHeader(header, value));
+          res.end(Buffer.from(await response.arrayBuffer()));
+        } catch {
+          res.statusCode = 502;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'unreachable' }));
+        }
+      });
+    },
+  };
+}
+
+/**
  * Mirrors the edge scene-writer in Vite too. Without it, generated quests
  * silently never arrive during local QA while production takes a different
  * route.
@@ -230,6 +263,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       devChatApi(env.DEEPSEEK_API_KEY ?? '', env.DEEPSEEK_MODEL ?? 'deepseek-chat'),
       devTtsApi(env.SPOON_API_KEY ?? '', env.SPOON_VOICE_ID ?? ''),
+      devHumeTokenApi(env.HUME_API_KEY ?? '', env.HUME_SECRET_KEY ?? ''),
       devQuestApi(env.DEEPSEEK_API_KEY ?? ''),
       devSceneImageApi(env.DEEPSEEK_API_KEY ?? '', env.FAL_KEY ?? ''),
       devWorldformApi('/api/worldform-image', '/api/worldform-image.ts', {

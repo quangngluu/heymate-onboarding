@@ -19,7 +19,7 @@ import { createRevealFx, type RevealFx } from './three/reveal';
 import { Nameplate } from './three/nameplate';
 import { FactionBackdrop } from './three/backdrop';
 import { WaifuStage } from './three/waifu-stage';
-import { GalleryPortal, portalDollyPreset } from './three/gallery-portal';
+import { TurntableController } from './three/turntable';
 import { idleLine, openingLine, speakingDuration } from './chat/engine';
 import { getReply } from './chat/client';
 import {
@@ -67,14 +67,30 @@ import { shouldPlayTeaser } from './config/entry';
 
 const PLINTHS = plinthPositions(CHARACTERS.length);
 
-/** Horizontal angle the stage preset frames her from. */
-function stageAzimuth(): number {
-  const [x, , z] = stagePreset().pos;
-  return Math.atan2(x, z);
+/** Soft transparent catcher that grounds the live base on the video desk. */
+function createDeskContactShadow(): THREE.Mesh {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 192;
+  const ctx = canvas.getContext('2d')!;
+  const gradient = ctx.createRadialGradient(96, 96, 16, 96, 96, 90);
+  gradient.addColorStop(0, 'rgba(0,0,0,0.58)');
+  gradient.addColorStop(0.5, 'rgba(0,0,0,0.34)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 192, 192);
+  const material = new THREE.MeshBasicMaterial({
+    map: new THREE.CanvasTexture(canvas),
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+  });
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(2.05, 1.55), material);
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.004;
+  shadow.renderOrder = -1;
+  shadow.visible = false;
+  return shadow;
 }
-
-/** Half of the 120-degree arc a visitor may inspect for free. */
-const FREE_ARC = Math.PI / 3;
 
 /** Keep the reply hidden briefly for a synchronized voice start, never indefinitely. */
 // Her line is uncovered a word at a time. It is not decoration: rendering the
@@ -121,6 +137,15 @@ class App implements UIActions {
   private engine: Engine;
   private rig: CameraRig;
   private controls: OrbitControls;
+  private turntable: TurntableController;
+  private turntableYaw = 0;
+  private deskVideo: HTMLVideoElement;
+  private deskStageActive = false;
+  private deskHeroReady = false;
+  private pendingCompanionFinish = false;
+  private defaultSceneBackground: THREE.Color | THREE.Texture | null = null;
+  private defaultSceneFog: THREE.Fog | THREE.FogExp2 | null = null;
+  private deskContactShadow: THREE.Mesh;
   private stage: StageHandles;
   private picker: Picker;
   private ambience = new Ambience();
@@ -128,7 +153,6 @@ class App implements UIActions {
   private openChatVisuals: OpenChatVisualRuntime;
   private conversation = new ConversationLifetime();
   private nameplate: Nameplate;
-  private galleryPortal: GalleryPortal;
   private backdrop!: FactionBackdrop;
   /** True while an Open Chat scene owns the backdrop (figure dimmed behind it). */
   private openChatSceneActive = false;
@@ -174,6 +198,8 @@ class App implements UIActions {
   /** Height of the loaded center base's top surface (Mate stands here). */
   private centerTopY = 0.09;
   private centerBase: THREE.Group | null = null;
+  private centerBaseLoading = false;
+  private centerBaseSettled = false;
   private errorTimer = 0;
 
   private conversationToken(): ConversationToken {
@@ -201,6 +227,10 @@ class App implements UIActions {
 
   constructor() {
     const canvas = document.getElementById('stage') as HTMLCanvasElement;
+    this.deskVideo = document.getElementById('desk-loop') as HTMLVideoElement;
+    this.deskVideo.muted = true;
+    this.deskVideo.loop = true;
+    this.deskVideo.playsInline = true;
     this.engine = new Engine(canvas);
     initCharacterLoader(this.engine.renderer);
     this.rig = new CameraRig(this.engine.camera, this.engine.reducedMotion);
@@ -223,13 +253,11 @@ class App implements UIActions {
       universeById('afterburn-city'),
       CHARACTERS.map((c) => factionById(c.factionId).accentColor)
     );
+    this.defaultSceneBackground = this.engine.scene.background;
+    this.defaultSceneFog = this.engine.scene.fog;
+    this.deskContactShadow = createDeskContactShadow();
+    this.engine.scene.add(this.deskContactShadow);
     this.nameplate = new Nameplate(this.engine.scene, this.engine.camera);
-    this.galleryPortal = new GalleryPortal(this.engine.scene);
-    const entryUniverse = universeById('waifu-universe');
-    this.galleryPortal.build(
-      entryUniverse.galleryPreviews?.[0]?.url ?? entryUniverse.posterUrl ?? '',
-      entryUniverse.accentColor
-    );
     this.backdrop = new FactionBackdrop(
       this.engine.scene,
       [this.stage.skyline],
@@ -255,7 +283,15 @@ class App implements UIActions {
       this.engine.scene.add(rim.target);
     }
 
-    this.watchOrbitLimit();
+    this.turntable = new TurntableController(canvas, {
+      enabled: () => this.turntableEnabled(),
+      yaw: () => this.turntableYaw,
+      onYaw: (yaw) => this.setTurntableYaw(yaw, true),
+      onDragChange: (dragging) => {
+        if (dragging) document.documentElement.dataset.deskTurning = 'true';
+        else delete document.documentElement.dataset.deskTurning;
+      },
+    });
     this.picker = new Picker(canvas, this.engine.camera);
     this.picker.onHover = (id) => {
       this.hoveredId = id;
@@ -288,7 +324,7 @@ class App implements UIActions {
     store.subscribe((s, prev) => {
       if (s.characterId !== prev.characterId || s.step !== prev.step) this.updateLiftTargets();
       this.applyHeroStaging(s);
-      this.galleryPortal.setVisible(s.step === 'gallery');
+      this.setEntryStageActive(s.step === 'gallery');
       this.picker.enabled =
         !s.transitioning &&
         (s.step === 'studio' ||
@@ -296,7 +332,7 @@ class App implements UIActions {
             (s.companionMode === 'showcase' || s.companionMode === 'playground') &&
             !s.activeQuestId));
     });
-    this.galleryPortal.setVisible(store.get().step === 'gallery');
+    this.setEntryStageActive(store.get().step === 'gallery');
 
     mountUI(document.getElementById('ui')!, store, this);
     window.addEventListener('error', () => this.flashError(COPY.errors.generic));
@@ -377,6 +413,8 @@ class App implements UIActions {
 
   /** Swap the placeholder center pedestal for the generated portal base. */
   private loadCenterBase(): void {
+    if (this.centerBase || this.centerBaseLoading) return;
+    this.centerBaseLoading = true;
     void loadRawModel('assets/portal-base.glb')
       .then((base) => {
         const box = new THREE.Box3().setFromObject(base);
@@ -394,14 +432,22 @@ class App implements UIActions {
         });
         this.engine.scene.add(base);
         this.centerBase = base;
+        base.rotation.y = this.turntableYaw;
         base.visible = store.get().figurineDisplayMode !== 'premium';
         this.centerTopY = box2.max.y - box2.min.y;
         this.stage.centerPedestal.visible = false;
         this.mate?.root.position.setY(this.centerTopY);
         this.residentStage?.setBaseTop(this.centerTopY);
+        this.centerBaseSettled = true;
+        this.updateCompanionHandoffReady();
       })
       .catch(() => {
+        this.centerBaseSettled = true;
+        this.updateCompanionHandoffReady();
         console.warn('Portal base GLB missing; placeholder pedestal stays.');
+      })
+      .finally(() => {
+        this.centerBaseLoading = false;
       });
   }
 
@@ -429,7 +475,6 @@ class App implements UIActions {
 
   private tick(dt: number, t: number): void {
     this.rig.update(dt);
-    if (store.get().step === 'gallery') this.syncGalleryOverlay();
     if (this.controls.enabled && !this.rig.flying) this.controls.update();
     this.stage.update(dt, t);
     this.picker.update();
@@ -465,17 +510,6 @@ class App implements UIActions {
     for (const rim of [this.rimA, this.rimB]) {
       rim.intensity += (this.rimTarget - rim.intensity) * Math.min(1, dt * 4);
     }
-  }
-
-  /** Keep the accessible DOM hit target glued to the moving Three.js plane. */
-  private syncGalleryOverlay(): void {
-    const tile = document.querySelector<HTMLElement>('[data-testid="universe-waifu-universe"]');
-    if (!tile) return;
-    const rect = this.galleryPortal.rect(this.engine.camera, window.innerWidth, window.innerHeight);
-    tile.style.setProperty('--portal-x', `${rect.x}px`);
-    tile.style.setProperty('--portal-y', `${rect.y}px`);
-    tile.style.setProperty('--portal-w', `${rect.w}px`);
-    tile.style.setProperty('--portal-h', `${rect.h}px`);
   }
 
   private flashError(msg: string): void {
@@ -529,15 +563,13 @@ class App implements UIActions {
     for (const l of this.stage.plinthLights) l.visible = v;
   }
 
-  async openUniverse(id: string): Promise<void> {
+  openUniverse(id: string): void {
     if (store.get().transitioning) return;
     const universe = universeById(id);
     this.ambience.start();
     store.set({ universeId: id, transitioning: true });
 
     if (universe.kind === 'companion') {
-      await this.rig.flyTo(portalDollyPreset(), this.engine.reducedMotion ? 0 : 0.9);
-      if (store.get().universeId !== id) return;
       // Opening the universe is an encounter like any other, so it goes through
       // the same door as a resident switch. Without this the first entry after a
       // reload left `chat` empty and she opened on the greeting while the
@@ -547,11 +579,9 @@ class App implements UIActions {
       // Kagura owns the cinematic hook. Opening on another resident after the
       // teaser made the hand-off feel like two unrelated experiences.
       store.beginEncounter('kagura');
-      // The cinematic gate is mounted before any companion scene/model. The
-      // full scene is still built only after the film ends, but the hero GLB is
-      // warmed into cache at low priority during playback so the reveal never
-      // waits on the download (and the 7s failsafe can't fire on an empty stage).
-      this.galleryPortal.setVisible(false);
+      // The live desk and GLB render behind the cinematic gate. The last video
+      // dissolves into that actual scene, so the final displayed frame and the
+      // first interactive frame share one camera, loop and figure transform.
       store.set({
         companionMode: 'teaser',
         figurineDisplayMode: 'original',
@@ -559,6 +589,7 @@ class App implements UIActions {
       });
       this.setPlinthsVisible(false);
       store.goto('companion-teaser');
+      this.prepareCompanionStageForHandoff();
       if (shouldPlayTeaser(store.get().waifuUniverseEntered)) {
         this.prefetchModel(residentById('kagura').modelUrl);
       } else {
@@ -605,59 +636,98 @@ class App implements UIActions {
     }
   }
 
-  /** Let the visitor lean around her; the turntable itself is an unlock. */
+  /** Companion inspection rotates the collectible, never the desk camera. */
   private enableStageOrbit(): void {
-    const c = this.controls;
-    c.target.set(0, this.centerTopY + 0.75, 0);
-    c.enabled = true;
-    c.enableZoom = true;
-    c.enablePan = false;
-    c.minDistance = 2.6;
-    c.maxDistance = 6.2;
-    c.minPolarAngle = 0.95;
-    c.maxPolarAngle = 1.62;
-    // Never hard-clamp the azimuth: a clamp stops the camera dead, which both
-    // feels broken and stops firing the events we would need to react to.
-    c.minAzimuthAngle = -Infinity;
-    c.maxAzimuthAngle = Infinity;
+    this.controls.enabled = false;
     this.rig.syncLook();
+    this.setTurntableYaw(this.turntableYaw, true);
   }
 
-  /** Signed angle away from the front framing, wrapped to [-PI, PI]. */
-  private azimuthOffset(): number {
-    let d = this.controls.getAzimuthalAngle() - stageAzimuth();
-    while (d > Math.PI) d -= Math.PI * 2;
-    while (d < -Math.PI) d += Math.PI * 2;
-    return d;
+  private turntableEnabled(): boolean {
+    const s = store.get();
+    return (
+      this.deskStageActive &&
+      !s.transitioning &&
+      !s.activeQuestId &&
+      (s.companionMode === 'showcase' || s.companionMode === 'playground') &&
+      s.figurineDisplayMode !== 'premium-preview'
+    );
   }
 
-  /**
-   * The front 120 degrees are free. Turn past that and we offer the
-   * turntable rather than silently blocking the drag.
-   */
-  private watchOrbitLimit(): void {
-    this.controls.addEventListener('change', () => {
-      const st = store.get();
-      if (st.step !== 'stage' || !this.controls.enabled) return;
-      if (store.viewIsUnlocked || st.unlockGateOpen) return;
-      if (Math.abs(this.azimuthOffset()) <= FREE_ARC) return;
-      store.set({ unlockGateOpen: true });
-      this.snapIntoFreeArc();
+  private setTurntableYaw(yaw: number, immediate = false): void {
+    this.turntableYaw = yaw;
+    if (this.centerBase) this.centerBase.rotation.y = yaw;
+    this.residentStage?.setHeroYaw(yaw, immediate);
+  }
+
+  private shouldUseDeskStage(s: AppState): boolean {
+    return (
+      s.step === 'stage' &&
+      s.universeId === 'waifu-universe' &&
+      !s.activeQuestId
+    );
+  }
+
+  private setDeskStageActive(active: boolean): void {
+    if (this.deskStageActive === active) return;
+    this.deskStageActive = active;
+    document.documentElement.dataset.deskStage = String(active);
+    this.stage.group.visible = !active;
+    this.deskContactShadow.visible = active;
+    this.residentStage?.setAmbientEffectsVisible(!active);
+    if (active) {
+      this.engine.scene.background = null;
+      this.engine.scene.fog = null;
+      this.backdrop.hide();
+      this.nameplate.hide();
+      if (this.engine.reducedMotion) {
+        this.deskVideo.pause();
+        this.deskVideo.currentTime = 0;
+      } else {
+        void this.deskVideo.play().catch(() => {
+          // The poster remains visible if a browser rejects muted autoplay.
+        });
+      }
+      return;
+    }
+    delete document.documentElement.dataset.deskHeroReady;
+    this.deskVideo.pause();
+    this.engine.scene.background = this.defaultSceneBackground;
+    this.engine.scene.fog = this.defaultSceneFog;
+  }
+
+  /** Build the exact live frame under the final clip while the teaser plays. */
+  private prepareCompanionStageForHandoff(): void {
+    this.setTurntableYaw(0, true);
+    if (!this.centerBase) this.loadCenterBase();
+    this.rig.applyPreset(stagePreset());
+    this.deskHeroReady = false;
+    this.pendingCompanionFinish = false;
+    document.documentElement.dataset.deskHeroReady = 'false';
+    this.setDeskStageActive(true);
+    this.openStage(false, () => {
+      this.deskHeroReady = true;
+      this.residentStage?.setAmbientEffectsVisible(false);
+      this.updateCompanionHandoffReady();
     });
   }
 
-  /** Return to the edge of the free arc once the offer is on screen. */
-  private snapIntoFreeArc(): void {
-    const edge = stageAzimuth() + Math.sign(this.azimuthOffset()) * FREE_ARC;
-    const r = this.controls.getDistance();
-    const polar = this.controls.getPolarAngle();
-    const t = this.controls.target;
-    this.controls.object.position.set(
-      t.x + r * Math.sin(polar) * Math.sin(edge),
-      t.y + r * Math.cos(polar),
-      t.z + r * Math.sin(polar) * Math.cos(edge)
-    );
-    this.controls.update();
+  /** The dissolve is safe only after both meshes own their final transforms. */
+  private updateCompanionHandoffReady(): void {
+    const ready = this.deskHeroReady && this.centerBaseSettled;
+    document.documentElement.dataset.deskHeroReady = String(ready);
+    if (ready && this.pendingCompanionFinish) this.completeCompanionHandoff();
+  }
+
+  /** Gallery is one static full-screen frame; no Three.js room or portal. */
+  private setEntryStageActive(active: boolean): void {
+    if (active) {
+      document.documentElement.dataset.entryStage = 'true';
+      this.deskVideo.pause();
+      if (this.deskVideo.currentTime !== 0) this.deskVideo.currentTime = 0;
+      return;
+    }
+    delete document.documentElement.dataset.entryStage;
   }
 
   /**
@@ -677,7 +747,8 @@ class App implements UIActions {
     this.placeRims(heroPos, camPos, v.rimKey);
     this.rimB.color.setHex(v.rimFill);
     // Her display name is her given name, not the full series title.
-    this.nameplate.transitionTo(r.name.split(' ')[0], r.accentColor, heroPos, camPos);
+    if (this.deskStageActive) this.nameplate.hide();
+    else this.nameplate.transitionTo(r.name.split(' ')[0], r.accentColor, heroPos, camPos);
   }
 
   private setPremiumDisplay(enabled: boolean): void {
@@ -699,18 +770,32 @@ class App implements UIActions {
    * silhouette; the boosted envMapIntensity keeps the black armour reflective.
    */
   private showHeroVoidDome(top: number, bottom: number): void {
+    if (this.deskStageActive) {
+      this.backdrop.hide();
+      return;
+    }
     const voidTop = new THREE.Color(top).multiplyScalar(0.26).getHex();
     const voidBottom = new THREE.Color(bottom).multiplyScalar(0.44).getHex();
     this.backdrop.showStudio(voidTop, voidBottom, 1.2);
   }
 
   private applyHeroStaging(s: AppState): void {
+    const deskStage = this.shouldUseDeskStage(s);
+    this.setDeskStageActive(deskStage);
     const inWaifuHero =
       s.step === 'stage' &&
       s.universeId === 'waifu-universe' &&
       (s.companionMode === 'reveal' || s.companionMode === 'showcase');
-    this.stage.floor.visible = !inWaifuHero;
-    if (inWaifuHero && this.centerBase) this.centerBase.visible = false;
+    this.stage.floor.visible = !deskStage && !inWaifuHero;
+    if (this.centerBase) {
+      if (s.step === 'gallery' || s.step === 'companion-teaser') {
+        this.centerBase.visible = false;
+      } else if (deskStage) {
+        this.centerBase.visible = s.figurineDisplayMode !== 'premium';
+      } else if (inWaifuHero) {
+        this.centerBase.visible = false;
+      }
+    }
   }
 
   /**
@@ -1101,6 +1186,7 @@ class App implements UIActions {
 
   leaveUniverse(): void {
     this.rig.cancel();
+    this.setTurntableYaw(0, true);
     this.transitionConversation();
     window.clearTimeout(this.genTimer);
     window.clearTimeout(this.editionsTimer);
@@ -1126,7 +1212,6 @@ class App implements UIActions {
     this.portalTarget = 0.12;
     this.setPlinthsVisible(false);
     store.leaveUniverse();
-    this.galleryPortal.setVisible(true);
     this.rig.applyPreset(CAMERA_PRESETS.gallery);
   }
 
@@ -1154,66 +1239,32 @@ class App implements UIActions {
   finishCompanionTeaser(): void {
     const s = store.get();
     if (s.step !== 'companion-teaser' || s.companionMode !== 'teaser') return;
-    const first = canonViewFor(s.residentId, resolveCanonRoute());
-    if (!this.centerBase) this.loadCenterBase();
-    this.showHeroVoidDome(first.visual.domeTop, first.visual.domeBottom);
-    this.portalTarget = 0.35;
-    store.set({ companionMode: 'reveal', figurineDisplayMode: 'original' });
+    if (!this.deskHeroReady || !this.centerBaseSettled) {
+      this.pendingCompanionFinish = true;
+      return;
+    }
+    this.completeCompanionHandoff();
+  }
 
-    // Prepare the close camera while the final video frame holds. The stage is
-    // mounted only when the GLB is ready, so the pod opening cannot finish
-    // behind a loading model.
-    const revealPreset = stagePreset();
-    const closePreset = {
-      ...revealPreset,
-      pos: [0, revealPreset.pos[1], revealPreset.pos[2] * 0.82] as [number, number, number],
-      target: [0, revealPreset.target[1], 0] as [number, number, number],
-      fov: Math.max(29, (revealPreset.fov ?? 37) - 5),
-    };
-    this.rig.applyPreset(closePreset);
-    let revealStarted = false;
-    let pullOutStarted = false;
-    const pullOut = () => {
-      if (pullOutStarted) return;
-      pullOutStarted = true;
-      void (async () => {
-      if (store.get().step !== 'stage' || store.get().companionMode !== 'reveal') return;
-      const done = await this.rig.flyTo(stagePreset(), this.engine.reducedMotion ? 0 : 1.25);
-      if (!done || store.get().step !== 'stage' || store.get().companionMode !== 'reveal') return;
-      store.set({ companionMode: 'showcase' });
-      store.markWaifuUniverseEntered();
-      window.clearTimeout(this.editionsTimer);
-      this.editionsTimer = window.setTimeout(() => {
-        const current = store.get();
-        if (current.step === 'stage' && current.companionMode === 'showcase') {
-          store.revealEditions();
-        }
-      }, 12000);
-      this.enableStageOrbit();
-      })();
-    };
-    const beginReveal = () => {
-      if (revealStarted) return;
-      revealStarted = true;
-      store.goto('stage');
-      this.residentStage?.beginCryoReveal('kagura', pullOut);
-      window.setTimeout(() => {
-        this.rig.impulse(0.026, 0.28);
-        if (this.cryoFlash) {
-          this.engine.scene.remove(this.cryoFlash);
-          this.cryoFlash.dispose();
-        }
-        const flash = new THREE.PointLight(0xdff9ff, 5.8, 4.2, 2);
-        flash.position.set(0, this.centerTopY + 0.12, 0.42);
-        this.engine.scene.add(flash);
-        this.cryoFlash = flash;
-      }, this.engine.reducedMotion ? 0 : 760);
-      if (this.engine.reducedMotion) pullOut();
-    };
-    this.openStage(false, beginReveal);
-    // A broken model must not trap the shot; after seven seconds advance into
-    // the reveal. This is a failsafe, never a visitor-facing skip affordance.
-    window.setTimeout(beginReveal, 7000);
+  private completeCompanionHandoff(): void {
+    const s = store.get();
+    if (s.step !== 'companion-teaser' || s.companionMode !== 'teaser') return;
+    this.pendingCompanionFinish = false;
+    store.set({
+      step: 'stage',
+      companionMode: 'showcase',
+      figurineDisplayMode: 'original',
+      error: null,
+    });
+    store.markWaifuUniverseEntered();
+    window.clearTimeout(this.editionsTimer);
+    this.editionsTimer = window.setTimeout(() => {
+      const current = store.get();
+      if (current.step === 'stage' && current.companionMode === 'showcase') {
+        store.revealEditions();
+      }
+    }, 12000);
+    this.enableStageOrbit();
   }
 
   enterPlayground(): void {
@@ -1807,39 +1858,15 @@ class App implements UIActions {
     store.set({ saveGateOpen: false });
   }
 
-  closeUnlockGate(): void {
-    store.set({ unlockGateOpen: false });
-    this.returnToFront();
-  }
-
   /** Ease back to the framing she is posed for, and hand control back. */
   private returnToFront(): void {
     this.controls.enabled = false;
+    this.setTurntableYaw(0, true);
     void this.rig
       .flyTo(stagePreset(), this.engine.reducedMotion ? 0 : 0.7)
       .then((done) => {
         if (done && store.get().step === 'stage') this.enableStageOrbit();
       });
-  }
-
-  /**
-   * The other side of the offer: instead of buying the turntable, make a
-   * variant that is yours. Your own version is yours to turn around.
-   */
-  makeYourVersion(): void {
-    const seed = fnv1a(`${store.get().residentId}:${store.get().bond.address || 'you'}`);
-    this.residentStage?.tintHero(seed);
-    store.unlockView('__owned');
-    store.set({ unlockGateOpen: false, variantSeed: seed });
-    this.ambience.chime(820);
-    this.returnToFront();
-  }
-
-  unlockView(code?: string): void {
-    const result = store.unlockView(code);
-    if (result === 'bad-code') return this.flashError(COPY.stage.badCode);
-    if (result === 'no-credits') return;
-    this.ambience.chime(940);
   }
 
   regenerateLook(prompt: string): void {

@@ -72,16 +72,6 @@ export const COPY = {
     saveNothing: 'Chưa có điều gì đáng giữ lại. Nói thêm với em một chút nhé.',
     noCredits: 'Không đủ credit để lưu. Cuộc trò chuyện vẫn tiếp tục được.',
 
-    unlockTitle: 'Xoay em để ngắm',
-    unlockBody: 'Anh có thể ngắm góc trước miễn phí. Toàn bộ góc xoay đi kèm mô hình.',
-    unlockCta: 'Mở bàn xoay · 30',
-    unlockOwn: 'Tạo phiên bản của anh',
-    unlockOwnNote: 'Một phiên bản do anh tạo, anh có thể xoay ngắm tự do.',
-    unlockCode: 'Hoặc nhập mã',
-    unlockCodeCta: 'Mở khoá',
-    unlockSkip: 'Để sau',
-    badCode: 'Mã này không khớp.',
-
     tabLook: 'Ngoại hình',
     lookNote: 'Tạo lại màu sắc theo mô tả. Dáng mô hình vẫn được giữ nguyên.',
     lookPlaceholder: 'Tông trăng đêm, ánh sáng dịu hơn.',

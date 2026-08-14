@@ -51,6 +51,7 @@ export class Nameplate {
   private canvas = document.createElement('canvas');
   private targetOpacity = 0;
   private maxOpacity = 0.15;
+  private transitionRequest = 0;
 
   private imageMesh: THREE.Mesh;
   private imageMaterial: THREE.MeshBasicMaterial;
@@ -265,6 +266,7 @@ export class Nameplate {
   }
 
   hide(): void {
+    this.transitionRequest++;
     this.targetOpacity = 0;
     this.imageActive = false;
     this.imagePlaced = false;
@@ -288,10 +290,12 @@ export class Nameplate {
 
   /** Fade out, then swap text and fade back in at the new anchor. */
   transitionTo(name: string, accent: number, plinth: THREE.Vector3, cameraPos: THREE.Vector3): void {
+    const request = ++this.transitionRequest;
     this.targetOpacity = 0;
     this.imagePlaced = false;
     this.imageTarget = 0;
     window.setTimeout(() => {
+      if (request !== this.transitionRequest) return;
       this.setText(name, accent);
       this.showAt(plinth, cameraPos);
     }, 180);

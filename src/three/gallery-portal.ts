@@ -1,17 +1,18 @@
 import * as THREE from 'three';
 import type { CamPreset } from '../config/cameras';
 
-/** The single card stands on the centerline of the empty gallery room. */
+/** A distant story image on the centerline of the empty gallery room. */
 export const PORTAL_PLANE: { center: [number, number, number]; size: [number, number] } = {
-  center: [0, 0.6, 0],
-  // Preserve the authored 4:3 preview instead of stretching it into 16:9.
-  size: [3.7, 2.775],
+  center: [0, 0.9, 0],
+  // Match the authored 1344×768 office plate. At the gallery camera this is a
+  // distant window; at the dolly endpoint it overscans the viewport like video cover.
+  size: [2.2, 2.2 / (1344 / 768)],
 };
 
 /** End pose for the real camera dolly into the portal. */
 export function portalDollyPreset(): CamPreset {
   return {
-    pos: [0, PORTAL_PLANE.center[1], 2.35],
+    pos: [0, PORTAL_PLANE.center[1], 1.45],
     target: [...PORTAL_PLANE.center],
     fov: 46,
   };
@@ -66,10 +67,19 @@ export class GalleryPortal {
   build(textureUrl: string, accentHex: number): void {
     this.clearMesh();
     const geometry = new THREE.PlaneGeometry(PORTAL_PLANE.size[0], PORTAL_PLANE.size[1]);
-    const material = new THREE.MeshBasicMaterial({ color: accentHex, toneMapped: false });
+    const material = new THREE.MeshBasicMaterial({
+      color: accentHex,
+      toneMapped: false,
+      transparent: true,
+      opacity: 1,
+      depthTest: false,
+      depthWrite: false,
+    });
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.position.set(...PORTAL_PLANE.center);
-    this.mesh.renderOrder = 1;
+    // The portal is a film plate: once the camera reaches it, gallery geometry
+    // must not bleed through and create a visible pop before the video cut.
+    this.mesh.renderOrder = 20;
     this.group.add(this.mesh);
 
     new THREE.TextureLoader().load(

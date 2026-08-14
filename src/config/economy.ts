@@ -29,6 +29,5 @@ export const CREDIT_CATALOG: { feature: Spend; label: string; price: number }[] 
   { feature: 'turn', label: CREDIT_LABEL.turn, price: COST.turn },
   { feature: 'speakForMe', label: CREDIT_LABEL.speakForMe, price: COST.speakForMe },
   { feature: 'saveChapter', label: CREDIT_LABEL.saveChapter, price: COST.saveChapter },
-  { feature: 'turntable', label: CREDIT_LABEL.turntable, price: COST.turntable },
   { feature: 'sceneImage', label: CREDIT_LABEL.sceneImage, price: COST.sceneImage },
 ];

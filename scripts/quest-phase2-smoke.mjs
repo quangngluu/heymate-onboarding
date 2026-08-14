@@ -87,6 +87,41 @@ async function fillInput(page, selector, value) {
   if (!filled) throw new Error(`Could not fill ${selector}`);
 }
 
+/** Follow the public entry cinematic into the interactive companion stage. */
+async function enterWaifuPlayground(page) {
+  await page.waitForSelector('[data-testid="universe-waifu-universe"]', { visible: true });
+  await page.click('[data-testid="universe-waifu-universe"]');
+
+  // The public route now plays three authored films before exposing the live
+  // stage. Browser coverage should exercise that sequencing without spending
+  // ~23 seconds per isolated context, then wait for the real GLB + base gate
+  // before ending the final segment so it also covers the live-scene handoff.
+  await page.waitForSelector('.stage-teaser-video.is-active', { visible: true });
+  await page.evaluate(() => {
+    const videos = [...document.querySelectorAll('.stage-teaser-video')];
+    for (const video of videos) video.pause();
+    videos[0]?.dispatchEvent(new Event('ended'));
+    videos[1]?.pause();
+    videos[1]?.dispatchEvent(new Event('ended'));
+    videos[2]?.pause();
+  });
+  await page.waitForFunction(
+    () => document.documentElement.dataset.deskHeroReady === 'true',
+    { timeout: 30_000 }
+  );
+  await page.evaluate(() => {
+    const finalVideo = document.querySelector('[data-teaser-segment="world-lights-up"]');
+    if (!(finalVideo instanceof HTMLVideoElement)) return;
+    finalVideo.currentTime = Math.max(0, finalVideo.duration - 0.7);
+    finalVideo.dispatchEvent(new Event('timeupdate'));
+    finalVideo.dispatchEvent(new Event('ended'));
+  });
+  await page.waitForSelector('.step-stage', { visible: true });
+  await page.waitForSelector('[data-testid="press-to-talk"]', { visible: true });
+  await clickSelector(page, '[data-testid="press-to-talk"]');
+  await page.waitForSelector('.dock-bar .chat-input:not([disabled])', { visible: true });
+}
+
 async function runModeTransitionCoverage(browser) {
   const failures = [];
 
@@ -162,8 +197,7 @@ async function runModeTransitionCoverage(browser) {
     // client's endpoint-availability circuit breaker affect this coverage.
     await page.evaluateOnNewDocument(installFetchMock);
     await page.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-    await page.click('[data-testid="universe-waifu-universe"]');
-    await page.waitForSelector('.step-stage', { visible: true });
+    await enterWaifuPlayground(page);
     return { context, page };
   };
   const openQuest = async (page) => {
@@ -349,9 +383,7 @@ async function runOpenChatContextVisualCoverage(browser) {
       };
     });
     await page.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-    await page.click('[data-testid="universe-waifu-universe"]');
-    await page.waitForSelector('.step-stage', { visible: true });
-    await page.waitForSelector('[data-testid="open-chat-visual"]', { visible: true });
+    await enterWaifuPlayground(page);
 
     const input = '.dock-bar .chat-input';
     const send = '.dock-bar .btn-primary';
@@ -360,17 +392,23 @@ async function runOpenChatContextVisualCoverage(browser) {
       await fillInput(page, input, `Lượt context ${turn}`);
       await clickSelector(page, send);
       await page.waitForFunction(
-        (expected) => document.querySelectorAll('.speech-log .bubble-user').length >= expected,
+        (expected) =>
+          window.__hm?.store?.get?.().chat.filter((entry) => entry.from === 'user').length >= expected,
         { timeout: 5_000 },
         turn
       );
     }
 
     await page.waitForFunction(
-      () =>
-        document.querySelectorAll('[data-testid="open-chat-context-visual"]').length === 2 &&
-        document.querySelector('[data-testid="open-chat-context-visual"][data-visual-payment="free-auto"]')?.getAttribute('data-visual-status') === 'ready' &&
-        document.querySelector('[data-testid="open-chat-context-visual"][data-visual-payment="paid"]')?.getAttribute('data-visual-status') === 'offered',
+      () => {
+        const visuals = window.__hm?.store?.get?.().chat
+          .map((entry) => entry.contextVisual)
+          .filter(Boolean) ?? [];
+        return (
+          visuals.filter((visual) => visual.payment === 'free-auto' && visual.status === 'ready').length === 1 &&
+          visuals.filter((visual) => visual.payment === 'paid' && visual.status === 'offered').length === 1
+        );
+      },
       { timeout: 15_000 }
     );
 
@@ -404,7 +442,9 @@ async function runOpenChatContextVisualCoverage(browser) {
       await clickSelector(page, paidActionSelector);
       await page
         .waitForFunction(
-          () => document.querySelector('[data-testid="open-chat-context-visual"][data-visual-payment="paid"]')?.getAttribute('data-visual-status') === 'ready',
+          () => window.__hm?.store?.get?.().chat.some(
+            (entry) => entry.contextVisual?.payment === 'paid' && entry.contextVisual.status === 'ready'
+          ),
           { timeout: 15_000 }
         )
         .catch(() => undefined);
@@ -412,14 +452,16 @@ async function runOpenChatContextVisualCoverage(browser) {
 
     const state = await page.evaluate(() => {
       const cards = [...document.querySelectorAll('[data-testid="open-chat-context-visual"]')];
-      const free = cards.find((card) => card.getAttribute('data-visual-payment') === 'free-auto');
-      const paid = cards.find((card) => card.getAttribute('data-visual-payment') === 'paid');
       const store = window.__hm?.store?.get?.();
+      const visuals = store?.chat.map((entry) => entry.contextVisual).filter(Boolean) ?? [];
+      const free = visuals.find((visual) => visual.payment === 'free-auto');
+      const paid = visuals.find((visual) => visual.payment === 'paid');
       return {
         cardCount: cards.length,
-        freeStatus: free?.getAttribute('data-visual-status') ?? null,
-        paidStatus: paid?.getAttribute('data-visual-status') ?? null,
-        paidAction: paid?.querySelector('.open-chat-visual-action')?.textContent?.trim() ?? null,
+        storedVisualCount: visuals.length,
+        freeStatus: free?.status ?? null,
+        paidStatus: paid?.status ?? null,
+        paidAction: cards[0]?.querySelector('.open-chat-visual-action')?.textContent?.trim() ?? null,
         hasInlineImage: cards.some((card) => !!card.querySelector('img')),
         sceneBackdrop: document.documentElement.dataset.openChatScene ?? '',
         sceneRequests: window.__heymateVisualSmoke.fetchUrls.filter((url) => url.includes('/api/scene-image')).length,
@@ -428,7 +470,8 @@ async function runOpenChatContextVisualCoverage(browser) {
         imageSpends: store?.transactions?.filter((item) => item.feature === 'sceneImage').length ?? null,
       };
     });
-    if (state.cardCount !== 2) failures.push(`context visual cards=${state.cardCount}`);
+    if (state.storedVisualCount !== 2) failures.push(`stored context visuals=${state.storedVisualCount}`);
+    if (state.cardCount !== 1) failures.push(`visible context visual cards=${state.cardCount}`);
     if (state.freeStatus !== 'ready') failures.push(`free context status=${JSON.stringify(state.freeStatus)}`);
     if (state.paidStatus !== 'ready') failures.push(`paid context status=${JSON.stringify(state.paidStatus)}`);
     if (state.paidAction !== 'Xem lại ảnh') failures.push(`paid ready action=${JSON.stringify(state.paidAction)}`);
@@ -483,9 +526,7 @@ async function runMuteTtsCoverage(browser) {
       };
     });
     await page.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-    await page.click('[data-testid="universe-waifu-universe"]');
-    await page.waitForSelector('.step-stage', { visible: true });
-    await page.waitForSelector('.dock-bar .chat-input:not([disabled])', { visible: true });
+    await enterWaifuPlayground(page);
     await page.evaluate(() => {
       window.__heymateMuteSmoke.chats = 0;
       window.__heymateMuteSmoke.tts = 0;
@@ -561,9 +602,7 @@ async function runTurnOverlapCoverage(browser) {
       };
     });
     await page.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-    await page.click('[data-testid="universe-waifu-universe"]');
-    await page.waitForSelector('.step-stage', { visible: true });
-    await page.waitForSelector('.dock-bar .chat-input:not([disabled])', { visible: true });
+    await enterWaifuPlayground(page);
     await page.evaluate(() => {
       window.__heymateOverlapSmoke.chats = 0;
       window.__heymateOverlapSmoke.streamStarts = 0;
@@ -613,32 +652,27 @@ async function runViewport(browser, viewport) {
     waitUntil: 'domcontentloaded',
     timeout: 30_000,
   });
-  await page.waitForSelector('[data-testid="universe-waifu-universe"]', { visible: true });
-  await page.click('[data-testid="universe-waifu-universe"]');
-  await page.waitForSelector('.step-stage', { visible: true });
+  await enterWaifuPlayground(page);
   await page.waitForFunction(
     () => ['disabled', 'ready', 'fallback'].includes(document.documentElement.dataset.questRig ?? ''),
     { timeout: 30_000 }
   );
-  // The frame now plays on the backdrop behind the name, not inside the card, so
-  // wait for the compact card to render and for the scene to reach the backdrop.
+  // The desk-stage opening keeps the authored frame out of the transcript and
+  // records it on the opening turn while the ambient desk remains the backdrop.
   await page.waitForFunction(
     () =>
-      document.querySelector('[data-testid="open-chat-visual"]') !== null &&
+      window.__hm?.store?.get?.().chat.some((turn) => turn.visualId) &&
+      document.querySelector('.speech-log .bubble-resident') !== null &&
       document.documentElement.dataset.openChatScene === 'ready',
     { timeout: 15_000 }
   );
   const openingVisualState = await page.evaluate(() => {
-    const card = document.querySelector('[data-testid="open-chat-visual"]');
-    const children = [...(card?.parentElement?.children ?? [])];
-    const at = card ? children.indexOf(card) : -1;
+    const opening = window.__hm?.store?.get?.().chat.find((turn) => turn.visualId);
     return {
-      id: card?.getAttribute('data-visual-id') ?? null,
-      residentBubblesBefore: at < 0
-        ? -1
-        : children.slice(0, at).filter((element) => element.classList.contains('bubble-resident')).length,
-      actionCount: card?.querySelectorAll('.open-chat-visual-action').length ?? 0,
-      hasInlineImage: !!card?.querySelector('img'),
+      id: opening?.visualId ?? null,
+      residentBubblesBefore: document.querySelectorAll('.speech-log .bubble-resident').length,
+      actionCount: document.querySelectorAll('.speech-log .open-chat-visual-action').length,
+      hasInlineImage: !!document.querySelector('.speech-log img'),
       sceneBackdrop: document.documentElement.dataset.openChatScene ?? '',
       horizontalOverflowPx: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
     };
@@ -650,7 +684,7 @@ async function runViewport(browser, viewport) {
       fullPage: false,
     });
   }
-  await page.click('[data-testid="session-settings-open"]');
+  await clickSelector(page, '[data-testid="session-settings-open"]');
   await page.waitForSelector('.session-scrim:not([hidden])', { visible: true });
   const settingsShape = await page.evaluate(() => ({
     primaryRows: document.querySelectorAll('.session-primary .session-setting-row').length,
@@ -804,7 +838,7 @@ async function runViewport(browser, viewport) {
   if (state.rig !== 'disabled' || state.rigDebug !== 'false') {
     failures.push(`shipping rig=${JSON.stringify({ rig: state.rig, debug: state.rigDebug })}`);
   }
-  if (!state.series.includes('SWORD ART ONLINE')) {
+  if (!state.series.includes('INUYASHA')) {
     failures.push(`series=${JSON.stringify(state.series)}`);
   }
   if (state.settingsShape.primaryRows !== 1) {
@@ -853,13 +887,13 @@ async function runViewport(browser, viewport) {
     failures.push(`settings length slider=${JSON.stringify(state.settingsState)}`);
   }
   if (!state.settingsState.voiceActionEnabled) failures.push('voice action is unavailable');
-  if (state.openingVisual.id !== 'rin-opening-signal') {
+  if (state.openingVisual.id !== 'kagura-opening-reflection') {
     failures.push(`opening visual=${JSON.stringify(state.openingVisual.id)}`);
   }
-  if (state.openingVisual.residentBubblesBefore !== 2) {
-    failures.push(`opening visual after ${state.openingVisual.residentBubblesBefore} sentences`);
+  if (state.openingVisual.residentBubblesBefore < 1) {
+    failures.push('opening line is missing from the transcript');
   }
-  if (state.openingVisual.actionCount !== 2) {
+  if (state.openingVisual.actionCount !== 0) {
     failures.push(`opening visual actions=${state.openingVisual.actionCount}`);
   }
   if (state.openingVisual.hasInlineImage) {

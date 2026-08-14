@@ -62,7 +62,7 @@ export type { PersonaTraits } from '../config/persona';
 
 export type Step =
   | 'gallery' // universe picker (outer)
-  | 'companion-teaser' // cinematic gate; companion scene has not loaded yet
+  | 'companion-teaser' // cinematic gate over the preloaded live companion scene
   | 'arrival' // creator universe: portal intro
   | 'studio' // creator universe: pick character + generate
   | 'reveal' // creator universe: your Mate
