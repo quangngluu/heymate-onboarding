@@ -92,25 +92,20 @@ async function enterWaifuPlayground(page) {
   await page.waitForSelector('[data-testid="universe-waifu-universe"]', { visible: true });
   await page.click('[data-testid="universe-waifu-universe"]');
 
-  // The public route now plays three authored films before exposing the live
-  // stage. Browser coverage should exercise that sequencing without spending
-  // ~23 seconds per isolated context, then wait for the real GLB + base gate
-  // before ending the final segment so it also covers the live-scene handoff.
+  // The public route now plays one authored master before exposing the live
+  // stage. Skip to its handoff window so isolated smoke contexts do not each
+  // spend ~23 seconds, while still covering the real GLB + base readiness gate.
   await page.waitForSelector('.stage-teaser-video.is-active', { visible: true });
   await page.evaluate(() => {
-    const videos = [...document.querySelectorAll('.stage-teaser-video')];
-    for (const video of videos) video.pause();
-    videos[0]?.dispatchEvent(new Event('ended'));
-    videos[1]?.pause();
-    videos[1]?.dispatchEvent(new Event('ended'));
-    videos[2]?.pause();
+    const video = document.querySelector('[data-teaser-segment="official-teaser"]');
+    if (video instanceof HTMLVideoElement) video.pause();
   });
   await page.waitForFunction(
     () => document.documentElement.dataset.deskHeroReady === 'true',
     { timeout: 30_000 }
   );
   await page.evaluate(() => {
-    const finalVideo = document.querySelector('[data-teaser-segment="world-lights-up"]');
+    const finalVideo = document.querySelector('[data-teaser-segment="official-teaser"]');
     if (!(finalVideo instanceof HTMLVideoElement)) return;
     finalVideo.currentTime = Math.max(0, finalVideo.duration - 0.7);
     finalVideo.dispatchEvent(new Event('timeupdate'));

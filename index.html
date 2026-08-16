@@ -36,6 +36,9 @@
       <source src="/assets/stage/desk-ambient-loop-landscape.mp4" type="video/mp4" />
     </video>
     <canvas id="stage" aria-hidden="true"></canvas>
+    <!-- Live letterbox: black sides matching the teaser's, retracted after the
+         video dissolves while the matched desk and collectible stay fixed. -->
+    <div id="live-mask" aria-hidden="true"></div>
     <div id="ui"></div>
     <div id="boot" role="status" aria-live="polite">
       <div class="boot-mark">HEYMATE</div>

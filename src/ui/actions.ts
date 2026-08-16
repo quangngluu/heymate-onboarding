@@ -8,6 +8,8 @@ export interface UIActions {
   leaveUniverse(): void;
 
   // --- companion universe ---
+  /** The teaser is dissolving into the live desk: start the dolly-out reveal. */
+  beginCompanionReveal(): void;
   finishCompanionTeaser(): void;
   enterPlayground(): void;
   selectKaguraFigurineVariant(id: KaguraFigurineVariantId): void;
@@ -56,6 +58,8 @@ export interface UIActions {
   /** From reveal back to the studio, inputs preserved. */
   backToStudio(): void;
   restart(): void;
+  /** Current global audio preference, shared by ambience and cinematic media. */
+  isMuted(): boolean;
   /** Returns new muted state. */
   toggleMute(): boolean;
 }

@@ -133,6 +133,19 @@ function storyContext(
   };
 }
 
+/** Matched live-desk framing: independent plate/figure transforms, lights and letterbox. */
+type LiveDolly = {
+  deskX: number;
+  deskY: number;
+  deskS: number;
+  stageX: number;
+  stageY: number;
+  stageSX: number;
+  stageSY: number;
+  lights: number;
+  mask: number;
+};
+
 class App implements UIActions {
   private engine: Engine;
   private rig: CameraRig;
@@ -201,6 +214,10 @@ class App implements UIActions {
   private centerBaseLoading = false;
   private centerBaseSettled = false;
   private errorTimer = 0;
+  /** rAF handle for the live desk dolly-out; 0 when idle. */
+  private liveDollyRaf = 0;
+  /** Guards the one-shot video→stage reveal so it completes exactly once. */
+  private companionRevealState: 'idle' | 'running' | 'done' = 'idle';
 
   private conversationToken(): ConversationToken {
     return this.conversation.capture(store.get());
@@ -304,7 +321,15 @@ class App implements UIActions {
     };
 
     this.rig.applyPreset(CAMERA_PRESETS.gallery);
-    window.addEventListener('resize', () => this.rig.refreshFov());
+    window.addEventListener('resize', () => {
+      this.rig.refreshFov();
+      if (!this.deskStageActive || this.companionRevealState === 'running') return;
+      this.applyDolly(
+        this.companionRevealState === 'done'
+          ? this.liveDollyRestVals()
+          : this.liveDollyStartVals()
+      );
+    });
     this.engine.onUpdate((dt, t) => this.tick(dt, t));
     this.engine.start();
 
@@ -343,6 +368,43 @@ class App implements UIActions {
         rig: this.rig,
         camera: this.engine.camera,
         engine: this.engine,
+        // Alignment helpers (dev only): stage the live desk and try dolly values.
+        prepDesk: () => this.prepareCompanionStageForHandoff(),
+        setDolly: (x: number, y: number, s: number, lights = 1, mask = 0) =>
+          this.applyDolly({
+            deskX: x,
+            deskY: y,
+            deskS: s,
+            stageX: x,
+            stageY: y,
+            stageSX: s,
+            stageSY: s,
+            lights,
+            mask,
+          }),
+        setMatchDolly: (
+          deskX: number,
+          deskY: number,
+          deskS: number,
+          stageX: number,
+          stageY: number,
+          stageSX: number,
+          stageSY: number,
+          lights = 1,
+          mask = 0
+        ) =>
+          this.applyDolly({
+            deskX,
+            deskY,
+            deskS,
+            stageX,
+            stageY,
+            stageSX,
+            stageSY,
+            lights,
+            mask,
+          }),
+        dollyStart: () => this.liveDollyStartVals(),
       };
     }
   }
@@ -591,6 +653,9 @@ class App implements UIActions {
       store.goto('companion-teaser');
       this.prepareCompanionStageForHandoff();
       if (shouldPlayTeaser(store.get().waifuUniverseEntered)) {
+        // Pre-frame the live desk to the teaser's final shot; the dolly-out
+        // eases off this once the last clip dissolves.
+        this.applyDolly(this.liveDollyStartVals());
         this.prefetchModel(residentById('kagura').modelUrl);
       } else {
         this.finishCompanionTeaser();
@@ -662,9 +727,9 @@ class App implements UIActions {
 
   private shouldUseDeskStage(s: AppState): boolean {
     return (
-      s.step === 'stage' &&
       s.universeId === 'waifu-universe' &&
-      !s.activeQuestId
+      !s.activeQuestId &&
+      (s.step === 'companion-teaser' || s.step === 'stage')
     );
   }
 
@@ -692,6 +757,8 @@ class App implements UIActions {
     }
     delete document.documentElement.dataset.deskHeroReady;
     this.deskVideo.pause();
+    this.clearLiveDolly();
+    this.companionRevealState = 'idle';
     this.engine.scene.background = this.defaultSceneBackground;
     this.engine.scene.fog = this.defaultSceneFog;
   }
@@ -703,8 +770,14 @@ class App implements UIActions {
     this.rig.applyPreset(stagePreset());
     this.deskHeroReady = false;
     this.pendingCompanionFinish = false;
+    this.companionRevealState = 'idle';
     document.documentElement.dataset.deskHeroReady = 'false';
     this.setDeskStageActive(true);
+    // Keep only the official teaser decoding during the cinematic. The desk
+    // loop is already framed on its poster and starts at the dissolve, avoiding
+    // two simultaneous videos competing with WebGL on lower-power devices.
+    this.deskVideo.pause();
+    if (this.deskVideo.currentTime !== 0) this.deskVideo.currentTime = 0;
     this.openStage(false, () => {
       this.deskHeroReady = true;
       this.residentStage?.setAmbientEffectsVisible(false);
@@ -717,6 +790,129 @@ class App implements UIActions {
     const ready = this.deskHeroReady && this.centerBaseSettled;
     document.documentElement.dataset.deskHeroReady = String(ready);
     if (ready && this.pendingCompanionFinish) this.completeCompanionHandoff();
+  }
+
+  /**
+   * Screen-space envelope that matches the final teaser frame. The baked desk
+   * plate and the transparent figurine cannot share one transform: the teaser
+   * ends with the book closer to camera than the collectible. They stay on
+   * these matched depth planes after the dissolve; only light and letterbox
+   * change. Mobile plays the portrait clip full-bleed, so it has no letterbox.
+   */
+  private liveDollyStartVals(): LiveDolly {
+    const portrait =
+      typeof window !== 'undefined' && window.matchMedia?.('(max-width: 700px)').matches;
+    return portrait
+      ? {
+          deskX: 0,
+          deskY: -13,
+          deskS: 1.2,
+          stageX: 0,
+          stageY: 5.7,
+          stageSX: 1.085,
+          stageSY: 1.085,
+          lights: 0.85,
+          mask: 0,
+        }
+      : {
+          deskX: 2.2,
+          deskY: -8.4,
+          deskS: 1,
+          stageX: -0.2,
+          stageY: 6.13,
+          stageSX: 1.13,
+          stageSY: 1.135,
+          lights: 0.85,
+          mask: 1,
+        };
+  }
+
+  /** Interactive framing keeps the exact match; only lights and mask finish. */
+  private liveDollyRestVals(): LiveDolly {
+    return { ...this.liveDollyStartVals(), lights: 1, mask: 0 };
+  }
+
+  /** Write the matched plate/figure transforms and shared lights/mask variables. */
+  private applyDolly(v: LiveDolly): void {
+    const st = document.documentElement.style;
+    st.setProperty('--live-desk-x', `${v.deskX}vh`);
+    st.setProperty('--live-desk-y', `${v.deskY}vh`);
+    st.setProperty('--live-desk-s', `${v.deskS}`);
+    st.setProperty('--live-stage-x', `${v.stageX}vh`);
+    st.setProperty('--live-stage-y', `${v.stageY}vh`);
+    st.setProperty('--live-stage-sx', `${v.stageSX}`);
+    st.setProperty('--live-stage-sy', `${v.stageSY}`);
+    st.setProperty('--live-lights', `${v.lights}`);
+    st.setProperty('--live-mask', `${v.mask}`);
+  }
+
+  /** Drop back to the identity framing so no other desk use inherits the dolly. */
+  private clearLiveDolly(): void {
+    if (this.liveDollyRaf) {
+      cancelAnimationFrame(this.liveDollyRaf);
+      this.liveDollyRaf = 0;
+    }
+    const st = document.documentElement.style;
+    st.removeProperty('--live-desk-x');
+    st.removeProperty('--live-desk-y');
+    st.removeProperty('--live-desk-s');
+    st.removeProperty('--live-stage-x');
+    st.removeProperty('--live-stage-y');
+    st.removeProperty('--live-stage-sx');
+    st.removeProperty('--live-stage-sy');
+    st.removeProperty('--live-lights');
+    st.removeProperty('--live-mask');
+  }
+
+  /**
+   * The last clip dissolves into the matched live frame. Keep every spatial
+   * anchor fixed while the letterbox opens and the office lights come up.
+   */
+  beginCompanionReveal(): void {
+    if (this.companionRevealState !== 'idle') return;
+    const s = store.get();
+    if (s.step !== 'companion-teaser' || s.companionMode !== 'teaser') return;
+    const start = this.liveDollyStartVals();
+    const rest = this.liveDollyRestVals();
+    if (this.engine.reducedMotion) {
+      this.applyDolly(rest);
+      this.companionRevealState = 'done';
+      this.completeCompanionHandoff();
+      return;
+    }
+    void this.deskVideo.play().catch(() => {
+      // The poster is the same authored desk frame if muted autoplay fails.
+    });
+    this.companionRevealState = 'running';
+    const holdMs = 900; // let the matched frame read after the gate clears
+    const durationMs = 900;
+    const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+    const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
+    const t0 = performance.now();
+    const step = (now: number) => {
+      const raw = (now - t0 - holdMs) / durationMs;
+      const k = easeOut(Math.min(1, Math.max(0, raw)));
+      this.applyDolly({
+        deskX: lerp(start.deskX, rest.deskX, k),
+        deskY: lerp(start.deskY, rest.deskY, k),
+        deskS: lerp(start.deskS, rest.deskS, k),
+        stageX: lerp(start.stageX, rest.stageX, k),
+        stageY: lerp(start.stageY, rest.stageY, k),
+        stageSX: lerp(start.stageSX, rest.stageSX, k),
+        stageSY: lerp(start.stageSY, rest.stageSY, k),
+        lights: lerp(start.lights, rest.lights, k),
+        mask: lerp(start.mask, rest.mask, k),
+      });
+      if (raw >= 1) {
+        this.liveDollyRaf = 0;
+        this.companionRevealState = 'done';
+        this.completeCompanionHandoff();
+      } else {
+        this.liveDollyRaf = requestAnimationFrame(step);
+      }
+    };
+    this.applyDolly(start);
+    this.liveDollyRaf = requestAnimationFrame(step);
   }
 
   /** Gallery is one static full-screen frame; no Three.js room or portal. */
@@ -788,7 +984,7 @@ class App implements UIActions {
       (s.companionMode === 'reveal' || s.companionMode === 'showcase');
     this.stage.floor.visible = !deskStage && !inWaifuHero;
     if (this.centerBase) {
-      if (s.step === 'gallery' || s.step === 'companion-teaser') {
+      if (s.step === 'gallery') {
         this.centerBase.visible = false;
       } else if (deskStage) {
         this.centerBase.visible = s.figurineDisplayMode !== 'premium';
@@ -1239,6 +1435,8 @@ class App implements UIActions {
   finishCompanionTeaser(): void {
     const s = store.get();
     if (s.step !== 'companion-teaser' || s.companionMode !== 'teaser') return;
+    // Once the dissolve has begun, the dolly-out reveal owns completion.
+    if (this.companionRevealState !== 'idle') return;
     if (!this.deskHeroReady || !this.centerBaseSettled) {
       this.pendingCompanionFinish = true;
       return;
@@ -1249,6 +1447,18 @@ class App implements UIActions {
   private completeCompanionHandoff(): void {
     const s = store.get();
     if (s.step !== 'companion-teaser' || s.companionMode !== 'teaser') return;
+    if (this.liveDollyRaf) {
+      cancelAnimationFrame(this.liveDollyRaf);
+      this.liveDollyRaf = 0;
+    }
+    // Land on the exact matched framing no matter which path completed it.
+    this.applyDolly(this.liveDollyRestVals());
+    if (!this.engine.reducedMotion) {
+      void this.deskVideo.play().catch(() => {
+        // The poster remains a valid static fallback.
+      });
+    }
+    this.companionRevealState = 'done';
     this.pendingCompanionFinish = false;
     store.set({
       step: 'stage',
@@ -2056,7 +2266,17 @@ class App implements UIActions {
   }
 
   toggleMute(): boolean {
-    this.ambience.setMuted(!this.ambience.isMuted);
+    const muted = !this.ambience.isMuted;
+    this.ambience.setMuted(muted);
+    // The official teaser owns its soundtrack. Keep the persistent chrome
+    // toggle authoritative while that media element is mounted.
+    document
+      .querySelectorAll<HTMLVideoElement>('.stage-teaser-video')
+      .forEach((video) => { video.muted = muted; });
+    return muted;
+  }
+
+  isMuted(): boolean {
     return this.ambience.isMuted;
   }
 }

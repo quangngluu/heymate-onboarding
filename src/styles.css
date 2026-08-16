@@ -42,6 +42,43 @@ html, body {
   transition: opacity 0.45s ease;
 }
 
+/* Live-desk match: the baked desk and transparent WebGL figure are two depth
+   planes, so each gets an independently matched transform. Their geometry
+   stays fixed after the dissolve while the shared lights ramp up. */
+#desk-loop {
+  transform: translate(var(--live-desk-x, 0px), var(--live-desk-y, 0px)) scale(var(--live-desk-s, 1));
+  transform-origin: 50% 50%;
+  filter: brightness(var(--live-lights, 1));
+  will-change: transform, filter;
+}
+
+/* Live letterbox that matches the teaser's black sides at the seam, then
+   retracts (--live-mask 1 → 0) so the desk opens from the portrait frame to
+   the full landscape. Zero-width and inert whenever --live-mask is 0. */
+#live-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+#live-mask::before,
+#live-mask::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: max(0px, calc((100vw - 57.142857vh) / 2 * var(--live-mask, 0)));
+  will-change: width;
+}
+#live-mask::before {
+  left: 0;
+  background: linear-gradient(90deg, #050506 0 calc(100% - 16px), rgba(5, 5, 6, 0.7) calc(100% - 8px), transparent 100%);
+}
+#live-mask::after {
+  right: 0;
+  background: linear-gradient(270deg, #050506 0 calc(100% - 16px), rgba(5, 5, 6, 0.7) calc(100% - 8px), transparent 100%);
+}
+
 html[data-entry-stage='true'] #entry-backdrop { opacity: 1; }
 html[data-desk-stage='true'] #desk-loop,
 html[data-desk-stage='true'] #stage { opacity: 1; }
@@ -96,9 +133,12 @@ html[data-desk-stage='true'] #stage {
   touch-action: none;
   /* Match the live collectible's screen-space envelope to the final teaser
      frame. The desk video remains full-bleed; only the transparent WebGL
-     layer is reframed, so the base and figurine do not jump at handoff. */
-  transform: translate(13.333vh, -9.444vh) scale(0.78);
+     layer is reframed, so the base and figurine do not jump at handoff.
+     The leading stage transform holds the final portrait-frame match
+     independently of the desk plate, including in the interactive scene. */
+  transform: translate(var(--live-stage-x, 0px), var(--live-stage-y, 0px)) scale(var(--live-stage-sx, 1), var(--live-stage-sy, 1)) translate(13.333vh, -9.444vh) scale(0.78);
   transform-origin: 50% 50%;
+  filter: brightness(var(--live-lights, 1));
 }
 
 html[data-desk-turning='true'] #stage { cursor: grabbing; }
@@ -414,6 +454,35 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
   isolation: isolate;
   background: transparent;
 }
+/* Opaque office backing for the whole teaser: on click it matches the lobby
+   plate (same image, cover) so there is no jump, it hides the live desk until
+   the hand-off, and it pushes in gently while the black sides fade. */
+.stage-teaser-entry {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: #060607 url('/assets/stage/office-entry-empty-landscape.webp') 50% 50% / cover no-repeat;
+  transform-origin: 50% 50%;
+  animation: teaser-entry-push 1.1s ease-out both;
+}
+.stage-teaser.is-playing .stage-teaser-entry {
+  opacity: 0;
+  animation:
+    teaser-entry-push 1.1s ease-out both,
+    teaser-entry-away 0.18s 0.22s ease-in both;
+}
+@keyframes teaser-entry-push {
+  from { transform: scale(1); }
+  to { transform: scale(1.06); }
+}
+@keyframes teaser-entry-away {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage-teaser-entry,
+  .stage-teaser.is-playing .stage-teaser-entry { animation: none; }
+}
 .stage-teaser::before,
 .stage-teaser::after {
   content: '';
@@ -421,19 +490,19 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
   top: 0;
   bottom: 0;
   z-index: 2;
-  /* Extend 42px over the portrait image. The black matte now fades on top of
-     the video edge instead of ending underneath it. */
-  width: max(42px, calc((100% - 57.142857vh) / 2 + 42px));
+  /* Sit the matte on the letterbox gutter and feather only ~14px onto the
+     picture, so the black sides hide the seam without eating the video. */
+  width: max(28px, calc((100% - 57.142857vh) / 2 + 14px));
   opacity: 0;
   animation: teaser-side-fade 0.36s ease-out both;
 }
 .stage-teaser::before {
   left: 0;
-  background: linear-gradient(90deg, #050506 0 calc(100% - 42px), rgba(5, 5, 6, 0.76) calc(100% - 20px), transparent 100%);
+  background: linear-gradient(90deg, #050506 0 calc(100% - 14px), rgba(5, 5, 6, 0.72) calc(100% - 7px), transparent 100%);
 }
 .stage-teaser::after {
   right: 0;
-  background: linear-gradient(270deg, #050506 0 calc(100% - 42px), rgba(5, 5, 6, 0.76) calc(100% - 20px), transparent 100%);
+  background: linear-gradient(270deg, #050506 0 calc(100% - 14px), rgba(5, 5, 6, 0.72) calc(100% - 7px), transparent 100%);
 }
 .stage-teaser-video {
   position: absolute;
@@ -480,8 +549,10 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
 .stage-teaser.is-playing .stage-teaser-brand {
   animation: teaser-picture-in 0.18s 0.12s ease-out both;
 }
-.stage-teaser.is-handing-off::before,
-.stage-teaser.is-handing-off::after,
+/* The gate stays mounted but invisible through the dolly-out; let clicks fall
+   through to the live desk underneath. */
+.stage-teaser.is-handing-off { pointer-events: none; }
+.stage-teaser.is-handing-off .stage-teaser-entry,
 .stage-teaser.is-handing-off .stage-teaser-video.is-active,
 .stage-teaser.is-handing-off .stage-teaser-vignette,
 .stage-teaser.is-handing-off .stage-teaser-brand,
@@ -881,7 +952,7 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
   .stage-teaser-brand { left: 14px; bottom: calc(17px + var(--safe-b)); }
   .stage-teaser-video { object-fit: cover; background: #000; }
   html[data-desk-stage='true'] #stage {
-    transform: translate(-9.48vh, -10.31vh) scale(1.03);
+    transform: translate(var(--live-stage-x, 0px), var(--live-stage-y, 0px)) scale(var(--live-stage-sx, 1), var(--live-stage-sy, 1)) translate(-9.48vh, -10.31vh) scale(1.03);
   }
 
   .step-stage[data-companion-mode='showcase'] .stage-top {

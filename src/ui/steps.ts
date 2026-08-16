@@ -394,19 +394,9 @@ export function galleryStep(actions: UIActions): StepView {
 export function companionTeaserStep(actions: UIActions): StepView {
   const segments = [
     {
-      id: 'office-to-eye',
-      src: '/assets/teaser/office-to-eye-v3.mp4',
+      id: 'official-teaser',
+      src: '/assets/teaser/kagura-universe-official.mp4',
       poster: '/assets/stage/office-entry-empty-landscape.webp',
-    },
-    {
-      id: 'main-teaser',
-      src: '/assets/kagura-teaser-v2.mp4',
-      poster: '/assets/open-chat/kagura-opening-reflection.webp',
-    },
-    {
-      id: 'world-lights-up',
-      src: '/assets/teaser/world-lights-up.mp4',
-      poster: '/assets/kagura-teaser-v2-final.webp',
     },
   ] as const;
   const videos = segments.map((segment, index) => {
@@ -419,14 +409,19 @@ export function companionTeaserStep(actions: UIActions): StepView {
       'data-teaser-segment': segment.id,
       'aria-hidden': String(index !== 0),
     }) as HTMLVideoElement;
-    video.muted = true;
+    // This step is mounted synchronously from ENTER UNIVERSE, so the first
+    // play attempt still owns the click's media permission. The persistent
+    // sound toggle remains the source of truth if the visitor muted earlier.
+    video.muted = actions.isMuted();
     video.playsInline = true;
     return video;
   });
   const play = h('button', { class: 'btn btn-primary teaser-play', hidden: true }, 'Phát teaser') as HTMLButtonElement;
   const lastIndex = videos.length - 1;
   const handoffDurationMs = 720;
-  const handoffLeadSeconds = 1.05;
+  // The page has settled flat by this beat. Starting earlier crossfades two
+  // different poses and exposes the live figure before the final composition.
+  const handoffLeadSeconds = 0.62;
   let finished = false;
   let activeIndex = -1;
   let handoffStarted = false;
@@ -481,7 +476,10 @@ export function companionTeaserStep(actions: UIActions): StepView {
     if (document.documentElement.dataset.deskHeroReady !== 'true') return false;
     handoffStarted = true;
     handoffStartedAt = performance.now();
+    play.hidden = true;
     teaser.classList.add('is-handing-off');
+    // Reveal the matched live desk, then open the mask + bring the lights up.
+    actions.beginCompanionReveal();
     return true;
   };
   videos.forEach((video, index) => {
@@ -497,6 +495,10 @@ export function companionTeaserStep(actions: UIActions): StepView {
   const teaser = h(
     'div',
     { class: 'stage-teaser', 'data-testid': 'kagura-teaser' },
+    // Opaque office plate: matches the lobby frame on click, covers the live
+    // desk through the whole teaser (no pre-roll flash), pushes in as the sides
+    // fade, and dissolves with the gate at hand-off to reveal the desk.
+    h('div', { class: 'stage-teaser-entry', 'aria-hidden': 'true' }),
     h('div', { class: 'stage-teaser-vignette', 'aria-hidden': 'true' }),
     ...videos,
     h(
@@ -512,12 +514,13 @@ export function companionTeaserStep(actions: UIActions): StepView {
     { class: 'step step-companion-teaser', 'aria-label': 'Teaser mở vũ trụ Kagura' },
     teaser
   );
-  const blackoutMs = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 360;
-  const startTimer = window.setTimeout(() => activate(0), blackoutMs);
+  // Start inside the ENTER gesture. The picture itself still fades in over the
+  // matching office plate, but delaying play would forfeit unmuted autoplay on
+  // Safari and turn the cinematic into a second-click interaction.
+  activate(0);
   return {
     el,
     destroy() {
-      window.clearTimeout(startTimer);
       window.clearTimeout(handoffTimer);
       for (const video of videos) video.pause();
     },
