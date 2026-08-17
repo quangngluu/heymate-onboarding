@@ -1586,7 +1586,20 @@ class App implements UIActions {
     store.openCollectible();
   }
   closeCollectible(): void {
+    // Any exit from the collectible (× , scrim, or a future Escape/route change)
+    // must not strand the premium figurine + inspection camera on the desk.
+    const mode = store.get().figurineDisplayMode;
+    if (mode === 'premium' || mode === 'premium-preview') this.returnToOriginalFigurine();
     store.closeCollectible();
+  }
+  viewCollectibleDetail(): void {
+    store.viewCollectibleDetail();
+  }
+  backToCollectibleGrid(): void {
+    // Fold the focused figure back to Kagura original before the catalog grid
+    // takes the screen again, so the inspection camera + premium hero reset.
+    this.returnToOriginalFigurine();
+    store.backToCollectibleGrid();
   }
   placeOrder(shipping: ShippingInfo): FigurineOrder | null {
     return store.placeOrder(shipping);

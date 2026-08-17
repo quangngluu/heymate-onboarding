@@ -836,62 +836,108 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h('div', { class: 'cart-total' }, h('span', {}, 'Tạm tính'), cartTotal),
     checkoutButton
   );
-  const productRail = h(
-    'aside',
-    { class: 'product-rail', 'data-testid': 'figurine-product-rail' },
+  // ---- Collectible page: catalog grid → focused 3D detail ----
+  // The collectible is its own full-screen page (opened from the stage). It has
+  // two faces switched by `data-view`:
+  //   grid   → the editions catalog (still cards that light up on hover)
+  //   detail → the grid folds away so the real 3D figure (loaded on click) and
+  //            the order card own the screen; the backdrop turns transparent so
+  //            the live turntable behind stays visible + draggable.
+  const collectibleGrid = h(
+    'div',
+    { class: 'collectible-grid' },
     h(
       'div',
-      { class: 'showcase-heading' },
-      h('p', { class: 'showcase-kicker' }, 'CHARACTER SELECT · COLLECTIBLE PROTOTYPE'),
+      { class: 'collectible-head' },
+      h('p', { class: 'showcase-kicker' }, 'BỘ SƯU TẬP · FIGURINE'),
       productName,
       productSeries,
       productHook
     ),
     h(
       'div',
-      { class: 'product-rail-label' },
+      { class: 'collectible-rail-label' },
       productRailLabelPrimary,
       productRailLabelSecondary
     ),
-    productVariants,
-    h(
-      'p',
-      { class: 'product-estimate' },
-      productEstimateLabel,
-      productEstimateValue
-    ),
-    cartPanel
+    productVariants
   );
-  // The collectible is its own full-screen page (opened from the stage), so the
-  // editions/cart no longer clutter the chat scene. The 3 figurines sit still
-  // and only turn + light up on hover.
+
+  const detailName = h('h2', { class: 'collectible-detail-name' });
+  const detailStyle = h('p', { class: 'collectible-detail-style' });
+  const detailDesc = h('p', { class: 'collectible-detail-desc' });
+  const detailPrice = h('strong', { class: 'collectible-detail-price' });
+  const detailSize = h('span', { class: 'collectible-detail-size' });
+  const detailAddBtn = h(
+    'button',
+    {
+      type: 'button',
+      class: 'btn btn-primary collectible-detail-add',
+      'data-testid': 'figurine-add-to-cart',
+      onClick: () => {
+        const s = store.get();
+        actions.addFigurineToCart(s.residentId, s.kaguraFigurineVariantId);
+      },
+    },
+    'Thêm vào giỏ'
+  ) as HTMLButtonElement;
+  const detailBackBtn = h(
+    'button',
+    {
+      type: 'button',
+      class: 'chrome-btn collectible-detail-back',
+      'aria-label': 'Quay lại bộ sưu tập',
+      onClick: () => actions.backToCollectibleGrid(),
+    },
+    h('span', { 'aria-hidden': 'true' }, '←'),
+    h('span', {}, 'Bộ sưu tập')
+  );
+  const collectibleDetail = h(
+    'aside',
+    { class: 'collectible-detail', 'data-testid': 'figurine-product-rail' },
+    detailBackBtn,
+    h(
+      'div',
+      { class: 'collectible-detail-body' },
+      h('p', { class: 'collectible-detail-kicker' }, 'FULL FIGURINE · 15 CM'),
+      detailName,
+      detailStyle,
+      detailDesc,
+      h('div', { class: 'collectible-detail-price-row' }, detailPrice, detailSize),
+      detailAddBtn,
+      cartPanel
+    )
+  );
+
   const collectibleOverlay = h(
     'div',
     {
       class: 'collectible-overlay',
       hidden: true,
+      'data-view': 'grid',
       role: 'dialog',
       'aria-modal': 'true',
       'aria-label': 'Bộ sưu tập figurine',
       onClick: (event: Event) => {
-        if (event.target === event.currentTarget) actions.closeCollectible();
+        // Only the dimmed grid backdrop closes; in detail view the backdrop is
+        // transparent + pass-through, so clicks there belong to the turntable.
+        if (event.target === event.currentTarget && store.get().collectibleView === 'grid') {
+          actions.closeCollectible();
+        }
       },
     },
     h(
-      'div',
-      { class: 'collectible-shell' },
-      h(
-        'button',
-        {
-          type: 'button',
-          class: 'chrome-btn collectible-close',
-          'aria-label': 'Đóng bộ sưu tập',
-          onClick: () => actions.closeCollectible(),
-        },
-        '×'
-      ),
-      productRail
-    )
+      'button',
+      {
+        type: 'button',
+        class: 'chrome-btn collectible-close',
+        'aria-label': 'Đóng bộ sưu tập',
+        onClick: () => actions.closeCollectible(),
+      },
+      '×'
+    ),
+    collectibleGrid,
+    collectibleDetail
   );
   const openCollectibleBtn = h(
     'button',
@@ -1877,6 +1923,33 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       el.dataset.editions = s.editionsRevealed ? 'shown' : 'hidden';
       el.dataset.collectible = s.collectibleOpen ? 'open' : 'closed';
       collectibleOverlay.hidden = !s.collectibleOpen;
+      // Non-kagura residents have no 3D editions, so their page never leaves the
+      // catalog (waitlist) grid.
+      collectibleOverlay.dataset.view =
+        s.collectibleView === 'detail' && s.residentId === 'kagura' ? 'detail' : 'grid';
+      if (s.residentId === 'kagura') {
+        const dv = kaguraFigurineVariantById(s.kaguraFigurineVariantId);
+        detailName.textContent = dv.label;
+        detailStyle.textContent = `${dv.styleLabel} · KAGURA`;
+        detailDesc.textContent = dv.description;
+        detailPrice.textContent = dv.priceLabel;
+        detailSize.textContent = dv.sizeLabel;
+      }
+      // The card that was clicked gets hidden with the grid, so move focus onto
+      // the view that is now on screen rather than stranding it on a dead node.
+      if (s.collectibleOpen && s.residentId === 'kagura') {
+        if (s.collectibleView === 'detail' && prev.collectibleView !== 'detail') {
+          requestAnimationFrame(() => detailBackBtn.focus({ preventScroll: true }));
+        } else if (s.collectibleView === 'grid' && prev.collectibleView === 'detail') {
+          requestAnimationFrame(() => {
+            productVariants
+              .querySelector<HTMLButtonElement>(
+                `.collectible-card-btn[data-variant-id="${s.kaguraFigurineVariantId}"]`
+              )
+              ?.focus({ preventScroll: true });
+          });
+        }
+      }
       renderCart(s);
       renderCheckout(s);
       if (
@@ -1911,10 +1984,12 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
               const selected =
                 (s.figurineDisplayMode === 'premium' || s.figurineDisplayMode === 'premium-preview') &&
                 variant.id === s.kaguraFigurineVariantId;
+              // One click loads the real 3D edition onto the desk AND opens the
+              // focused detail view; hover only lights the card up (CSS).
               return h(
                 'article',
                 {
-                  class: `product-variant${selected ? ' is-active' : ''}`,
+                  class: `collectible-card${selected ? ' is-active' : ''}`,
                   role: 'listitem',
                   'data-variant-id': variant.id,
                 },
@@ -1922,27 +1997,31 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
                   'button',
                   {
                     type: 'button',
-                    class: 'product-variant-select',
+                    class: 'collectible-card-btn',
                     'data-variant-id': variant.id,
+                    'data-testid': `figurine-view-${variant.id}`,
                     'aria-pressed': String(selected),
-                    'aria-label': `Chọn ${variant.label}`,
-                    onClick: () => actions.selectKaguraFigurineVariant(variant.id),
+                    'aria-label': `Xem full figurine: ${variant.label}`,
+                    onClick: () => {
+                      actions.selectKaguraFigurineVariant(variant.id);
+                      actions.viewCollectibleDetail();
+                    },
                   },
                   h(
                     'span',
-                    { class: 'product-variant-image' },
+                    { class: 'collectible-card-image' },
                     h('img', { src: variant.previewUrl, alt: `${r.name}, ${variant.styleLabel}`, loading: index === 0 ? 'eager' : 'lazy', draggable: 'false' }),
-                    h('span', {}, String(index + 1).padStart(2, '0'))
+                    h('span', { class: 'collectible-card-index' }, String(index + 1).padStart(2, '0'))
                   ),
                   h(
                     'span',
-                    { class: 'product-variant-copy' },
+                    { class: 'collectible-card-copy' },
                     h('strong', {}, variant.label),
-                    h('small', {}, `${variant.styleLabel} · ${variant.sizeLabel}`),
+                    h('small', {}, variant.styleLabel),
                     h('b', {}, variant.priceLabel)
-                  )
-                ),
-                h('button', { type: 'button', class: 'product-variant-add', 'data-testid': `figurine-add-to-cart-${variant.id}`, onClick: () => actions.addFigurineToCart(r.id, variant.id) }, 'Thêm vào giỏ')
+                  ),
+                  h('span', { class: 'collectible-card-cue' }, 'Xem full 3D →')
+                )
               );
             })
           );
@@ -2021,12 +2100,11 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         }
       });
       if (s.residentId === 'kagura') {
-        for (const button of productVariants.querySelectorAll<HTMLButtonElement>('.product-variant-select')) {
+        for (const button of productVariants.querySelectorAll<HTMLButtonElement>('.collectible-card-btn')) {
           const active =
             (s.figurineDisplayMode === 'premium' || s.figurineDisplayMode === 'premium-preview') &&
             button.dataset.variantId === s.kaguraFigurineVariantId;
-          button.classList.toggle('is-active', active);
-          button.closest('.product-variant')?.classList.toggle('is-active', active);
+          button.closest('.collectible-card')?.classList.toggle('is-active', active);
           button.setAttribute('aria-pressed', String(active));
         }
       }

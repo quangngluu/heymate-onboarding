@@ -23,6 +23,8 @@ export interface UIActions {
   closeCheckout(): void;
   openCollectible(): void;
   closeCollectible(): void;
+  viewCollectibleDetail(): void;
+  backToCollectibleGrid(): void;
   placeOrder(shipping: ShippingInfo): FigurineOrder | null;
   joinFigurineWaitlist(residentId: string, email: string): void;
   selectResident(id: string): void;

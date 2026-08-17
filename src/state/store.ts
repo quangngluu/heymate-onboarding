@@ -310,6 +310,9 @@ export interface AppState {
   checkoutOpen: boolean;
   /** Full-screen collectible overlay (session-only). */
   collectibleOpen: boolean;
+  /** Which face of the collectible page is showing (session-only): the catalog
+   *  grid, or the focused figurine detail (real 3D + order card). */
+  collectibleView: 'grid' | 'detail';
   figurineWaitlist: Record<string, string[]>;
   residentId: ResidentId;
   session: SessionSetup;
@@ -463,6 +466,7 @@ const initialState: AppState = {
   orders: [],
   checkoutOpen: false,
   collectibleOpen: false,
+  collectibleView: 'grid',
   figurineWaitlist: {},
   // Akagane (Kagura) is the priority resident — the one with real figurines.
   residentId: (RESIDENTS.find((r) => r.id === 'kagura') ?? RESIDENTS[0]).id,
@@ -788,12 +792,24 @@ export class Store {
 
   openCollectible(): void {
     if (this.state.collectibleOpen) return;
-    this.set({ collectibleOpen: true });
+    this.set({ collectibleOpen: true, collectibleView: 'grid' });
   }
 
   closeCollectible(): void {
     if (!this.state.collectibleOpen) return;
-    this.set({ collectibleOpen: false });
+    this.set({ collectibleOpen: false, collectibleView: 'grid' });
+  }
+
+  /** Focus one edition: the grid folds away so the real 3D figure + order card
+   *  take over. The 3D load itself is driven by selectKaguraFigurineVariant. */
+  viewCollectibleDetail(): void {
+    if (!this.state.collectibleOpen || this.state.collectibleView === 'detail') return;
+    this.set({ collectibleView: 'detail' });
+  }
+
+  backToCollectibleGrid(): void {
+    if (this.state.collectibleView === 'grid') return;
+    this.set({ collectibleView: 'grid' });
   }
 
   /** Records the order locally (status: pending-payment). No payment gateway. */
@@ -889,6 +905,10 @@ export class Store {
       questInterruptible: false,
       saveGateOpen: false,
       unlockGateOpen: false,
+      // A new resident has no focused edition of the previous one; fall back to
+      // the catalog face so switching away from Kagura and back can't resurface
+      // a stale detail view without a fresh card click.
+      collectibleView: 'grid',
       session: fromSaved(saved),
     });
   }

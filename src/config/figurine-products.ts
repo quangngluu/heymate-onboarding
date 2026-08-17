@@ -12,6 +12,8 @@ export interface KaguraFigurineVariant {
   transitionImageUrl: string;
   priceLabel: string;
   sizeLabel: string;
+  /** Short ecom blurb shown on the collectible detail card. */
+  description: string;
 }
 
 /**
@@ -29,6 +31,8 @@ export const KAGURA_FIGURINE_VARIANTS: readonly KaguraFigurineVariant[] = [
     transitionImageUrl: 'assets/figurines/kagura-3d-preview.webp',
     priceLabel: '6.999.000 ₫',
     sizeLabel: '15 CM',
+    description:
+      'Bản dựng 3D đầy đủ khối, bề mặt PBR bóng kim loại — chuẩn trưng bày để soi từng chi tiết giáp đỏ dưới ánh đèn.',
   },
   {
     id: 'two-five-d',
@@ -40,6 +44,8 @@ export const KAGURA_FIGURINE_VARIANTS: readonly KaguraFigurineVariant[] = [
     transitionImageUrl: 'assets/figurines/kagura-2-5d-preview.webp',
     priceLabel: '6.999.000 ₫',
     sizeLabel: '15 CM',
+    description:
+      'Phong cách 2.5D: nét vẽ phẳng hòa cùng chiều sâu nhẹ, giữ nguyên tinh thần minh họa gốc trên khối resin.',
   },
   {
     id: 'ink',
@@ -51,6 +57,8 @@ export const KAGURA_FIGURINE_VARIANTS: readonly KaguraFigurineVariant[] = [
     transitionImageUrl: 'assets/figurines/kagura-ink-preview.webp',
     priceLabel: '6.999.000 ₫',
     sizeLabel: '15 CM',
+    description:
+      'Bản mực đơn sắc, tương phản mạnh — chất thủ bản cho tủ sưu tập tối giản, nổi bật đường nét kiếm và tóc.',
   },
 ] as const;
 
