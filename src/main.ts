@@ -63,6 +63,7 @@ import {
   kaguraFigurineVariantById,
   type KaguraFigurineVariantId,
 } from './config/figurine-products';
+import { EDITION_REVEAL_MS } from './config/demo-journey';
 import { shouldPlayTeaser } from './config/entry';
 
 const PLINTHS = plinthPositions(CHARACTERS.length);
@@ -1473,7 +1474,7 @@ class App implements UIActions {
       if (current.step === 'stage' && current.companionMode === 'showcase') {
         store.revealEditions();
       }
-    }, 12000);
+    }, EDITION_REVEAL_MS);
     this.enableStageOrbit();
   }
 
