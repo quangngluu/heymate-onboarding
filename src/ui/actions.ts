@@ -31,6 +31,8 @@ export interface UIActions {
   choosePaymentMethod(method: PaymentMethod): void;
   confirmPaymentSent(): void;
   cancelPaymentSim(): void;
+  replayAsReturning(): void;
+  resetDemo(): void;
   joinFigurineWaitlist(residentId: string, email: string): void;
   selectResident(id: string): void;
   sendMessage(text: string): void;

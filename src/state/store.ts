@@ -1892,6 +1892,42 @@ export class Store {
   restart(): void {
     this.leaveUniverse();
   }
+
+  /**
+   * Presenter replay: keep every persisted artifact (ownership, orders,
+   * transcripts, credits, progress) but reset the live session to a returning
+   * entry so the owner greeting fires in its intended context.
+   */
+  replayAsReturning(): void {
+    this.set({
+      step: 'stage',
+      waifuUniverseEntered: true,
+      companionMode: 'showcase',
+      figurineDisplayMode: 'original',
+      chat: [],
+      questChat: [],
+      collectibleOpen: false,
+      collectibleView: 'grid',
+      checkoutOpen: false,
+      paymentSim: 'idle',
+      paymentMethod: null,
+      activeQuestId: null,
+      activeQuestNodeId: null,
+      activeQuestEndingId: null,
+      questPhase: 'none',
+      saveGateOpen: false,
+      speaking: false,
+      thinking: false,
+      voicing: false,
+      reveal: null,
+    });
+  }
+
+  /** Presenter reset: return to a fresh visitor and persist that clean slate. */
+  resetDemo(): void {
+    this.set({ ...initialState });
+    this.persist();
+  }
 }
 
 export const store = new Store();

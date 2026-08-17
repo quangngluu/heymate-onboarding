@@ -1968,6 +1968,37 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   }
   applyDockMode();
 
+  let demoMode = false;
+  try {
+    demoMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === '1';
+  } catch {
+    demoMode = false;
+  }
+  const demoControls = h(
+    'div',
+    { class: 'demo-controls', 'data-testid': 'demo-controls' },
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'btn btn-ghost xs',
+        'data-testid': 'demo-replay-returning',
+        onClick: () => actions.replayAsReturning(),
+      },
+      'Xem lại như người quay lại'
+    ),
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'btn btn-ghost xs',
+        'data-testid': 'demo-reset',
+        onClick: () => actions.resetDemo(),
+      },
+      'Reset demo'
+    )
+  );
+
   const el = h(
     'section',
     {
@@ -1985,6 +2016,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       leaveUniverseBtn
     ),
     stageIdentity,
+    ...(demoMode ? [demoControls] : []),
     sessionSheet,
     questHub,
     roster,

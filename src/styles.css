@@ -1770,6 +1770,17 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
   pointer-events: none;
 }
 .stage-top { display: flex; gap: 8px; align-items: center; }
+.demo-controls {
+  position: absolute;
+  left: 24px;
+  bottom: calc(var(--dock-h, 118px) + 34px);
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: calc(100vw - 48px);
+  pointer-events: auto;
+}
 .level-block { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; }
 .level-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .level-label {
@@ -3486,6 +3497,11 @@ html[data-quest-rig-debug='true'][data-quest-rig='ready'] .step-stage.is-quest-m
   /* One row for navigation: back, card, then the cast. Putting the roster on
      its own line below cost 44px of the only viewport there is. */
   .stage-top { left: 10px; top: var(--rail-t); gap: 6px; }
+  .demo-controls {
+    left: 10px;
+    bottom: calc(var(--dock-b) + var(--dock-h, 150px) + 4px);
+    max-width: calc(100vw - 20px);
+  }
   .stage-top .btn {
     width: 44px;
     height: 44px;

@@ -1642,6 +1642,17 @@ class App implements UIActions {
     window.clearTimeout(this.paymentSimTimer);
     store.cancelPaymentSim();
   }
+  replayAsReturning(): void {
+    window.clearTimeout(this.paymentSimTimer);
+    store.replayAsReturning();
+    // The store left the transcript empty on purpose; greet() opens on the
+    // owner/return greeting instead of resuming the parked conversation.
+    this.greet();
+  }
+  resetDemo(): void {
+    window.clearTimeout(this.paymentSimTimer);
+    store.resetDemo();
+  }
   joinFigurineWaitlist(residentId: string, email: string): void {
     store.joinFigurineWaitlist(residentId, email);
   }
