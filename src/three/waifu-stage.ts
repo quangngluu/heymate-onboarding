@@ -147,6 +147,7 @@ export class WaifuStage {
   private upLight: THREE.SpotLight;
   private upLightFill: THREE.SpotLight;
   private rimLight: THREE.SpotLight;
+  private frontKey: THREE.SpotLight;
   private premiumKey: THREE.SpotLight;
   private premiumFill: THREE.SpotLight;
   private cryoPod = new THREE.Group();
@@ -244,16 +245,24 @@ export class WaifuStage {
     // left to reveal the face and chest, and two strong back rims — cool
     // camera-left, warm-orange camera-right — trace the whole silhouette so the
     // sword-and-flame outline reads as clean lit edges, not a flat top wash.
-    this.upLight = new THREE.SpotLight(0xffe9d2, 5.6, 9, Math.PI / 3.4, 0.72, 1.0);
-    this.upLightFill = new THREE.SpotLight(0x9fd8ff, 4.7, 9, Math.PI / 3.7, 0.82, 1.2);
-    this.rimLight = new THREE.SpotLight(0xff6a40, 4.6, 9, Math.PI / 3.7, 0.82, 1.2);
+    // Key + fill lifted so the main figure reads brighter and stands off the
+    // desk video; the two back rims are kept where they were so the sword-and-
+    // flame silhouette still resolves as lit edges rather than a flat wash.
+    this.upLight = new THREE.SpotLight(0xffe9d2, 7.6, 9, Math.PI / 3.4, 0.72, 1.0);
+    this.upLightFill = new THREE.SpotLight(0x9fd8ff, 5.8, 9, Math.PI / 3.7, 0.82, 1.2);
+    this.rimLight = new THREE.SpotLight(0xff6a40, 4.8, 9, Math.PI / 3.7, 0.82, 1.2);
     this.upLight.position.set(-1.45, baseTopY + 1.62, 2.65);
     this.upLightFill.position.set(-1.9, baseTopY + 2.05, -1.75);
     this.rimLight.position.set(1.95, baseTopY + 2.05, -1.7);
     this.upLight.target.position.set(-0.05, baseTopY + 0.98, 0);
     this.upLightFill.target.position.set(-0.1, baseTopY + 1.05, 0);
     this.rimLight.target.position.set(0.1, baseTopY + 1.0, 0);
-    for (const light of [this.upLight, this.upLightFill, this.rimLight]) {
+    // Dedicated front key straight at the figure: the rig above rakes from the
+    // side and left the face/front planes sitting too dark on the desk.
+    this.frontKey = new THREE.SpotLight(0xfff2e0, 6.4, 11, Math.PI / 3.1, 0.9, 1.0);
+    this.frontKey.position.set(0.15, baseTopY + 1.5, 4.0);
+    this.frontKey.target.position.set(0.0, baseTopY + 1.1, 0);
+    for (const light of [this.upLight, this.upLightFill, this.rimLight, this.frontKey]) {
       light.castShadow = false;
       scene.add(light, light.target);
     }
@@ -471,6 +480,8 @@ export class WaifuStage {
     this.upLightFill.target.position.y = y + 1.05;
     this.rimLight.position.y = y + 2.05;
     this.rimLight.target.position.y = y + 1.0;
+    this.frontKey.position.y = y + 1.5;
+    this.frontKey.target.position.y = y + 1.1;
     const hero = this.heroId && this.entries.get(this.heroId);
     if (hero) hero.group.position.y = y;
     if (this.questRig) this.questRig.position.y = y;

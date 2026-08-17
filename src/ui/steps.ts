@@ -65,6 +65,21 @@ import {
   formatVndPrice,
 } from '../config/figurine-products';
 
+/** Clean, IP-free short labels for the roster (source-work names removed). */
+const RESIDENT_SHORT_LABEL: Record<string, string> = {
+  rin: 'RIN',
+  kagura: 'AKAGANE',
+  momo: 'MOMO',
+};
+function residentShortLabel(id: string, name: string): string {
+  return RESIDENT_SHORT_LABEL[id] ?? name.split(' ')[0].toUpperCase();
+}
+/** Series is "<source work> — <codename>"; surface only the IP-free codename. */
+function seriesCodename(series: string): string {
+  const parts = series.split(/\s*[—–-]\s*/);
+  return (parts.length > 1 ? parts.slice(1).join(' — ') : series).trim();
+}
+
 export interface StepView {
   el: HTMLElement;
   update?(s: AppState, prev: AppState): void;
@@ -562,23 +577,6 @@ export function companionTeaserStep(actions: UIActions): StepView {
 
 export function stageStep(actions: UIActions, state: AppState): StepView {
   const srOnlyName = h('h1', { class: 'visually-hidden' });
-  const info = h('aside', { class: 'panel stage-info' });
-  const levelPips = h('div', { class: 'level-pips', 'aria-hidden': 'true' });
-  const levelWhere = h('p', { class: 'level-where' });
-  const levelNext = h('p', { class: 'level-next' });
-  const levelBlock = h(
-    'div',
-    { class: 'level-block' },
-    h('div', { class: 'level-head' }, h('span', { class: 'level-label' }, COPY.stage.levelLabel), levelPips),
-    levelWhere,
-    levelNext
-  );
-  // On a phone her card cannot stay open and leave room for her. Collapsed it
-  // is a header; tapping anywhere outside a disclosure opens the rest.
-  info.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).closest('details')) return;
-    info.classList.toggle('is-open');
-  });
 
   // Backstory as free on-screen text (name as title + a one-line hook), not
   // boxed inside the card. Populated on resident change.
@@ -625,9 +623,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         'span',
         { class: 'roster-copy' },
         h('span', { class: 'roster-index', 'aria-hidden': 'true' }, String(rosterBtns.length + 1).padStart(2, '0')),
-        h('span', { class: 'chip-full' }, r.name),
-        h('span', { class: 'chip-short', 'aria-hidden': 'true' }, r.name.split(' ')[0]),
-        h('small', {}, r.series.split(' - ')[0])
+        h('span', { class: 'chip-full' }, residentShortLabel(r.id, r.name)),
+        h('span', { class: 'chip-short', 'aria-hidden': 'true' }, residentShortLabel(r.id, r.name))
       )
     ) as HTMLButtonElement;
     b.setAttribute('aria-label', r.name);
@@ -865,6 +862,48 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     ),
     cartPanel
   );
+  // The collectible is its own full-screen page (opened from the stage), so the
+  // editions/cart no longer clutter the chat scene. The 3 figurines sit still
+  // and only turn + light up on hover.
+  const collectibleOverlay = h(
+    'div',
+    {
+      class: 'collectible-overlay',
+      hidden: true,
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-label': 'Bộ sưu tập figurine',
+      onClick: (event: Event) => {
+        if (event.target === event.currentTarget) actions.closeCollectible();
+      },
+    },
+    h(
+      'div',
+      { class: 'collectible-shell' },
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'chrome-btn collectible-close',
+          'aria-label': 'Đóng bộ sưu tập',
+          onClick: () => actions.closeCollectible(),
+        },
+        '×'
+      ),
+      productRail
+    )
+  );
+  const openCollectibleBtn = h(
+    'button',
+    {
+      type: 'button',
+      class: 'collectible-open',
+      'data-testid': 'open-collectible',
+      onClick: () => actions.openCollectible(),
+    },
+    h('span', { class: 'collectible-open-title' }, 'BỘ SƯU TẬP'),
+    h('span', { class: 'collectible-open-sub' }, 'Figurine editions')
+  ) as HTMLButtonElement;
 
   function closeCheckoutView(): void {
     checkoutOrder = null;
@@ -1325,28 +1364,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     )
   );
 
-  // Left is her dossier, right is her voice, bottom is what you do. The card
-  // can step off the frame entirely when the visitor wants the stage clear.
-  // On a phone she gets the screen and her dossier starts out of the way: one
-  // viewport has to hold the roster, her, her words and the composer, and the
-  // card is the only one of those the visitor can ask for later.
-  const compact = window.matchMedia?.('(max-width: 700px)').matches ?? false;
-  const setInfoHidden = (hidden: boolean) => {
-    info.classList.toggle('is-hidden', hidden);
-    info.toggleAttribute('inert', hidden);
-    info.setAttribute('aria-hidden', String(hidden));
-  };
-  setInfoHidden(compact);
-  const cardToggle = h(
-    'button',
-    { class: 'btn btn-ghost sm', 'aria-label': COPY.stage.cardToggle, 'aria-pressed': String(!compact), onClick: () => {
-      const hidden = !info.classList.contains('is-hidden');
-      setInfoHidden(hidden);
-      cardToggle.setAttribute('aria-pressed', String(!hidden));
-    } },
-    h('span', { class: 'stage-control-icon', 'aria-hidden': 'true' }, '☰'),
-    h('span', { class: 'stage-control-label' }, COPY.stage.cardToggle)
-  ) as HTMLButtonElement;
+  // Left is her voice, bottom is what you do. Her name/series/hook live in the
+  // on-screen headline (`stageIdentity`); the old dossier card is gone.
   const leaveUniverseBtn = h(
     'button',
     { class: 'btn btn-ghost sm', 'aria-label': COPY.stage.leave, onClick: () => actions.leaveUniverse() },
@@ -1744,15 +1763,14 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h(
       'header',
       { class: 'stage-top' },
-      leaveUniverseBtn,
-      cardToggle
+      leaveUniverseBtn
     ),
     stageIdentity,
-    info,
     sessionSheet,
     questHub,
     roster,
-    productRail,
+    openCollectibleBtn,
+    collectibleOverlay,
     checkoutScrim,
     pressToTalk,
     returnOriginal,
@@ -1857,6 +1875,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       el.dataset.companionMode = s.companionMode;
       el.dataset.figurineDisplay = s.figurineDisplayMode;
       el.dataset.editions = s.editionsRevealed ? 'shown' : 'hidden';
+      el.dataset.collectible = s.collectibleOpen ? 'open' : 'closed';
+      collectibleOverlay.hidden = !s.collectibleOpen;
       renderCart(s);
       renderCheckout(s);
       if (
@@ -1877,7 +1897,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         lastResident = s.residentId;
         srOnlyName.textContent = r.name;
         productName.textContent = r.name;
-        productSeries.textContent = r.series.split(' - ')[0];
+        productSeries.textContent = seriesCodename(r.series);
         productHook.textContent = r.card.hook;
         waitlistResidentId = r.id;
         waitlistEmail.value = '';
@@ -1958,20 +1978,10 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
           );
         }
         renderWaitlist(s);
-        // The card is now just the visit chips + bond level. Her name and the
-        // one-line hook live on-screen as a headline (`stageIdentity`), not
-        // boxed here — full canon is no longer surfaced in the card.
-        info.replaceChildren(
-          h(
-            'div',
-            { class: 'row chip-row' },
-            h('span', { class: 'chip chip-accent' }, saved?.visits ? `Lần gặp ${saved.visits + 1}` : 'Lần đầu gặp'),
-            h('span', { class: 'chip' }, 'Tiếng Việt')
-          ),
-          levelBlock
-        );
+        // Her name, series and one-line hook live on-screen as a headline
+        // (`stageIdentity`); the old dossier card has been removed entirely.
         stageIdentityName.textContent = r.name;
-        stageIdentitySeries.textContent = r.series.split(' - ')[0];
+        stageIdentitySeries.textContent = seriesCodename(r.series);
         stageIdentityStory.textContent = r.card.hook;
       }
       if (document.activeElement !== identityInput) identityInput.value = s.session.identity;
@@ -2268,15 +2278,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       }
       if (!s.saveGateOpen && lastGateOpen) stopGateCountdown();
       lastGateOpen = s.saveGateOpen;
-
-      const level = Math.min(5, s.revealed);
-      levelPips.replaceChildren(
-        ...Array.from({ length: 5 }, (_, i) =>
-          h('span', { class: `pip${i < level ? ' is-on' : ''}` })
-        )
-      );
-      levelWhere.textContent = r.levels[level];
-      levelNext.textContent = level >= 5 ? COPY.stage.levelMax : COPY.stage.levelNext;
 
       const completed = saved?.completedQuests ?? [];
       const quests = store.questsFor(r.id);

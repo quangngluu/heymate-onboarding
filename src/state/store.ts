@@ -308,6 +308,8 @@ export interface AppState {
   cart: CartItem[];
   orders: FigurineOrder[];
   checkoutOpen: boolean;
+  /** Full-screen collectible overlay (session-only). */
+  collectibleOpen: boolean;
   figurineWaitlist: Record<string, string[]>;
   residentId: ResidentId;
   session: SessionSetup;
@@ -460,8 +462,10 @@ const initialState: AppState = {
   cart: [],
   orders: [],
   checkoutOpen: false,
+  collectibleOpen: false,
   figurineWaitlist: {},
-  residentId: RESIDENTS[0].id,
+  // Akagane (Kagura) is the priority resident — the one with real figurines.
+  residentId: (RESIDENTS.find((r) => r.id === 'kagura') ?? RESIDENTS[0]).id,
   session: defaultSession(),
   progress: {},
   chat: [],
@@ -780,6 +784,16 @@ export class Store {
   closeCheckout(): void {
     if (!this.state.checkoutOpen) return;
     this.set({ checkoutOpen: false });
+  }
+
+  openCollectible(): void {
+    if (this.state.collectibleOpen) return;
+    this.set({ collectibleOpen: true });
+  }
+
+  closeCollectible(): void {
+    if (!this.state.collectibleOpen) return;
+    this.set({ collectibleOpen: false });
   }
 
   /** Records the order locally (status: pending-payment). No payment gateway. */

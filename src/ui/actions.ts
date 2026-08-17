@@ -21,6 +21,8 @@ export interface UIActions {
   removeFromCart(index: number): void;
   openCheckout(): void;
   closeCheckout(): void;
+  openCollectible(): void;
+  closeCollectible(): void;
   placeOrder(shipping: ShippingInfo): FigurineOrder | null;
   joinFigurineWaitlist(residentId: string, email: string): void;
   selectResident(id: string): void;

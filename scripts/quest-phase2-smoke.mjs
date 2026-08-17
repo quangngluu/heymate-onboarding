@@ -833,7 +833,9 @@ async function runViewport(browser, viewport) {
   if (state.rig !== 'disabled' || state.rigDebug !== 'false') {
     failures.push(`shipping rig=${JSON.stringify({ rig: state.rig, debug: state.rigDebug })}`);
   }
-  if (!state.series.includes('INUYASHA')) {
+  // The stage now surfaces the IP-free codename (source-work names removed), so
+  // Kagura's series tag reads "AKAGANE" rather than "INUYASHA — AKAGANE".
+  if (!state.series.includes('AKAGANE')) {
     failures.push(`series=${JSON.stringify(state.series)}`);
   }
   if (state.settingsShape.primaryRows !== 1) {

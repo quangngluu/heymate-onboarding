@@ -1582,6 +1582,12 @@ class App implements UIActions {
   closeCheckout(): void {
     store.closeCheckout();
   }
+  openCollectible(): void {
+    store.openCollectible();
+  }
+  closeCollectible(): void {
+    store.closeCollectible();
+  }
   placeOrder(shipping: ShippingInfo): FigurineOrder | null {
     return store.placeOrder(shipping);
   }

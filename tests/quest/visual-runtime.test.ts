@@ -60,6 +60,7 @@ function visualContext(input = event) {
 describe('scoped shot ownership', () => {
   it('does not collide quest:A:4 with chat:rin:4', () => {
     const owner = new Store();
+    owner.set({ residentId: 'rin' });
     const chat = chatConversationScope('rin');
     const quest = questConversationScope('A');
 
