@@ -57,6 +57,7 @@ import {
   parseVndPrice,
   type KaguraFigurineVariantId,
 } from '../config/figurine-products';
+import type { PaymentMethod, PaymentSimPhase } from '../config/demo-journey';
 
 /** One line in the figurine cart / a placed order. */
 export interface CartItem {
@@ -78,8 +79,8 @@ export interface ShippingInfo {
   note?: string;
 }
 
-/** No payment gateway yet, so a placed order rests at `pending-payment`. */
-export type OrderStatus = 'pending-payment';
+/** No real payment gateway; paid orders are simulated client-side only. */
+export type OrderStatus = 'pending-payment' | 'paid-demo';
 
 export interface FigurineOrder {
   id: string;
@@ -308,6 +309,14 @@ export interface AppState {
   cart: CartItem[];
   orders: FigurineOrder[];
   checkoutOpen: boolean;
+  /** Demo journey: the visitor owns Kagura's chosen-body figurine (persisted). */
+  figurineOwned: boolean;
+  ownedVariantId: KaguraFigurineVariantId | null;
+  /** One-shot authored bridge beat surfaced after attachment turns (persisted). */
+  bridgeBeatShown: boolean;
+  /** Simulated VN payment flow (session-only, never persisted). */
+  paymentSim: PaymentSimPhase;
+  paymentMethod: PaymentMethod | null;
   /** Full-screen collectible overlay (session-only). */
   collectibleOpen: boolean;
   /** Which face of the collectible page is showing (session-only): the catalog
@@ -465,6 +474,11 @@ const initialState: AppState = {
   cart: [],
   orders: [],
   checkoutOpen: false,
+  figurineOwned: false,
+  ownedVariantId: null,
+  bridgeBeatShown: false,
+  paymentSim: 'idle',
+  paymentMethod: null,
   collectibleOpen: false,
   collectibleView: 'grid',
   figurineWaitlist: {},
@@ -618,12 +632,18 @@ export class Store {
           cart?: CartItem[];
           orders?: FigurineOrder[];
           figurineWaitlist?: Record<string, string[]>;
+          figurineOwned?: boolean;
+          ownedVariantId?: KaguraFigurineVariantId | null;
+          bridgeBeatShown?: boolean;
         };
         this.state = {
           ...this.state,
           cart: saved.cart ?? [],
           orders: saved.orders ?? [],
           figurineWaitlist: saved.figurineWaitlist ?? {},
+          figurineOwned: saved.figurineOwned ?? false,
+          ownedVariantId: saved.ownedVariantId ?? null,
+          bridgeBeatShown: saved.bridgeBeatShown ?? false,
           progress: migrateProgress(saved.progress ?? {}),
           transcripts: restoreOpenChatTranscripts(saved.transcripts ?? {}),
           questTranscripts: saved.questTranscripts ?? {},
@@ -715,6 +735,9 @@ export class Store {
           cart: this.state.cart,
           orders: this.state.orders,
           figurineWaitlist: this.state.figurineWaitlist,
+          figurineOwned: this.state.figurineOwned,
+          ownedVariantId: this.state.ownedVariantId,
+          bridgeBeatShown: this.state.bridgeBeatShown,
         })
       );
     } catch {
