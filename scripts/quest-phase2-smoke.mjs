@@ -929,6 +929,117 @@ async function runViewport(browser, viewport) {
   };
 }
 
+async function runPaymentConfirmationCoverage(browser) {
+  const failures = [];
+
+  for (const viewport of VIEWPORTS) {
+    const context = await browser.createBrowserContext();
+    const pageErrors = [];
+    try {
+      const page = await context.newPage();
+      page.on('pageerror', (error) => pageErrors.push(String(error)));
+      page.on('response', (response) => {
+        if (response.status() < 400) return;
+        if (response.url().includes('/api/tts')) return;
+        pageErrors.push(`${response.status()} ${response.url()}`);
+      });
+
+      await page.setViewport({
+        ...viewport,
+        deviceScaleFactor: 1,
+        isMobile: true,
+        hasTouch: true,
+      });
+      await page.goto(`${baseUrl}${ROUTE}`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 30_000,
+      });
+      await enterWaifuPlayground(page);
+
+      const assertNoHorizontalOverflow = async (label) => {
+        const overflow = await page.evaluate(
+          () => Math.max(0, document.documentElement.scrollWidth - window.innerWidth)
+        );
+        if (overflow > 1) {
+          failures.push(`${viewport.width} ${label} horizontalOverflowPx=${overflow}`);
+        }
+      };
+
+      // Happy path: collectible -> detail -> cart -> checkout -> payment.
+      await page.waitForSelector('[data-testid="open-collectible"]', { visible: true });
+      await clickSelector(page, '[data-testid="open-collectible"]');
+      await page.waitForSelector('.collectible-overlay:not([hidden])', { visible: true });
+      await clickSelector(page, '[data-testid="figurine-view-three-d"]');
+      await page.waitForSelector('.collectible-overlay[data-view="detail"]', { visible: true });
+      await clickSelector(page, '[data-testid="figurine-add-to-cart"]');
+      await clickSelector(page, '[data-testid="figurine-checkout"]');
+      await page.waitForSelector('.checkout-scrim:not([hidden])', { visible: true });
+
+      await fillInput(page, '#checkout-name', 'Người Nhận Demo');
+      await fillInput(page, '#checkout-phone', '0901234567');
+      await fillInput(page, '#checkout-email', 'demo@example.com');
+      await fillInput(page, '#checkout-address', 'TP. Hồ Chí Minh');
+      await clickSelector(page, '[data-testid="figurine-place-order"]');
+
+      await page.waitForSelector('[data-testid="checkout-payment-method"]:not([hidden])', {
+        visible: true,
+      });
+      await assertNoHorizontalOverflow('payment-method');
+
+      await clickSelector(page, '[data-testid="pay-momo"]');
+      await page.waitForSelector('[data-testid="checkout-payment-qr"]:not([hidden])', {
+        visible: true,
+      });
+      await assertNoHorizontalOverflow('payment-qr');
+
+      await clickSelector(page, '[data-testid="pay-confirm-sent"]');
+      await page.waitForSelector('[data-testid="checkout-payment-processing"]:not([hidden])', {
+        visible: true,
+      });
+      await assertNoHorizontalOverflow('payment-processing');
+
+      await page.waitForSelector('.checkout-confirmation:not([hidden])', {
+        visible: true,
+        timeout: 10_000,
+      });
+      await assertNoHorizontalOverflow('payment-confirmation');
+
+      const confirmation = await page.evaluate(() => ({
+        status: document.querySelector('.checkout-order-status')?.textContent?.trim() ?? '',
+        kicker: document.querySelector('.checkout-kicker')?.textContent?.trim() ?? '',
+        hasKaguraReaction:
+          document.querySelector('[data-testid="checkout-kagura-reaction"]:not([hidden])') !== null,
+        reaction:
+          document.querySelector('[data-testid="checkout-kagura-reaction"]')?.textContent?.trim() ?? '',
+      }));
+
+      if (confirmation.status !== 'PAID (DEMO)') {
+        failures.push(`${viewport.width} confirmation status=${confirmation.status}`);
+      }
+      if (confirmation.kicker !== 'PAID (DEMO)') {
+        failures.push(`${viewport.width} confirmation kicker=${confirmation.kicker}`);
+      }
+      if (confirmation.hasKaguraReaction !== true) {
+        failures.push(`${viewport.width} missing Kagura reaction`);
+      }
+      if (confirmation.reaction.length < 24) {
+        failures.push(`${viewport.width} Kagura reaction too short`);
+      }
+    } catch (error) {
+      failures.push(
+        `${viewport.width} ${error instanceof Error ? error.message : String(error)}`
+      );
+    } finally {
+      if (pageErrors.length) {
+        failures.push(...pageErrors.map((error) => `${viewport.width} ${error}`));
+      }
+      await context.close();
+    }
+  }
+
+  return { failures };
+}
+
 let vite;
 let browser;
 try {
@@ -959,6 +1070,9 @@ try {
       results.push(await runViewport(browser, viewport));
     }
   }
+  const paymentCoverage = modeOnly
+    ? { failures: [] }
+    : await runPaymentConfirmationCoverage(browser);
   const modeCoverage = await runModeTransitionCoverage(browser);
   const openChatVisualCoverage = await runOpenChatContextVisualCoverage(browser);
   const muteTtsCoverage = await runMuteTtsCoverage(browser);
@@ -989,6 +1103,11 @@ try {
   for (const failure of modeCoverage.failures) process.stderr.write(`  - ${failure}\n`);
 
   process.stdout.write(
+    `${paymentCoverage.failures.length ? 'FAIL' : 'PASS'} payment + confirmation overflow\n`
+  );
+  for (const failure of paymentCoverage.failures) process.stderr.write(`  - ${failure}\n`);
+
+  process.stdout.write(
     `${openChatVisualCoverage.failures.length ? 'FAIL' : 'PASS'} Open Chat context visual billing\n`
   );
   for (const failure of openChatVisualCoverage.failures) process.stderr.write(`  - ${failure}\n`);
@@ -1005,6 +1124,7 @@ try {
 
   if (
     results.some((result) => result.failures.length) ||
+    paymentCoverage.failures.length ||
     modeCoverage.failures.length ||
     openChatVisualCoverage.failures.length ||
     muteTtsCoverage.failures.length ||
