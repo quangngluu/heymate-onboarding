@@ -10,3 +10,16 @@ dist/
 # Local secrets
 .env
 .env*.local
+
+# macOS junk
+.DS_Store
+**/.DS_Store
+
+# Local working artifacts (screenshots, audio/voice samples, playwright CLI)
+.playwright-cli/
+output/
+audio-out/
+voice-out*/
+
+# Unreferenced local asset candidate (not used in the build)
+public/assets/kagura-teaser-final.webp
