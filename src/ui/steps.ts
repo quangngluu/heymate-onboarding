@@ -769,6 +769,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         }
         checkoutOrder = order;
         checkoutError.textContent = '';
+        actions.beginPayment();
         renderCheckout(store.get());
       },
     },
@@ -779,10 +780,11 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       h('label', { for: 'checkout-address' }, 'Địa chỉ giao hàng', checkoutAddress),
       h('label', { for: 'checkout-note' }, 'Ghi chú', checkoutNote)
     ),
-    h('p', { class: 'checkout-payment-note' }, 'Đây là đơn ghi nhận nhu cầu. Cổng thanh toán chưa kết nối; đội ngũ sẽ xác nhận bước thanh toán sau.'),
+    h('p', { class: 'checkout-payment-note' }, 'Bước tiếp theo là chọn một cổng thanh toán mô phỏng. Không thu thập thông tin thẻ hay tài khoản.'),
     checkoutError,
-    h('button', { type: 'submit', class: 'btn btn-primary checkout-submit', 'data-testid': 'figurine-place-order' }, 'Ghi nhận đơn hàng')
+    h('button', { type: 'submit', class: 'btn btn-primary checkout-submit', 'data-testid': 'figurine-place-order' }, 'Đặt hàng')
   );
+  const checkoutLead = h('p', { class: 'checkout-lead' });
   const checkoutSummary = h('div', { class: 'checkout-confirmation-summary' });
   const checkoutConfirmation = h(
     'section',
@@ -793,12 +795,93 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h('p', { class: 'checkout-payment-note' }, 'Đơn đang chờ xác nhận thanh toán. Thông tin chỉ được lưu trên thiết bị này trong bản prototype.'),
     h('button', { type: 'button', class: 'btn btn-secondary', onClick: () => closeCheckoutView() }, 'Tiếp tục xem editions')
   );
+
+  const checkoutPayOptions = h(
+    'div',
+    { class: 'checkout-pay-options' },
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'btn btn-secondary checkout-pay-btn',
+        'data-testid': 'pay-momo',
+        onClick: () => actions.choosePaymentMethod('momo'),
+      },
+      h('strong', {}, 'Momo'),
+      h('small', {}, 'Ví điện tử')
+    ),
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'btn btn-secondary checkout-pay-btn',
+        'data-testid': 'pay-vnpay',
+        onClick: () => actions.choosePaymentMethod('vnpay'),
+      },
+      h('strong', {}, 'VNPay'),
+      h('small', {}, 'Cổng thanh toán')
+    ),
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'btn btn-secondary checkout-pay-btn',
+        'data-testid': 'pay-bank-qr',
+        onClick: () => actions.choosePaymentMethod('bank-qr'),
+      },
+      h('strong', {}, 'Chuyển khoản QR'),
+      h('small', {}, 'Quét mã ngân hàng')
+    )
+  );
+  const checkoutMethod = h(
+    'section',
+    { class: 'checkout-payment checkout-method', hidden: true, 'data-testid': 'checkout-payment-method' },
+    h('p', { class: 'checkout-payment-title' }, 'Chọn cổng thanh toán'),
+    checkoutPayOptions,
+    h('p', { class: 'checkout-payment-note' }, 'Tất cả đều là mô phỏng. Không phát sinh giao dịch thật.')
+  );
+
+  const checkoutQrCode = h(
+    'div',
+    { class: 'checkout-qr-code', 'aria-hidden': 'true' },
+    h('span', { class: 'checkout-qr-glyph' }, 'QR')
+  );
+  const checkoutQrAmount = h('strong', { class: 'checkout-qr-amount' });
+  const checkoutQr = h(
+    'section',
+    { class: 'checkout-payment checkout-qr', hidden: true, 'data-testid': 'checkout-payment-qr' },
+    h('p', { class: 'checkout-payment-title' }, 'Quét mã để thanh toán'),
+    checkoutQrCode,
+    checkoutQrAmount,
+    h('p', { class: 'checkout-payment-note' }, 'Mã QR chỉ là hình minh họa. Không quét bằng ứng dụng ngân hàng thật.'),
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'btn btn-primary checkout-pay-confirm',
+        'data-testid': 'pay-confirm-sent',
+        onClick: () => actions.confirmPaymentSent(),
+      },
+      'Tôi đã thanh toán'
+    )
+  );
+
+  const checkoutProcessing = h(
+    'section',
+    { class: 'checkout-payment checkout-processing', hidden: true, 'data-testid': 'checkout-payment-processing' },
+    h('span', { class: 'checkout-spinner', 'aria-hidden': 'true' }),
+    h('p', { class: 'checkout-payment-title' }, 'Đang xác nhận thanh toán…')
+  );
+
   const checkoutCard = h(
     'aside',
     { class: 'panel checkout-card' },
     h('div', { class: 'row sheet-head' }, h('div', {}, h('p', { class: 'kicker' }, 'KAGURA EDITIONS'), h('h2', { class: 'panel-title' }, 'Checkout')), h('button', { type: 'button', class: 'chrome-btn', 'aria-label': 'Đóng checkout', onClick: () => closeCheckoutView() }, '×')),
-    h('p', { class: 'checkout-lead' }, 'Để lại thông tin nhận hàng; chưa phát sinh thanh toán ở bước prototype này.'),
+    checkoutLead,
     checkoutForm,
+    checkoutMethod,
+    checkoutQr,
+    checkoutProcessing,
     checkoutConfirmation
   );
   const checkoutScrim = h(
@@ -968,6 +1051,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   function closeCheckoutView(): void {
     checkoutOrder = null;
     checkoutError.textContent = '';
+    actions.cancelPaymentSim();
     actions.closeCheckout();
   }
 
@@ -1012,13 +1096,31 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
 
   function renderCheckout(s: AppState): void {
     checkoutScrim.hidden = !s.checkoutOpen;
-    checkoutForm.hidden = checkoutOrder !== null;
-    checkoutConfirmation.hidden = checkoutOrder === null;
-    if (checkoutOrder) {
+    const order = checkoutOrder
+      ? (s.orders.find((o) => o.id === checkoutOrder!.id) ?? checkoutOrder)
+      : null;
+    const hasOrder = order !== null;
+    const face = hasOrder ? s.paymentSim : 'idle';
+    checkoutLead.textContent = !hasOrder
+      ? 'Để lại thông tin nhận hàng; sau đó chọn một cổng thanh toán mô phỏng.'
+      : face === 'method'
+        ? 'Chọn một cổng thanh toán để tiếp tục đơn hàng.'
+        : face === 'qr'
+          ? 'Quét mã bên dưới bằng ứng dụng ngân hàng (mô phỏng).'
+          : face === 'processing'
+            ? 'Hệ thống đang kiểm tra giao dịch của anh.'
+            : 'Cảm ơn anh. Đơn hàng đã hoàn tất trong bản demo.';
+    checkoutForm.hidden = hasOrder;
+    checkoutMethod.hidden = face !== 'method';
+    checkoutQr.hidden = face !== 'qr';
+    checkoutProcessing.hidden = face !== 'processing';
+    checkoutConfirmation.hidden = face !== 'success';
+    if (hasOrder) {
+      checkoutQrAmount.textContent = formatVndPrice(order!.subtotalVnd);
       checkoutSummary.replaceChildren(
-        h('p', {}, `Mã đơn: ${checkoutOrder.id}`),
-        h('p', {}, `${checkoutOrder.items.length} edition · ${formatVndPrice(checkoutOrder.subtotalVnd)}`),
-        h('p', { class: 'checkout-order-status' }, 'PENDING PAYMENT')
+        h('p', {}, `Mã đơn: ${order!.id}`),
+        h('p', {}, `${order!.items.length} edition · ${formatVndPrice(order!.subtotalVnd)}`),
+        h('p', { class: 'checkout-order-status' }, order!.status === 'paid-demo' ? 'PAID (DEMO)' : 'PENDING PAYMENT')
       );
     }
   }

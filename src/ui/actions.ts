@@ -1,5 +1,6 @@
 import type { FigurineOrder, SessionSetup, ShippingInfo, Step } from '../state/store';
 import type { KaguraFigurineVariantId } from '../config/figurine-products';
+import type { PaymentMethod } from '../config/demo-journey';
 
 /** Contract between the HTML overlay and the scene/app controller. */
 export interface UIActions {
@@ -26,6 +27,10 @@ export interface UIActions {
   viewCollectibleDetail(): void;
   backToCollectibleGrid(): void;
   placeOrder(shipping: ShippingInfo): FigurineOrder | null;
+  beginPayment(): void;
+  choosePaymentMethod(method: PaymentMethod): void;
+  confirmPaymentSent(): void;
+  cancelPaymentSim(): void;
   joinFigurineWaitlist(residentId: string, email: string): void;
   selectResident(id: string): void;
   sendMessage(text: string): void;

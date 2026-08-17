@@ -63,7 +63,7 @@ import {
   kaguraFigurineVariantById,
   type KaguraFigurineVariantId,
 } from './config/figurine-products';
-import { EDITION_REVEAL_MS } from './config/demo-journey';
+import { EDITION_REVEAL_MS, PAYMENT_SIM_MS, type PaymentMethod } from './config/demo-journey';
 import { shouldPlayTeaser } from './config/entry';
 
 const PLINTHS = plinthPositions(CHARACTERS.length);
@@ -189,6 +189,7 @@ class App implements UIActions {
   private idleTimer = 0;
   private editionsTimer = 0;
   private revealTimer = 0;
+  private paymentSimTimer = 0;
   private cryoFlash: THREE.PointLight | null = null;
   private premiumRevealToken = 0;
   private premiumPending: {
@@ -357,6 +358,13 @@ class App implements UIActions {
           (s.step === 'stage' &&
             (s.companionMode === 'showcase' || s.companionMode === 'playground') &&
             !s.activeQuestId));
+      if (s.paymentSim === 'processing' && prev.paymentSim !== 'processing') {
+        window.clearTimeout(this.paymentSimTimer);
+        const delay = this.engine.reducedMotion ? 0 : PAYMENT_SIM_MS;
+        this.paymentSimTimer = window.setTimeout(() => store.completePaymentSim(), delay);
+      } else if (s.paymentSim !== 'processing' && prev.paymentSim === 'processing') {
+        window.clearTimeout(this.paymentSimTimer);
+      }
     });
     this.setEntryStageActive(store.get().step === 'gallery');
 
@@ -1620,6 +1628,19 @@ class App implements UIActions {
   }
   placeOrder(shipping: ShippingInfo): FigurineOrder | null {
     return store.placeOrder(shipping);
+  }
+  beginPayment(): void {
+    store.beginPayment();
+  }
+  choosePaymentMethod(method: PaymentMethod): void {
+    store.choosePaymentMethod(method);
+  }
+  confirmPaymentSent(): void {
+    store.confirmPaymentSent();
+  }
+  cancelPaymentSim(): void {
+    window.clearTimeout(this.paymentSimTimer);
+    store.cancelPaymentSim();
   }
   joinFigurineWaitlist(residentId: string, email: string): void {
     store.joinFigurineWaitlist(residentId, email);
