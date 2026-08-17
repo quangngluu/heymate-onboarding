@@ -1025,6 +1025,22 @@ class App implements UIActions {
   }
 
   /**
+   * Surface the authored attachment->buy bridge beat once the assistant reply
+   * has settled (text revealed, voice finished). It is deterministic: the
+   * Store gates eligibility, this only waits for the right quiet moment.
+   */
+  private maybeSurfaceBridgeBeat(conversation = this.conversationToken()): void {
+    if (!this.conversationIsCurrent(conversation)) return;
+    if (!store.peekBridgeBeat()) return;
+    const s = store.get();
+    if (s.thinking || s.voicing || s.speaking || s.reveal) {
+      window.setTimeout(() => this.maybeSurfaceBridgeBeat(conversation), 350);
+      return;
+    }
+    store.consumeBridgeBeat();
+  }
+
+  /**
    * Her opening line. On a return visit she opens on an unfinished thread
    * instead of the default greeting — that callback is the whole point of
    * having saved the previous chapter.
@@ -1700,6 +1716,9 @@ class App implements UIActions {
       }
       const visibleChat = mode === 'quest' ? store.get().questChat : store.get().chat;
       this.streamIn(visibleChat.length - 1, replyText, prepared, true, conversation);
+      if (mode === 'open-chat') {
+        window.setTimeout(() => this.maybeSurfaceBridgeBeat(conversation), 400);
+      }
       if (mode === 'open-chat' && committed && result.visualIntent) {
         void this.openChatVisuals.replyCommitted({
           residentId: s.residentId,

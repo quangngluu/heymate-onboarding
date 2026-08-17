@@ -64,6 +64,7 @@ import {
   kaguraFigurineVariantById,
   formatVndPrice,
 } from '../config/figurine-products';
+import { bridgeBeatFor } from '../chat/bridge-beat';
 
 /** Clean, IP-free short labels for the roster (source-work names removed). */
 const RESIDENT_SHORT_LABEL: Record<string, string> = {
@@ -1386,11 +1387,39 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     eviCaption
   );
 
+  const bridgeBeatLine = h('p', { class: 'bridge-beat-line' });
+  const bridgeBeatCta = h(
+    'button',
+    {
+      type: 'button',
+      class: 'btn btn-primary bridge-beat-cta',
+      'data-testid': 'bridge-beat-cta',
+    },
+    ''
+  ) as HTMLButtonElement;
+  const bridgeBeatCard = h(
+    'aside',
+    {
+      class: 'bridge-beat-card',
+      hidden: true,
+      'data-testid': 'bridge-beat-card',
+      'aria-live': 'polite',
+    },
+    bridgeBeatLine,
+    bridgeBeatCta
+  );
+  bridgeBeatCta.addEventListener('click', () => {
+    bridgeBeatCard.hidden = true;
+    actions.openCollectible();
+    actions.viewCollectibleDetail();
+  });
+
   const dock = h(
     'div',
     { class: 'stage-dock' },
     eviCallPanel,
     questStrip,
+    bridgeBeatCard,
     h(
       'div',
       { class: 'dock-top' },
@@ -1952,6 +1981,25 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       }
       renderCart(s);
       renderCheckout(s);
+      if (
+        s.bridgeBeatShown &&
+        !prev.bridgeBeatShown &&
+        !s.figurineOwned &&
+        s.residentId === 'kagura'
+      ) {
+        const beat = bridgeBeatFor(s.residentId);
+        if (beat) {
+          bridgeBeatLine.textContent = beat.line;
+          bridgeBeatCta.textContent = beat.ctaLabel;
+          bridgeBeatCard.hidden = false;
+        }
+      }
+      if (
+        !bridgeBeatCard.hidden &&
+        (s.figurineOwned || s.activeQuestId || s.companionMode !== 'playground' || s.residentId !== 'kagura')
+      ) {
+        bridgeBeatCard.hidden = true;
+      }
       if (
         s.figurineDisplayMode === 'premium-preview' &&
         (prev.figurineDisplayMode !== 'premium-preview' ||

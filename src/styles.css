@@ -1751,6 +1751,30 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
   border-bottom: 1px solid var(--line);
 }
 .quest-strip[hidden] { display: none; }
+.bridge-beat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, rgba(239, 230, 212, 0.16));
+  border-radius: 16px;
+  background: rgba(239, 230, 212, 0.06);
+}
+.bridge-beat-card[hidden] { display: none; }
+.bridge-beat-line {
+  margin: 0;
+  color: var(--ivory);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.bridge-beat-cta {
+  max-width: 100%;
+  white-space: normal;
+}
 .quest-mode-head {
   display: flex;
   align-items: center;

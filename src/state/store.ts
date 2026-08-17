@@ -57,7 +57,12 @@ import {
   parseVndPrice,
   type KaguraFigurineVariantId,
 } from '../config/figurine-products';
-import type { PaymentMethod, PaymentSimPhase } from '../config/demo-journey';
+import {
+  BRIDGE_TRIGGER_TURNS,
+  type PaymentMethod,
+  type PaymentSimPhase,
+} from '../config/demo-journey';
+import { bridgeBeatFor, type BridgeBeat } from '../chat/bridge-beat';
 
 /** One line in the figurine cart / a placed order. */
 export interface CartItem {
@@ -1146,6 +1151,28 @@ export class Store {
         turn.contextVisual?.status === 'offered' ||
         turn.contextVisual?.status === 'generating'
     );
+  }
+
+  /** Return the authored Kagura bridge beat while it is eligible, without consuming it. */
+  peekBridgeBeat(): BridgeBeat | null {
+    if (
+      this.state.residentId !== 'kagura' ||
+      this.state.companionMode !== 'playground' ||
+      this.state.activeQuestId ||
+      this.state.figurineOwned ||
+      this.state.bridgeBeatShown ||
+      this.state.turns < BRIDGE_TRIGGER_TURNS
+    ) {
+      return null;
+    }
+    return bridgeBeatFor(this.state.residentId);
+  }
+
+  /** Consume the bridge beat once; persists the one-shot flag. */
+  consumeBridgeBeat(): void {
+    if (this.state.bridgeBeatShown) return;
+    this.set({ bridgeBeatShown: true });
+    this.persist();
   }
 
   /** Return the due authored reward without consuming it while a reply is in flight. */
