@@ -4,7 +4,14 @@
 
 import { h } from './dom';
 import type { UIActions } from './actions';
-import type { AppState, ChatTurn, PersonaTraits, SessionSetup } from '../state/store';
+import type {
+  AppState,
+  ChatTurn,
+  FigurineOrder,
+  PersonaTraits,
+  SessionSetup,
+  ShippingInfo,
+} from '../state/store';
 import { COPY } from '../config/copy';
 import { factionById } from '../config/factions';
 import { CHARACTERS, characterById, characterIndex } from '../config/characters';
@@ -34,7 +41,6 @@ import { ONBOARDING_QUESTS } from '../config/onboarding-quests';
 import { segments, segmentsUpTo } from '../chat/dialogue';
 import {
   dialogueBlocksFromSegments,
-  OPEN_CHAT_VISUALS,
   openingVisualFor,
 } from '../chat/open-chat-visuals';
 import {
@@ -56,6 +62,7 @@ import {
 import {
   KAGURA_FIGURINE_VARIANTS,
   kaguraFigurineVariantById,
+  formatVndPrice,
 } from '../config/figurine-products';
 
 export interface StepView {
@@ -417,6 +424,15 @@ export function companionTeaserStep(actions: UIActions): StepView {
     return video;
   });
   const play = h('button', { class: 'btn btn-primary teaser-play', hidden: true }, 'Phát teaser') as HTMLButtonElement;
+  // Skip fades in after the picture has settled; a tap cuts straight to the live
+  // desk at rest (no dolly, since `beginCompanionReveal` is never called).
+  const skip = h(
+    'button',
+    { type: 'button', class: 'teaser-skip', 'aria-label': 'Bỏ qua teaser', hidden: true },
+    'Bỏ qua ',
+    h('span', { 'aria-hidden': 'true' }, '›')
+  ) as HTMLButtonElement;
+  let skipRevealTimer = 0;
   const lastIndex = videos.length - 1;
   const handoffDurationMs = 720;
   // The page has settled flat by this beat. Starting earlier crossfades two
@@ -492,6 +508,15 @@ export function companionTeaserStep(actions: UIActions): StepView {
     }
   });
   play.addEventListener('click', playVideo);
+  skip.addEventListener('click', () => finish());
+  // Reveal skip once the picture has settled. Reduced-motion shows it at once.
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    skip.hidden = false;
+  } else {
+    skipRevealTimer = window.setTimeout(() => {
+      skip.hidden = false;
+    }, 1200);
+  }
   const teaser = h(
     'div',
     { class: 'stage-teaser', 'data-testid': 'kagura-teaser' },
@@ -507,7 +532,8 @@ export function companionTeaserStep(actions: UIActions): StepView {
       h('span', {}, 'KAGURA AKAGANE'),
       h('small', {}, 'THE RED EDGE AWAKENS')
     ),
-    play
+    play,
+    skip
   );
   const el = h(
     'section',
@@ -522,6 +548,7 @@ export function companionTeaserStep(actions: UIActions): StepView {
     el,
     destroy() {
       window.clearTimeout(handoffTimer);
+      window.clearTimeout(skipRevealTimer);
       for (const video of videos) video.pause();
     },
   };
@@ -552,6 +579,19 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     if ((e.target as HTMLElement).closest('details')) return;
     info.classList.toggle('is-open');
   });
+
+  // Backstory as free on-screen text (name as title + a one-line hook), not
+  // boxed inside the card. Populated on resident change.
+  const stageIdentityName = h('p', { class: 'stage-identity-name' });
+  const stageIdentitySeries = h('p', { class: 'card-series' });
+  const stageIdentityStory = h('p', { class: 'stage-identity-story' });
+  const stageIdentity = h(
+    'div',
+    { class: 'stage-identity', 'data-testid': 'stage-identity' },
+    stageIdentityName,
+    stageIdentitySeries,
+    stageIdentityStory
+  );
 
   // --- roster ---
   const roster = h('div', { role: 'radiogroup', 'aria-label': 'Các nhân vật', class: 'roster character-screen' });
@@ -629,8 +669,176 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   const productVariants = h('div', {
     class: 'product-variants',
     role: 'list',
-    'aria-label': 'Ba visual edition',
+    'aria-label': 'Các edition figurine',
   });
+  const productRailLabelPrimary = h('span');
+  const productRailLabelSecondary = h('span');
+  const productEstimateLabel = h('span');
+  const productEstimateValue = h('strong');
+  const cartItemCount = h('span');
+  const cartTotal = h('strong', { class: 'cart-total-value' });
+  const cartItems = h('div', { class: 'cart-items' });
+  let checkoutOrder: FigurineOrder | null = null;
+  let waitlistResidentId = state.residentId;
+  const waitlistEmail = h('input', {
+    id: 'figurine-waitlist-email',
+    name: 'email',
+    type: 'email',
+    autocomplete: 'email',
+    spellcheck: 'false',
+    placeholder: 'anh@example.com…',
+    'aria-label': 'Email nhận thông báo',
+    required: true,
+  }) as HTMLInputElement;
+  const waitlistNote = h('p', { class: 'waitlist-note', 'aria-live': 'polite' });
+  const waitlistForm = h(
+    'form',
+    {
+      class: 'waitlist-form',
+      'data-testid': 'figurine-waitlist-form',
+      onSubmit: (event: Event) => {
+        event.preventDefault();
+        if (!waitlistEmail.reportValidity()) return;
+        actions.joinFigurineWaitlist(waitlistResidentId, waitlistEmail.value);
+        waitlistEmail.value = '';
+        waitlistNote.textContent = 'Đã lưu email trên thiết bị này. Em sẽ báo khi có đợt mở bán.';
+      },
+    },
+    h('label', { for: 'figurine-waitlist-email' }, 'Nhận tin khi mở bán'),
+    h('div', { class: 'waitlist-form-row' }, waitlistEmail, h('button', { type: 'submit', class: 'btn btn-secondary xs' }, 'Tham gia')),
+    waitlistNote
+  );
+  const checkoutError = h('p', { class: 'checkout-error', role: 'alert', 'aria-live': 'polite' });
+  const checkoutName = h('input', {
+    id: 'checkout-name',
+    name: 'name',
+    type: 'text',
+    autocomplete: 'name',
+    placeholder: 'Tên người nhận…',
+    required: true,
+  }) as HTMLInputElement;
+  const checkoutPhone = h('input', {
+    id: 'checkout-phone',
+    name: 'phone',
+    type: 'tel',
+    inputmode: 'tel',
+    autocomplete: 'tel',
+    placeholder: '090…',
+    required: true,
+  }) as HTMLInputElement;
+  const checkoutEmail = h('input', {
+    id: 'checkout-email',
+    name: 'email',
+    type: 'email',
+    autocomplete: 'email',
+    spellcheck: 'false',
+    placeholder: 'anh@example.com…',
+    required: true,
+  }) as HTMLInputElement;
+  const checkoutAddress = h('input', {
+    id: 'checkout-address',
+    name: 'address',
+    type: 'text',
+    autocomplete: 'street-address',
+    placeholder: 'Số nhà, đường, thành phố…',
+    required: true,
+  }) as HTMLInputElement;
+  const checkoutNote = h('textarea', {
+    id: 'checkout-note',
+    name: 'note',
+    rows: '2',
+    placeholder: 'Ghi chú giao hàng (không bắt buộc)…',
+    autocomplete: 'off',
+  }) as HTMLTextAreaElement;
+  const checkoutForm = h(
+    'form',
+    {
+      class: 'checkout-form',
+      onSubmit: (event: Event) => {
+        event.preventDefault();
+        if (!checkoutName.reportValidity() || !checkoutPhone.reportValidity() || !checkoutEmail.reportValidity() || !checkoutAddress.reportValidity()) return;
+        const shipping: ShippingInfo = {
+          name: checkoutName.value.trim(),
+          phone: checkoutPhone.value.trim(),
+          email: checkoutEmail.value.trim(),
+          address: checkoutAddress.value.trim(),
+          note: checkoutNote.value.trim() || undefined,
+        };
+        const order = actions.placeOrder(shipping);
+        if (!order) {
+          checkoutError.textContent = 'Giỏ hàng đã trống. Quay lại editions để chọn sản phẩm.';
+          return;
+        }
+        checkoutOrder = order;
+        checkoutError.textContent = '';
+        renderCheckout(store.get());
+      },
+    },
+    h('div', { class: 'checkout-fields' },
+      h('label', { for: 'checkout-name' }, 'Tên người nhận', checkoutName),
+      h('label', { for: 'checkout-phone' }, 'Số điện thoại', checkoutPhone),
+      h('label', { for: 'checkout-email' }, 'Email', checkoutEmail),
+      h('label', { for: 'checkout-address' }, 'Địa chỉ giao hàng', checkoutAddress),
+      h('label', { for: 'checkout-note' }, 'Ghi chú', checkoutNote)
+    ),
+    h('p', { class: 'checkout-payment-note' }, 'Đây là đơn ghi nhận nhu cầu. Cổng thanh toán chưa kết nối; đội ngũ sẽ xác nhận bước thanh toán sau.'),
+    checkoutError,
+    h('button', { type: 'submit', class: 'btn btn-primary checkout-submit', 'data-testid': 'figurine-place-order' }, 'Ghi nhận đơn hàng')
+  );
+  const checkoutSummary = h('div', { class: 'checkout-confirmation-summary' });
+  const checkoutConfirmation = h(
+    'section',
+    { class: 'checkout-confirmation', hidden: true, 'aria-live': 'polite' },
+    h('p', { class: 'checkout-kicker' }, 'ORDER RECORDED'),
+    h('h3', {}, 'Đã ghi nhận đơn của anh'),
+    checkoutSummary,
+    h('p', { class: 'checkout-payment-note' }, 'Đơn đang chờ xác nhận thanh toán. Thông tin chỉ được lưu trên thiết bị này trong bản prototype.'),
+    h('button', { type: 'button', class: 'btn btn-secondary', onClick: () => closeCheckoutView() }, 'Tiếp tục xem editions')
+  );
+  const checkoutCard = h(
+    'aside',
+    { class: 'panel checkout-card' },
+    h('div', { class: 'row sheet-head' }, h('div', {}, h('p', { class: 'kicker' }, 'KAGURA EDITIONS'), h('h2', { class: 'panel-title' }, 'Checkout')), h('button', { type: 'button', class: 'chrome-btn', 'aria-label': 'Đóng checkout', onClick: () => closeCheckoutView() }, '×')),
+    h('p', { class: 'checkout-lead' }, 'Để lại thông tin nhận hàng; chưa phát sinh thanh toán ở bước prototype này.'),
+    checkoutForm,
+    checkoutConfirmation
+  );
+  const checkoutScrim = h(
+    'div',
+    {
+      class: 'modal-scrim checkout-scrim',
+      hidden: true,
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-label': 'Checkout Kagura editions',
+      onClick: (event: Event) => {
+        if (event.target === event.currentTarget) closeCheckoutView();
+      },
+    },
+    checkoutCard
+  );
+  const checkoutButton = h(
+    'button',
+    {
+      type: 'button',
+      class: 'btn btn-primary cart-checkout',
+      'data-testid': 'figurine-checkout',
+      onClick: () => {
+        checkoutOrder = null;
+        checkoutError.textContent = '';
+        actions.openCheckout();
+      },
+    },
+    'Tiến tới checkout'
+  ) as HTMLButtonElement;
+  const cartPanel = h(
+    'section',
+    { class: 'cart-panel', 'data-testid': 'figurine-cart', 'aria-label': 'Giỏ hàng' },
+    h('div', { class: 'cart-heading' }, h('span', {}, 'GIỎ HÀNG'), cartItemCount),
+    cartItems,
+    h('div', { class: 'cart-total' }, h('span', {}, 'Tạm tính'), cartTotal),
+    checkoutButton
+  );
   const productRail = h(
     'aside',
     { class: 'product-rail', 'data-testid': 'figurine-product-rail' },
@@ -645,17 +853,76 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     h(
       'div',
       { class: 'product-rail-label' },
-      h('span', {}, '3 PREMIUM EDITIONS'),
-      h('span', {}, '15 CM')
+      productRailLabelPrimary,
+      productRailLabelSecondary
     ),
     productVariants,
     h(
       'p',
       { class: 'product-estimate' },
-      h('span', {}, 'Giá dự kiến'),
-      h('strong', {}, '6.999.000 ₫')
-    )
+      productEstimateLabel,
+      productEstimateValue
+    ),
+    cartPanel
   );
+
+  function closeCheckoutView(): void {
+    checkoutOrder = null;
+    checkoutError.textContent = '';
+    actions.closeCheckout();
+  }
+
+  function renderCart(s: AppState): void {
+    const units = s.cart.reduce((total, item) => total + item.qty, 0);
+    const subtotal = s.cart.reduce((total, item) => total + item.priceVnd * item.qty, 0);
+    cartItemCount.textContent = `${units} ${units === 1 ? 'món' : 'món'}`;
+    cartTotal.textContent = formatVndPrice(subtotal);
+    checkoutButton.disabled = units === 0;
+    cartItems.replaceChildren(
+      ...(s.cart.length
+        ? s.cart.map((item, index) =>
+            h(
+              'article',
+              { class: 'cart-line' },
+              h(
+                'div',
+                { class: 'cart-line-copy' },
+                h('strong', {}, item.label),
+                h('small', {}, `${item.styleLabel} · ${formatVndPrice(item.priceVnd)}`)
+              ),
+              h(
+                'div',
+                { class: 'cart-line-actions' },
+                h('button', { type: 'button', class: 'cart-qty-btn', 'aria-label': `Giảm số lượng ${item.label}`, onClick: () => actions.updateCartQty(index, item.qty - 1) }, '−'),
+                h('output', { class: 'cart-qty', 'aria-label': 'Số lượng' }, String(item.qty)),
+                h('button', { type: 'button', class: 'cart-qty-btn', 'aria-label': `Tăng số lượng ${item.label}`, onClick: () => actions.updateCartQty(index, item.qty + 1) }, '+'),
+                h('button', { type: 'button', class: 'cart-remove', 'aria-label': `Xóa ${item.label}`, onClick: () => actions.removeFromCart(index) }, 'Xóa')
+              )
+            )
+          )
+        : [h('p', { class: 'cart-empty' }, 'Chưa có edition nào. Chọn một card để thêm vào giỏ.')])
+    );
+  }
+
+  function renderWaitlist(s: AppState): void {
+    const registered = s.figurineWaitlist[waitlistResidentId]?.length ?? 0;
+    waitlistNote.textContent = registered
+      ? 'Email đã nằm trong danh sách chờ trên thiết bị này.'
+      : 'Prototype chỉ lưu danh sách chờ trên thiết bị này.';
+  }
+
+  function renderCheckout(s: AppState): void {
+    checkoutScrim.hidden = !s.checkoutOpen;
+    checkoutForm.hidden = checkoutOrder !== null;
+    checkoutConfirmation.hidden = checkoutOrder === null;
+    if (checkoutOrder) {
+      checkoutSummary.replaceChildren(
+        h('p', {}, `Mã đơn: ${checkoutOrder.id}`),
+        h('p', {}, `${checkoutOrder.items.length} edition · ${formatVndPrice(checkoutOrder.subtotalVnd)}`),
+        h('p', { class: 'checkout-order-status' }, 'PENDING PAYMENT')
+      );
+    }
+  }
 
   const pressToTalk = h(
     'button',
@@ -1307,7 +1574,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   const sessionSheet = h(
     'div',
     {
-      class: 'modal-scrim session-scrim',
+      class: 'modal-scrim session-scrim session-drawer',
       hidden: true,
       role: 'dialog',
       'aria-modal': 'true',
@@ -1480,11 +1747,13 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       leaveUniverseBtn,
       cardToggle
     ),
+    stageIdentity,
     info,
     sessionSheet,
     questHub,
     roster,
     productRail,
+    checkoutScrim,
     pressToTalk,
     returnOriginal,
     rail,
@@ -1588,6 +1857,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       el.dataset.companionMode = s.companionMode;
       el.dataset.figurineDisplay = s.figurineDisplayMode;
       el.dataset.editions = s.editionsRevealed ? 'shown' : 'hidden';
+      renderCart(s);
+      renderCheckout(s);
       if (
         s.figurineDisplayMode === 'premium-preview' &&
         (prev.figurineDisplayMode !== 'premium-preview' ||
@@ -1608,63 +1879,88 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         productName.textContent = r.name;
         productSeries.textContent = r.series.split(' - ')[0];
         productHook.textContent = r.card.hook;
+        waitlistResidentId = r.id;
+        waitlistEmail.value = '';
         if (r.id === 'kagura') {
+          productRailLabelPrimary.textContent = '3 PREMIUM EDITIONS';
+          productRailLabelSecondary.textContent = '15 CM';
+          productEstimateLabel.textContent = 'Giá mỗi edition';
+          productEstimateValue.textContent = '6.999.000 ₫';
           productVariants.replaceChildren(
             ...KAGURA_FIGURINE_VARIANTS.map((variant, index) => {
               const selected =
                 (s.figurineDisplayMode === 'premium' || s.figurineDisplayMode === 'premium-preview') &&
                 variant.id === s.kaguraFigurineVariantId;
               return h(
-                'button',
+                'article',
                 {
                   class: `product-variant${selected ? ' is-active' : ''}`,
                   role: 'listitem',
                   'data-variant-id': variant.id,
-                  'aria-pressed': String(selected),
-                  onClick: () => actions.selectKaguraFigurineVariant(variant.id),
                 },
                 h(
-                  'span',
-                  { class: 'product-variant-image' },
-                  h('img', { src: variant.previewUrl, alt: `${r.name}, ${variant.styleLabel}`, loading: 'eager', draggable: 'false' }),
-                  h('span', {}, String(index + 1).padStart(2, '0'))
+                  'button',
+                  {
+                    type: 'button',
+                    class: 'product-variant-select',
+                    'data-variant-id': variant.id,
+                    'aria-pressed': String(selected),
+                    'aria-label': `Chọn ${variant.label}`,
+                    onClick: () => actions.selectKaguraFigurineVariant(variant.id),
+                  },
+                  h(
+                    'span',
+                    { class: 'product-variant-image' },
+                    h('img', { src: variant.previewUrl, alt: `${r.name}, ${variant.styleLabel}`, loading: index === 0 ? 'eager' : 'lazy', draggable: 'false' }),
+                    h('span', {}, String(index + 1).padStart(2, '0'))
+                  ),
+                  h(
+                    'span',
+                    { class: 'product-variant-copy' },
+                    h('strong', {}, variant.label),
+                    h('small', {}, `${variant.styleLabel} · ${variant.sizeLabel}`),
+                    h('b', {}, variant.priceLabel)
+                  )
                 ),
-                h(
-                  'span',
-                  { class: 'product-variant-copy' },
-                  h('strong', {}, variant.label),
-                  h('small', {}, `${variant.styleLabel} · ${variant.sizeLabel}`),
-                  h('b', {}, variant.priceLabel)
-                )
+                h('button', { type: 'button', class: 'product-variant-add', 'data-testid': `figurine-add-to-cart-${variant.id}`, onClick: () => actions.addFigurineToCart(r.id, variant.id) }, 'Thêm vào giỏ')
               );
             })
           );
         } else {
-          const editions = OPEN_CHAT_VISUALS.filter((visual) => visual.residentId === r.id);
+          const opening = openingVisualFor(r.id);
+          productRailLabelPrimary.textContent = 'FIGURINE IN DEVELOPMENT';
+          productRailLabelSecondary.textContent = 'WAITLIST ONLY';
+          productEstimateLabel.textContent = 'Trạng thái';
+          productEstimateValue.textContent = 'Đang lên kế hoạch';
           productVariants.replaceChildren(
-            ...editions.map((visual, index) =>
+            h(
+              'article',
+              { class: `product-variant product-variant-unavailable is-${opening.frame}`, role: 'listitem' },
               h(
-                'article',
-                { class: `product-variant is-${visual.frame}`, role: 'listitem' },
+                'div',
+                { class: 'product-variant-select is-static' },
                 h(
-                  'div',
+                  'span',
                   { class: 'product-variant-image' },
-                  h('img', { src: visual.src, alt: visual.alt, loading: 'eager', draggable: 'false' }),
-                  h('span', {}, String(index + 1).padStart(2, '0'))
+                  h('img', { src: opening.src, alt: opening.alt, loading: 'eager', draggable: 'false' }),
+                  h('span', {}, '—')
                 ),
                 h(
-                  'div',
+                  'span',
                   { class: 'product-variant-copy' },
-                  h('strong', {}, visual.label),
-                  h('small', {}, 'VISUAL EDITION · 15 CM'),
-                  h('b', {}, '6.999.000 ₫')
+                  h('strong', {}, `${r.name} EDITION`),
+                  h('small', {}, 'CHƯA MỞ BÁN'),
+                  h('b', {}, 'ĐĂNG KÝ TRƯỚC')
                 )
-              )
+              ),
+              waitlistForm
             )
           );
         }
-        // The card carries three layers: the hook, who she is, and what the
-        // user gets. Full canon stays behind the story list.
+        renderWaitlist(s);
+        // The card is now just the visit chips + bond level. Her name and the
+        // one-line hook live on-screen as a headline (`stageIdentity`), not
+        // boxed here — full canon is no longer surfaced in the card.
         info.replaceChildren(
           h(
             'div',
@@ -1672,22 +1968,11 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
             h('span', { class: 'chip chip-accent' }, saved?.visits ? `Lần gặp ${saved.visits + 1}` : 'Lần đầu gặp'),
             h('span', { class: 'chip' }, 'Tiếng Việt')
           ),
-          h('h2', { class: 'card-name' }, r.name),
-          h('p', { class: 'card-series' }, r.series.split(' - ')[0]),
-          h('p', { class: 'card-hook' }, r.card.hook),
-          h('p', { class: 'card-promise' }, r.card.promise),
-          h('details', { class: 'profile-more' },
-            h('summary', {}, 'Em là ai'),
-            h('p', { class: 'card-bio' }, r.card.personality),
-            h('p', { class: 'card-bio' }, r.profile),
-            h('p', { class: 'card-setting' }, r.setting)
-          ),
-          levelBlock,
-          h('details', { class: 'episode-block profile-more' },
-            h('summary', {}, 'Câu chuyện của em'),
-            h('div', { class: 'episode-list' })
-          )
+          levelBlock
         );
+        stageIdentityName.textContent = r.name;
+        stageIdentitySeries.textContent = r.series.split(' - ')[0];
+        stageIdentityStory.textContent = r.card.hook;
       }
       if (document.activeElement !== identityInput) identityInput.value = s.session.identity;
       personaBuilder.sync(s.session);
@@ -1713,23 +1998,6 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       mobileSettingsBtn.setAttribute('aria-label', `Cấu hình: ${sessionSummary}`);
       mobileSettingsBtn.title = sessionSummary;
 
-      // Unlocked canon reveals read as her story opening up, locked ones as the
-      // reason to keep going.
-      const epList = info.querySelector('.episode-list');
-      if (epList) {
-        epList.replaceChildren(
-          ...r.canonReveals.map((ep, i) => {
-            const open = i < s.revealed;
-            return h(
-              'div',
-              { class: `episode${open ? ' is-open' : ''}` },
-              h('span', { class: 'episode-title' }, open ? ep.title : 'Chưa mở'),
-              ...(open ? [h('p', { class: 'episode-body' }, ep.body)] : [])
-            );
-          })
-        );
-      }
-
       rosterBtns.forEach((b, i) => {
         const active = RESIDENTS[i].id === s.residentId;
         b.setAttribute('aria-checked', String(active));
@@ -1743,11 +2011,12 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         }
       });
       if (s.residentId === 'kagura') {
-        for (const button of productVariants.querySelectorAll<HTMLButtonElement>('.product-variant')) {
+        for (const button of productVariants.querySelectorAll<HTMLButtonElement>('.product-variant-select')) {
           const active =
             (s.figurineDisplayMode === 'premium' || s.figurineDisplayMode === 'premium-preview') &&
             button.dataset.variantId === s.kaguraFigurineVariantId;
           button.classList.toggle('is-active', active);
+          button.closest('.product-variant')?.classList.toggle('is-active', active);
           button.setAttribute('aria-pressed', String(active));
         }
       }

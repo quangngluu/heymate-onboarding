@@ -16,7 +16,6 @@ import {
 import { COPY } from '../config/copy';
 import { COST, CREDIT_CATALOG, CREDIT_LABEL, type Spend } from '../config/economy';
 import { resolveCanonRoute } from '../config/canon-route';
-import { worldformStep } from '../worldform/ui/step';
 
 /**
  * Which build and canon layer this page is actually running.
@@ -227,12 +226,15 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
   let view: StepView | null = null;
   let lastTransactionId = '';
 
-  const factories: Record<Step, (s: AppState) => StepView> = {
+  const factories: Record<Step, (s: AppState) => StepView | Promise<StepView>> = {
     gallery: () => galleryStep(actions),
     'companion-teaser': () => companionTeaserStep(actions),
     stage: (s) => stageStep(actions, s),
     arrival: () => arrivalStep(actions),
-    studio: (s) => worldformStep(actions, s),
+    studio: async (s) => {
+      const module = await import('../worldform/ui/step');
+      return module.worldformStep(actions, s);
+    },
     reveal: (s) => revealStep(actions, s),
     joined: (s) => joinedStep(actions, s),
   };
@@ -284,16 +286,33 @@ export function mountUI(root: HTMLElement, store: Store, actions: UIActions): vo
     }
   }
 
-  function mount(state: AppState): void {
-    view?.destroy?.();
-    stepHost.replaceChildren();
-    view = factories[state.step](state);
+  let mountSerial = 0;
+
+  function finishMount(nextView: StepView, serial: number): void {
+    if (serial !== mountSerial) {
+      nextView.destroy?.();
+      return;
+    }
+    view = nextView;
     view.el.classList.add('step-enter');
     stepHost.append(view.el);
     requestAnimationFrame(() => view?.el.classList.remove('step-enter'));
-    view.update?.(state, state);
+    const current = store.get();
+    view.update?.(current, current);
+  }
+
+  function mount(state: AppState): void {
+    const serial = ++mountSerial;
+    view?.destroy?.();
+    stepHost.replaceChildren();
     paintChrome(state);
     currentStep = state.step;
+    const nextView = factories[state.step](state);
+    if (nextView instanceof Promise) {
+      void nextView.then((loadedView) => finishMount(loadedView, serial));
+      return;
+    }
+    finishMount(nextView, serial);
   }
 
   store.subscribe((state, prev) => {

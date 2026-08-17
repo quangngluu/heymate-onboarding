@@ -1,4 +1,4 @@
-import type { SessionSetup, Step } from '../state/store';
+import type { FigurineOrder, SessionSetup, ShippingInfo, Step } from '../state/store';
 import type { KaguraFigurineVariantId } from '../config/figurine-products';
 
 /** Contract between the HTML overlay and the scene/app controller. */
@@ -15,6 +15,14 @@ export interface UIActions {
   selectKaguraFigurineVariant(id: KaguraFigurineVariantId): void;
   finishKaguraFigurineTransition(id: KaguraFigurineVariantId): void;
   returnToOriginalFigurine(): void;
+  // --- figurine shop ---
+  addFigurineToCart(residentId: string, variantId: KaguraFigurineVariantId): void;
+  updateCartQty(index: number, qty: number): void;
+  removeFromCart(index: number): void;
+  openCheckout(): void;
+  closeCheckout(): void;
+  placeOrder(shipping: ShippingInfo): FigurineOrder | null;
+  joinFigurineWaitlist(residentId: string, email: string): void;
   selectResident(id: string): void;
   sendMessage(text: string): void;
   requestOpenChatImage(turnId: string): void;

@@ -53,8 +53,42 @@ import {
 import type { ImprovisedFact } from '../chat/improvised-canon';
 import {
   DEFAULT_KAGURA_FIGURINE_VARIANT,
+  kaguraFigurineVariantById,
+  parseVndPrice,
   type KaguraFigurineVariantId,
 } from '../config/figurine-products';
+
+/** One line in the figurine cart / a placed order. */
+export interface CartItem {
+  residentId: string;
+  variantId: KaguraFigurineVariantId;
+  label: string;
+  styleLabel: string;
+  sizeLabel: string;
+  priceVnd: number;
+  previewUrl: string;
+  qty: number;
+}
+
+export interface ShippingInfo {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  note?: string;
+}
+
+/** No payment gateway yet, so a placed order rests at `pending-payment`. */
+export type OrderStatus = 'pending-payment';
+
+export interface FigurineOrder {
+  id: string;
+  items: CartItem[];
+  shipping: ShippingInfo;
+  subtotalVnd: number;
+  status: OrderStatus;
+  createdAt: number;
+}
 
 export { COST } from '../config/economy';
 export type { Spend } from '../config/economy';
@@ -270,6 +304,11 @@ export interface AppState {
   waifuUniverseEntered: boolean;
   /** True once premium editions have surfaced for this entry (session-only). */
   editionsRevealed: boolean;
+  /** Figurine shop: cart lines, placed orders, and per-resident waitlist emails. */
+  cart: CartItem[];
+  orders: FigurineOrder[];
+  checkoutOpen: boolean;
+  figurineWaitlist: Record<string, string[]>;
   residentId: ResidentId;
   session: SessionSetup;
   /** Saved-and-paid progress, keyed by resident. */
@@ -418,6 +457,10 @@ const initialState: AppState = {
   kaguraFigurineVariantId: DEFAULT_KAGURA_FIGURINE_VARIANT,
   waifuUniverseEntered: false,
   editionsRevealed: false,
+  cart: [],
+  orders: [],
+  checkoutOpen: false,
+  figurineWaitlist: {},
   residentId: RESIDENTS[0].id,
   session: defaultSession(),
   progress: {},
@@ -564,9 +607,15 @@ export class Store {
           openChatRewards?: Record<string, OpenChatRewardProgress>;
           openChatContext?: Record<string, OpenChatContextProgress>;
           waifuUniverseEntered?: boolean;
+          cart?: CartItem[];
+          orders?: FigurineOrder[];
+          figurineWaitlist?: Record<string, string[]>;
         };
         this.state = {
           ...this.state,
+          cart: saved.cart ?? [],
+          orders: saved.orders ?? [],
+          figurineWaitlist: saved.figurineWaitlist ?? {},
           progress: migrateProgress(saved.progress ?? {}),
           transcripts: restoreOpenChatTranscripts(saved.transcripts ?? {}),
           questTranscripts: saved.questTranscripts ?? {},
@@ -655,6 +704,9 @@ export class Store {
           waifuUniverseEntered: this.state.waifuUniverseEntered,
           openChatRewards: this.state.openChatRewards,
           openChatContext: this.state.openChatContext,
+          cart: this.state.cart,
+          orders: this.state.orders,
+          figurineWaitlist: this.state.figurineWaitlist,
         })
       );
     } catch {
@@ -673,6 +725,94 @@ export class Store {
   revealEditions(): void {
     if (this.state.editionsRevealed) return;
     this.set({ editionsRevealed: true });
+  }
+
+  // ---- figurine shop ----
+
+  addFigurineToCart(residentId: string, variantId: KaguraFigurineVariantId): void {
+    const variant = kaguraFigurineVariantById(variantId);
+    const cart = this.state.cart.map((item) => ({ ...item }));
+    const existing = cart.findIndex(
+      (item) => item.residentId === residentId && item.variantId === variantId
+    );
+    if (existing >= 0) {
+      cart[existing].qty = Math.min(99, cart[existing].qty + 1);
+    } else {
+      cart.push({
+        residentId,
+        variantId,
+        label: variant.label,
+        styleLabel: variant.styleLabel,
+        sizeLabel: variant.sizeLabel,
+        priceVnd: parseVndPrice(variant.priceLabel),
+        previewUrl: variant.previewUrl,
+        qty: 1,
+      });
+    }
+    this.set({ cart });
+    this.persist();
+  }
+
+  updateCartQty(index: number, qty: number): void {
+    if (index < 0 || index >= this.state.cart.length) return;
+    let cart: CartItem[];
+    if (qty <= 0) {
+      cart = this.state.cart.filter((_, i) => i !== index);
+    } else {
+      cart = this.state.cart.map((item, i) =>
+        i === index ? { ...item, qty: Math.min(99, qty) } : item
+      );
+    }
+    this.set({ cart });
+    this.persist();
+  }
+
+  removeFromCart(index: number): void {
+    this.set({ cart: this.state.cart.filter((_, i) => i !== index) });
+    this.persist();
+  }
+
+  openCheckout(): void {
+    if (this.state.cart.length === 0) return;
+    this.set({ checkoutOpen: true });
+  }
+
+  closeCheckout(): void {
+    if (!this.state.checkoutOpen) return;
+    this.set({ checkoutOpen: false });
+  }
+
+  /** Records the order locally (status: pending-payment). No payment gateway. */
+  placeOrder(shipping: ShippingInfo): FigurineOrder | null {
+    if (this.state.cart.length === 0) return null;
+    const items = this.state.cart.map((item) => ({ ...item }));
+    const subtotalVnd = items.reduce((sum, item) => sum + item.priceVnd * item.qty, 0);
+    const order: FigurineOrder = {
+      id: `HM-${Date.now().toString(36).toUpperCase()}`,
+      items,
+      shipping,
+      subtotalVnd,
+      status: 'pending-payment',
+      createdAt: Date.now(),
+    };
+    // Leave `checkoutOpen` as-is so the UI can show the confirmation view.
+    this.set({ orders: [...this.state.orders, order], cart: [] });
+    this.persist();
+    return order;
+  }
+
+  joinFigurineWaitlist(residentId: string, email: string): void {
+    const clean = email.trim();
+    if (!clean) return;
+    const list = this.state.figurineWaitlist[residentId] ?? [];
+    if (list.includes(clean)) return;
+    this.set({
+      figurineWaitlist: {
+        ...this.state.figurineWaitlist,
+        [residentId]: [...list, clean],
+      },
+    });
+    this.persist();
   }
 
   progressFor(id = this.state.residentId): SavedProgress {

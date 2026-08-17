@@ -59,3 +59,14 @@ export const DEFAULT_KAGURA_FIGURINE_VARIANT: KaguraFigurineVariantId = 'three-d
 export function kaguraFigurineVariantById(id: KaguraFigurineVariantId): KaguraFigurineVariant {
   return KAGURA_FIGURINE_VARIANTS.find((variant) => variant.id === id)!;
 }
+
+/** "6.999.000 ₫" → 6999000. Keeps `priceLabel` as the source of display truth. */
+export function parseVndPrice(label: string): number {
+  const digits = label.replace(/[^0-9]/g, '');
+  return digits ? Number(digits) : 0;
+}
+
+/** 6999000 → "6.999.000 ₫" for computed subtotals. */
+export function formatVndPrice(amount: number): string {
+  return `${Math.round(amount).toLocaleString('vi-VN')} ₫`;
+}

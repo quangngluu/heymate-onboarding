@@ -438,6 +438,7 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
 .step-stage[data-figurine-display='premium-preview'] .return-original { display: none; }
 .step-stage[data-companion-mode='reveal'] .stage-top,
 .step-stage[data-companion-mode='reveal'] .stage-info,
+.step-stage[data-companion-mode='reveal'] .stage-identity,
 .step-stage[data-companion-mode='reveal'] .roster,
 .step-stage[data-companion-mode='reveal'] .product-rail,
 .step-stage[data-companion-mode='reveal'] .hero-talk-prompt,
@@ -556,7 +557,8 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
 .stage-teaser.is-handing-off .stage-teaser-video.is-active,
 .stage-teaser.is-handing-off .stage-teaser-vignette,
 .stage-teaser.is-handing-off .stage-teaser-brand,
-.stage-teaser.is-handing-off .teaser-play {
+.stage-teaser.is-handing-off .teaser-play,
+.stage-teaser.is-handing-off .teaser-skip {
   opacity: 0;
   animation: none;
   transition: opacity 0.72s ease-in-out;
@@ -564,6 +566,34 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
 .stage-teaser-brand span { font-size: 13px; font-weight: 700; }
 .stage-teaser-brand small { color: var(--ivory-dim); font-size: 9px; letter-spacing: 0.3em; }
 .teaser-play { position: absolute; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+/* Low-key escape hatch, bottom-right, out of the picture's focal centre. */
+.teaser-skip {
+  position: absolute;
+  z-index: 6;
+  right: 24px;
+  bottom: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ivory-dim);
+  background: rgba(6, 6, 7, 0.42);
+  border: 1px solid rgba(239, 230, 212, 0.22);
+  border-radius: 999px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  animation: teaser-side-fade 0.4s ease-out both;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+.teaser-skip:hover { color: var(--ivory); border-color: rgba(239, 230, 212, 0.5); background: rgba(6, 6, 7, 0.62); }
+.teaser-skip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.teaser-skip span { font-size: 14px; }
+@media (prefers-reduced-motion: reduce) { .teaser-skip { animation: none; } }
+@media (max-width: 700px) { .teaser-skip { right: 14px; bottom: calc(16px + var(--safe-b)); padding: 7px 12px; } }
 @keyframes teaser-side-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes teaser-picture-in { from { opacity: 0; } to { opacity: 1; } }
 
@@ -645,6 +675,7 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
 .step-stage[data-companion-mode='showcase'][data-figurine-display='premium'] .hero-talk-prompt { display: none; }
 .step-stage[data-companion-mode='showcase'][data-figurine-display='premium'] .return-original { display: flex; }
 .step-stage[data-companion-mode='showcase'] .stage-info,
+.step-stage[data-companion-mode='showcase'] .stage-identity,
 .step-stage[data-companion-mode='showcase'] .stage-rail,
 .step-stage[data-companion-mode='showcase'] .stage-dock,
 .step-stage[data-companion-mode='showcase'] .stage-top button[aria-pressed] { display: none; }
@@ -698,16 +729,16 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
 .product-variants { display: flex; flex-direction: column; gap: 9px; }
 .product-variant {
   display: grid;
-  grid-template-columns: 112px 1fr;
-  gap: 12px;
-  min-height: 102px;
+  grid-template-columns: 1fr;
+  gap: 7px;
+  min-height: 0;
   padding: 7px;
   border: 1px solid rgba(239, 230, 212, 0.12);
   background: rgba(255, 255, 255, 0.025);
   color: var(--ivory);
   font-family: var(--font);
   text-align: left;
-  cursor: pointer;
+  cursor: default;
   transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }
 .product-variant.is-active {
@@ -720,8 +751,52 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
   border-color: color-mix(in srgb, var(--accent) 50%, transparent);
   background: color-mix(in srgb, var(--accent) 7%, rgba(255, 255, 255, 0.025));
 }
+.product-variant-select {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  min-height: 86px;
+  padding: 0;
+  border: 0;
+  color: var(--ivory);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.product-variant-select:focus-visible,
+.product-variant-add:focus-visible,
+.cart-qty-btn:focus-visible,
+.cart-remove:focus-visible,
+.waitlist-form input:focus-visible,
+.checkout-form input:focus-visible,
+.checkout-form textarea:focus-visible {
+  outline: 2px solid var(--ivory);
+  outline-offset: 2px;
+}
+.product-variant-select.is-static { cursor: default; }
+.product-variant-add {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  color: var(--ivory);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+.product-variant-add:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 17%, transparent); }
+.product-variant-add:active { transform: scale(0.96); }
+.product-variant-unavailable { border-style: dashed; }
+.product-variant-unavailable .product-variant-select { cursor: default; }
 .product-variant-image { position: relative; min-height: 86px; overflow: hidden; background: #090a0c; }
-.product-variant-image img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.product-variant-image img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center top; outline: 1px solid oklch(1 0 0 / 0.1); outline-offset: -1px; }
 .product-variant-image span {
   position: absolute;
   left: 7px;
@@ -745,6 +820,110 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
 }
 .product-estimate span { font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--ivory-dim); }
 .product-estimate strong { font-size: 18px; color: var(--accent); white-space: nowrap; }
+
+.waitlist-form {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 4px;
+}
+.waitlist-form label,
+.checkout-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--ivory-dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.waitlist-form input,
+.checkout-form input,
+.checkout-form textarea {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ivory);
+  background: rgba(0, 0, 0, 0.2);
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.checkout-form textarea { resize: vertical; min-height: 62px; }
+.waitlist-form input::placeholder,
+.checkout-form input::placeholder,
+.checkout-form textarea::placeholder { color: color-mix(in srgb, var(--ivory-dim) 70%, transparent); }
+.waitlist-form-row { display: flex; gap: 7px; }
+.waitlist-form-row input { flex: 1; min-width: 0; }
+.waitlist-form-row .btn { flex: 0 0 auto; min-height: 40px; }
+.waitlist-note { min-height: 28px; color: var(--ivory-dim); font-size: 10px; line-height: 1.4; }
+
+.cart-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+}
+.cart-heading,
+.cart-total { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.cart-heading { color: var(--accent); font-size: 10px; letter-spacing: 0.16em; }
+.cart-heading span:last-child { color: var(--ivory-dim); letter-spacing: 0.06em; }
+.cart-items { display: flex; flex-direction: column; gap: 6px; }
+.cart-empty { color: var(--ivory-dim); font-size: 11px; line-height: 1.4; }
+.cart-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-bottom: 1px solid rgba(239, 230, 212, 0.08); }
+.cart-line-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cart-line-copy strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.cart-line-copy small { color: var(--ivory-dim); font-size: 9px; }
+.cart-line-actions { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.cart-qty-btn,
+.cart-remove {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  color: var(--ivory);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.cart-qty-btn:hover,
+.cart-remove:hover { border-color: var(--accent); }
+.cart-qty { min-width: 22px; color: var(--ivory); font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; }
+.cart-remove { color: var(--ivory-dim); font-size: 9px; }
+.cart-total { padding-top: 3px; color: var(--ivory-dim); font-size: 10px; }
+.cart-total-value { color: var(--accent); font-size: 15px; font-variant-numeric: tabular-nums; }
+.cart-checkout { width: 100%; min-height: 42px; }
+.cart-checkout:disabled { cursor: not-allowed; opacity: 0.45; }
+
+.checkout-scrim { z-index: 70; place-items: center; padding: 20px; overscroll-behavior: contain; }
+.checkout-card {
+  width: min(560px, 100%);
+  max-height: min(86vh, 760px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px;
+  background: rgba(18, 21, 26, 0.97);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.58), inset 0 1px rgba(255, 255, 255, 0.08);
+}
+.checkout-lead,
+.checkout-payment-note { color: var(--ivory-dim); font-size: 11.5px; line-height: 1.5; }
+.checkout-form { display: flex; flex-direction: column; gap: 13px; margin-top: 14px; }
+.checkout-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+.checkout-fields label:nth-child(4),
+.checkout-fields label:nth-child(5) { grid-column: 1 / -1; }
+.checkout-submit { width: 100%; min-height: 46px; }
+.checkout-error { min-height: 18px; color: #f1a18d; font-size: 11px; line-height: 1.4; }
+.checkout-confirmation[hidden],
+.checkout-form[hidden] { display: none; }
+.checkout-confirmation { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; }
+.checkout-kicker { color: var(--accent); font-size: 9px; letter-spacing: 0.2em; }
+.checkout-confirmation h3 { font-size: clamp(22px, 4vw, 30px); line-height: 1.05; text-wrap: balance; }
+.checkout-confirmation-summary { display: grid; gap: 5px; padding: 12px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line)); background: color-mix(in srgb, var(--accent) 7%, transparent); color: var(--ivory-dim); font-size: 12px; }
+.checkout-order-status { color: var(--accent); font-size: 10px; letter-spacing: 0.15em; }
 
 .hero-talk-prompt {
   position: absolute;
@@ -1002,10 +1181,10 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
     right: 10px;
     bottom: calc(10px + var(--safe-b));
     width: auto;
-    max-height: 36dvh;
+    max-height: min(66dvh, 620px);
     gap: 9px;
     padding: 12px;
-    overflow: hidden;
+    overflow-y: auto;
   }
   .showcase-heading { display: grid; grid-template-columns: 1fr auto; column-gap: 12px; }
   .showcase-kicker { grid-column: 1 / -1; }
@@ -1025,6 +1204,11 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
     min-height: 0;
     padding: 4px;
   }
+  .product-variant-select { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+  .product-variant-add { min-height: 40px; padding: 6px 7px; font-size: 8px; }
+  .product-variant-unavailable { grid-column: 1 / -1; }
+  .product-variant-unavailable .product-variant-select { display: grid; grid-template-columns: 96px 1fr; align-items: stretch; }
+  .product-variant-unavailable .product-variant-image { aspect-ratio: 16 / 7; }
   .product-variant-image { width: 100%; min-height: 56px; aspect-ratio: 16 / 7; }
   .product-variant-copy { gap: 3px; }
   .product-variant-copy strong {
@@ -1037,6 +1221,18 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
   .product-variant-copy small { display: none; }
   .product-variant-copy b { font-size: 9px; }
   .product-estimate { display: none; }
+  .cart-panel { gap: 7px; }
+  .cart-line { align-items: flex-start; }
+  .cart-qty-btn,
+  .cart-remove { min-width: 40px; min-height: 40px; }
+  .checkout-scrim { place-items: end center; padding: 10px; }
+  .checkout-card { width: 100%; max-height: min(88dvh, 760px); padding: 14px; border-radius: 16px; }
+  .checkout-fields { grid-template-columns: 1fr; gap: 10px; }
+  .checkout-fields label:nth-child(4),
+  .checkout-fields label:nth-child(5) { grid-column: auto; }
+  .waitlist-form input,
+  .checkout-form input,
+  .checkout-form textarea { font-size: 16px; }
 
   .hero-talk-prompt {
     left: 50%;
@@ -1100,11 +1296,38 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
 
 /* Her dossier owns the left column for its whole height, so the story reads
    as one page instead of a keyhole you scroll through. */
+/* On-screen backstory headline: her name as a title + one-line hook, free over
+   the scene (not boxed in the card). */
+.stage-identity {
+  position: absolute;
+  left: 24px;
+  top: 104px;
+  z-index: 5;
+  max-width: min(360px, calc(100vw - 48px));
+  pointer-events: none;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
+  animation: teaser-side-fade 0.5s ease-out both;
+}
+.stage-identity-name {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.1;
+  color: var(--ivory);
+}
+.stage-identity-story {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ivory-dim);
+}
+@media (prefers-reduced-motion: reduce) { .stage-identity { animation: none; } }
+
 .stage-info {
   position: absolute;
   left: 24px;
-  top: 108px;
-  max-height: calc(100% - 132px);
+  top: 212px;
+  max-height: calc(100% - 236px);
   width: min(320px, calc(100vw - 32px));
   overflow-y: auto;
   display: flex;
@@ -1118,25 +1341,6 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
   pointer-events: none;
 }
 .stage-top { display: flex; gap: 8px; align-items: center; }
-/* Character card: hook, who she is, what you get. Canon stays behind it. */
-.card-series {
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-.card-hook { font-size: 15px; font-weight: 600; line-height: 1.35; }
-.card-promise { font-size: 13px; color: var(--ivory); opacity: 0.92; line-height: 1.45; }
-.card-setting { font-size: 11.5px; color: var(--ivory-dim); font-style: italic; }
-.profile-more summary {
-  cursor: pointer;
-  font-size: 11px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--ivory-dim);
-  padding: 6px 0;
-}
-.profile-more[open] summary { color: var(--ivory); }
 .level-block { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; }
 .level-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .level-label {
@@ -1155,22 +1359,6 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
 .level-pips .pip.is-on { background: var(--accent); }
 .level-where { font-size: 12.5px; line-height: 1.5; color: var(--ivory); margin-top: 6px; }
 .level-next { font-size: 11.5px; line-height: 1.45; color: var(--ivory-dim); margin-top: 4px; }
-
-.episode-block { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; }
-.episode-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-.episode {
-  border-left: 2px solid var(--line);
-  padding: 4px 0 4px 10px;
-}
-.episode.is-open { border-left-color: var(--accent); }
-.episode-title {
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ivory-dim);
-}
-.episode.is-open .episode-title { color: var(--ivory); }
-.episode-body { font-size: 12.5px; line-height: 1.5; color: var(--ivory-dim); margin-top: 3px; }
 
 /* The roster reads as a cast list at the top; the bottom belongs to the dock. */
 .roster {
@@ -1361,6 +1549,7 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
 /* Quest is a mode change, not a card competing with Open Chat. */
 .step-stage.is-quest-mode .roster,
 .step-stage.is-quest-mode .stage-info,
+.step-stage.is-quest-mode .stage-identity,
 .step-stage.is-quest-mode .stage-top {
   display: none;
   pointer-events: none;
@@ -1917,6 +2106,30 @@ html[data-quest-rig-debug='true'][data-quest-rig='ready'] .step-stage.is-quest-m
   place-items: end center;
   padding-bottom: 132px;
   background: rgba(6, 9, 13, 0.28);
+}
+/* Chat config docks to the LEFT edge as a full-height sliding drawer. */
+.session-scrim.session-drawer {
+  place-items: stretch;
+  justify-items: start;
+  padding: 0;
+  background: rgba(6, 9, 13, 0.42);
+}
+.session-drawer .session-sheet {
+  width: min(360px, 90vw);
+  height: 100%;
+  max-height: none;
+  border-radius: 0 18px 18px 0;
+  animation: drawer-in-left 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/* Fade + a short slide from the left. Deliberately NOT a full off-screen
+   translate: the resting position must never depend on the animation finishing
+   (a paused/interrupted animation once left the panel off-screen and unclickable). */
+@keyframes drawer-in-left {
+  from { opacity: 0; transform: translateX(-24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-drawer .session-sheet { animation: none; }
 }
 .session-sheet {
   width: min(410px, 100%);
@@ -2857,7 +3070,23 @@ html[data-quest-rig-debug='true'][data-quest-rig='ready'] .step-stage.is-quest-m
     transition: transform 0.2s ease;
   }
   .stage-info.is-open::after { transform: rotate(180deg); }
-  .stage-info .card-promise { display: none; }
+  /* Compact nameplate at the top; the figure keeps the rest of the screen. */
+  .stage-identity {
+    left: 12px;
+    right: 12px;
+    top: calc(var(--rail-t) + 8px);
+    max-width: none;
+  }
+  .stage-identity-name { font-size: 18px; }
+  .stage-identity-story {
+    margin-top: 4px;
+    font-size: 12px;
+    max-width: 62vw;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
   /* Her words sit in a column down the left, so the figurine keeps the right
      two thirds of the screen and stays draggable. The column itself is
      transparent to pointers — only the bubbles catch taps — otherwise a rotate

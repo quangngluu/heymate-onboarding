@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_KAGURA_FIGURINE_VARIANT,
   KAGURA_FIGURINE_VARIANTS,
+  formatVndPrice,
+  parseVndPrice,
 } from '../../src/config/figurine-products';
 import { residentById } from '../../src/config/residents';
 
@@ -57,5 +59,10 @@ describe('Kagura figurine product variants', () => {
       );
       expect(statSync(transitionPath).size).toBeGreaterThan(50_000);
     }
+  });
+
+  it('keeps displayed VND labels and cart arithmetic in sync', () => {
+    expect(parseVndPrice('6.999.000 ₫')).toBe(6_999_000);
+    expect(formatVndPrice(6_999_000 * 2)).toBe('13.998.000 ₫');
   });
 });

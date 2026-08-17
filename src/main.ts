@@ -45,7 +45,7 @@ import {
 } from './config/quests';
 import { QuestVisualRuntime } from './quest/visual-runtime';
 import { Ambience } from './audio/ambience';
-import { COST, store, type AppState, type ChatTurn, type SessionSetup, type Step } from './state/store';
+import { COST, store, type AppState, type ChatTurn, type FigurineOrder, type SessionSetup, type ShippingInfo, type Step } from './state/store';
 import { mountUI } from './ui/overlay';
 import type { UIActions } from './ui/actions';
 import {
@@ -1564,6 +1564,29 @@ class App implements UIActions {
     this.setPremiumDisplay(false);
     this.residentStage?.setHero('kagura');
     void this.rig.flyTo(stagePreset(), this.engine.reducedMotion ? 0 : 0.82);
+  }
+
+  // --- figurine shop (delegates to the store; no payment gateway) ---
+  addFigurineToCart(residentId: string, variantId: KaguraFigurineVariantId): void {
+    store.addFigurineToCart(residentId, variantId);
+  }
+  updateCartQty(index: number, qty: number): void {
+    store.updateCartQty(index, qty);
+  }
+  removeFromCart(index: number): void {
+    store.removeFromCart(index);
+  }
+  openCheckout(): void {
+    store.openCheckout();
+  }
+  closeCheckout(): void {
+    store.closeCheckout();
+  }
+  placeOrder(shipping: ShippingInfo): FigurineOrder | null {
+    return store.placeOrder(shipping);
+  }
+  joinFigurineWaitlist(residentId: string, email: string): void {
+    store.joinFigurineWaitlist(residentId, email);
   }
 
   selectResident(id: string): void {
