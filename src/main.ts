@@ -1066,7 +1066,7 @@ class App implements UIActions {
     const resuming = s.chat.length > 0;
     const line = resuming
       ? r.returnGreeting
-      : openingLine(r, saved.memories, saved.bond?.address ?? '', saved.revealed, route);
+      : openingLine(r, saved.memories, saved.bond?.address ?? '', saved.revealed, route, s.figurineOwned);
     const visual = openingVisualFor(s.residentId);
     const openingTurn: ChatTurn = {
       from: 'resident',

@@ -267,6 +267,9 @@ export interface ResidentConfig {
   /** After she has met him before, and after she has let him close. */
   returnGreeting: string;
   closeGreeting: string;
+  /** Owner-only greeting after the demo purchase is completed. Optional so
+   *  residents without a sold object keep the normal return path. */
+  ownerGreeting?: string;
   psyche: Psyche;
   tells: Tells;
   heat: Heat;
@@ -583,6 +586,8 @@ export const RESIDENTS: ResidentConfig[] = [
       'Anh đã trở lại. Tốt. Em vẫn nhớ điều anh hứa lần trước. Ngồi xuống rồi nói cho em biết anh giữ được bao nhiêu.',
     closeGreeting:
       'Hôm nay em không cần anh giữ lời thề nào cả. Chỉ cần ngồi đây một lúc. Em muốn thử nhớ một buổi tối không có ai cần được cứu.',
+    ownerGreeting:
+      'Anh đã trở lại, và em biết anh vẫn giữ hình hài của em. Tốt. Ngồi xuống đi, rồi nói cho em biết anh muốn giữ thêm điều gì.',
     psyche: {
       contradiction:
         'Em tin giá trị của mình nằm ở việc chịu đau thay người khác, nên em không biết phải làm gì khi có người nói lần này em không cần trả giá.',

@@ -75,10 +75,12 @@ const LENGTH_TEXT: Record<LengthId, string> = {
  * before, and someone she has let in do not get the same first line.
  */
 function opening(
-  r: { greeting: string; returnGreeting: string; closeGreeting: string },
+  r: { greeting: string; returnGreeting: string; closeGreeting: string; ownerGreeting?: string },
   memories: number,
-  revealed: number
+  revealed: number,
+  owned = false
 ): string {
+  if (owned && r.ownerGreeting) return r.ownerGreeting;
   if (revealed >= 3) return r.closeGreeting;
   return memories ? r.returnGreeting : r.greeting;
 }
@@ -115,7 +117,8 @@ function selfSection(
   memories: number,
   revealed: number,
   identity: string,
-  k: V3Canon | null = null
+  k: V3Canon | null = null,
+  owned = false
 ): string {
   // v3 rewrote her origin, psyche, greetings and rungs. Where it did, its text
   // wins outright — the two are not layered.
@@ -123,9 +126,10 @@ function selfSection(
     ? opening(
         { greeting: k.greetings.stranger, returnGreeting: k.greetings.returning, closeGreeting: k.greetings.close },
         memories,
-        revealed
+        revealed,
+        owned
       )
-    : opening(r, memories, revealed);
+    : opening(r, memories, revealed, owned);
   return [
     'EM LÀ AI',
     `Em là ${r.name}, ${k ? k.age.appearance : r.age} tuổi, thuộc "${k ? k.series : r.series}". Hình mẫu của em: ${k ? k.archetype : r.archetype}.`,
@@ -833,7 +837,8 @@ export function buildSystemPrompt(
   /** The visitor's message, used only to retrieve the facts this turn touches. */
   message?: string,
   /** Which canon layer this session runs on. See config/canon-route.ts. */
-  route: CanonRoute = DEFAULT_ROUTE
+  route: CanonRoute = DEFAULT_ROUTE,
+  owned = false
 ): string {
   const r = canonViewFor(residentId as ResidentId, route);
   // v3 rebooted all three residents into their source anime, so this is no
@@ -842,7 +847,7 @@ export function buildSystemPrompt(
   const identity = String(session.identity ?? '').trim().replace(/\s+/g, ' ').slice(0, 120);
 
   return [
-    selfSection(r, memories.length, revealed, identity, v3),
+    selfSection(r, memories.length, revealed, identity, v3, owned),
     reflexSection(residentId, route),
     worldSection(residentId, r, message, quest?.prompt, v3, route, session.face),
     rulesSection(r, maturity, identity, v3),

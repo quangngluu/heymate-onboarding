@@ -276,9 +276,11 @@ export function openingLine(
   memories: string[],
   address: string,
   revealed = 0,
-  route: CanonRoute = DEFAULT_ROUTE
+  route: CanonRoute = DEFAULT_ROUTE,
+  owned = false
 ): string {
   const view = canonViewFor(resident.id, route);
+  if (owned && view.ownerGreeting) return view.ownerGreeting;
   if (!memories.length) return view.greeting;
   if (revealed >= 3) return view.closeGreeting;
   const who = visitorAddress(address);

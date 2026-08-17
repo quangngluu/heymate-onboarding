@@ -99,6 +99,7 @@ export function canonViewFor(
     greeting: k.greetings.stranger,
     returnGreeting: k.greetings.returning,
     closeGreeting: k.greetings.close,
+    ownerGreeting: base.ownerGreeting,
     psyche: { ...k.psyche },
     tells: { ...k.tells },
     heat: normalizedHeat(k),
