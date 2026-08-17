@@ -859,11 +859,53 @@ export class Store {
     return order;
   }
 
+  // ---- simulated VN payment flow (session-only) ----
+
+  beginPayment(): void {
+    if (this.state.paymentSim !== 'idle') return;
+    const latest = this.state.orders[this.state.orders.length - 1];
+    if (!latest || latest.status !== 'pending-payment') return;
+    this.set({ paymentSim: 'method', paymentMethod: null });
+  }
+
+  choosePaymentMethod(method: PaymentMethod): void {
+    if (this.state.paymentSim !== 'method') return;
+    this.set({ paymentSim: 'qr', paymentMethod: method });
+  }
+
+  confirmPaymentSent(): void {
+    if (this.state.paymentSim !== 'qr' || !this.state.paymentMethod) return;
+    this.set({ paymentSim: 'processing' });
+  }
+
+  completePaymentSim(): void {
+    if (this.state.paymentSim !== 'processing') return;
+    const index = this.state.orders.length - 1;
+    const latest = this.state.orders[index];
+    if (!latest || latest.status !== 'pending-payment') return;
+    const item = latest.items[0];
+    if (!item) return;
+    const orders = this.state.orders.map((order, at) =>
+      at === index ? { ...order, status: 'paid-demo' as const } : order
+    );
+    this.set({
+      orders,
+      paymentSim: 'success',
+      figurineOwned: true,
+      ownedVariantId: item.variantId,
+    });
+    this.persist();
+  }
+
+  cancelPaymentSim(): void {
+    if (this.state.paymentSim === 'idle' && !this.state.paymentMethod) return;
+    this.set({ paymentSim: 'idle', paymentMethod: null });
+  }
+
   joinFigurineWaitlist(residentId: string, email: string): void {
     const clean = email.trim();
     if (!clean) return;
     const list = this.state.figurineWaitlist[residentId] ?? [];
-    if (list.includes(clean)) return;
     this.set({
       figurineWaitlist: {
         ...this.state.figurineWaitlist,
