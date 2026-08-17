@@ -786,13 +786,29 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
   );
   const checkoutLead = h('p', { class: 'checkout-lead' });
   const checkoutSummary = h('div', { class: 'checkout-confirmation-summary' });
+  const checkoutKicker = h('p', { class: 'checkout-kicker' }, 'ORDER RECORDED');
+  const checkoutConfirmationTitle = h('h3', {}, 'Đã ghi nhận đơn của anh');
+  const checkoutKaguraReaction = h(
+    'p',
+    {
+      class: 'checkout-kagura-reaction',
+      'data-testid': 'checkout-kagura-reaction',
+      hidden: true,
+    }
+  );
+  const checkoutConfirmationNote = h(
+    'p',
+    { class: 'checkout-payment-note' },
+    'Đơn đang chờ xác nhận thanh toán. Thông tin chỉ được lưu trên thiết bị này trong bản prototype.'
+  );
   const checkoutConfirmation = h(
     'section',
     { class: 'checkout-confirmation', hidden: true, 'aria-live': 'polite' },
-    h('p', { class: 'checkout-kicker' }, 'ORDER RECORDED'),
-    h('h3', {}, 'Đã ghi nhận đơn của anh'),
+    checkoutKicker,
+    checkoutConfirmationTitle,
     checkoutSummary,
-    h('p', { class: 'checkout-payment-note' }, 'Đơn đang chờ xác nhận thanh toán. Thông tin chỉ được lưu trên thiết bị này trong bản prototype.'),
+    checkoutKaguraReaction,
+    checkoutConfirmationNote,
     h('button', { type: 'button', class: 'btn btn-secondary', onClick: () => closeCheckoutView() }, 'Tiếp tục xem editions')
   );
 
@@ -1116,12 +1132,25 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     checkoutProcessing.hidden = face !== 'processing';
     checkoutConfirmation.hidden = face !== 'success';
     if (hasOrder) {
+      const paid = order!.status === 'paid-demo';
       checkoutQrAmount.textContent = formatVndPrice(order!.subtotalVnd);
       checkoutSummary.replaceChildren(
         h('p', {}, `Mã đơn: ${order!.id}`),
         h('p', {}, `${order!.items.length} edition · ${formatVndPrice(order!.subtotalVnd)}`),
-        h('p', { class: 'checkout-order-status' }, order!.status === 'paid-demo' ? 'PAID (DEMO)' : 'PENDING PAYMENT')
+        h('p', { class: 'checkout-order-status' }, paid ? 'PAID (DEMO)' : 'PENDING PAYMENT')
       );
+      checkoutKicker.textContent = paid ? 'PAID (DEMO)' : 'ORDER RECORDED';
+      checkoutConfirmationTitle.textContent = paid
+        ? 'Đơn của anh đã hoàn tất'
+        : 'Đã ghi nhận đơn của anh';
+      checkoutKaguraReaction.hidden = !paid;
+      if (paid) {
+        checkoutKaguraReaction.textContent =
+          'Cảm ơn anh. Anh đã giành lấy niềm tin của em, và giờ anh còn giữ lại hình hài của em. Từ nay, dù thanh kiếm có lấy đi thêm ký ức nào, vẫn còn một thứ ở bên anh thay em nhớ rằng em đã từng đứng đây.';
+      }
+      checkoutConfirmationNote.textContent = paid
+        ? 'Bản demo đã ghi nhận thanh toán. Thông tin chỉ được lưu trên thiết bị này.'
+        : 'Đơn đang chờ xác nhận thanh toán. Thông tin chỉ được lưu trên thiết bị này trong bản prototype.';
     }
   }
 
