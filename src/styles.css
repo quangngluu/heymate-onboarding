@@ -794,6 +794,54 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
   pointer-events: auto;
 }
 .collectible-overlay[data-view='detail'] .collectible-close { display: none; }
+/* Physical size cue: a labelled scale rule beside the live 3D figure. */
+.figurine-size-ref {
+  position: absolute;
+  z-index: 2;
+  left: clamp(18px, 5vw, 64px);
+  top: 50%;
+  transform: translateY(-42%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  pointer-events: none;
+}
+.collectible-overlay[data-view='grid'] .figurine-size-ref { display: none; }
+.figurine-size-ref-rule {
+  display: block;
+  width: 1px;
+  height: clamp(90px, 22vh, 180px);
+  background: linear-gradient(
+    to top,
+    rgba(239, 230, 212, 0.08),
+    rgba(239, 230, 212, 0.78) 12%,
+    rgba(239, 230, 212, 0.78) 88%,
+    rgba(239, 230, 212, 0.08)
+  );
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+.figurine-size-ref-rule::before,
+.figurine-size-ref-rule::after {
+  content: '';
+  position: absolute;
+  left: -3px;
+  width: 7px;
+  height: 1px;
+  background: rgba(239, 230, 212, 0.85);
+}
+.figurine-size-ref-rule::before { top: 0; }
+.figurine-size-ref-rule::after { bottom: 0; }
+.figurine-size-ref-label {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ivory);
+  background: rgba(8, 10, 13, 0.62);
+  border: 1px solid rgba(239, 230, 212, 0.22);
+  border-radius: 999px;
+  padding: 4px 9px;
+}
 
 /* ---- Catalog grid ---- */
 .collectible-grid {
@@ -988,6 +1036,12 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
     max-height: min(54%, 420px);
     padding: 16px;
   }
+  .figurine-size-ref {
+    left: 14px;
+    top: 12%;
+    transform: none;
+  }
+  .figurine-size-ref-rule { height: clamp(64px, 16vh, 120px); }
   .collectible-open { top: auto; bottom: calc(102px + var(--safe-b)); right: 12px; }
 }
 @keyframes editions-enter {

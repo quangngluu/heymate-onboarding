@@ -910,6 +910,18 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
     )
   );
 
+  const sizeRefLabel = h('span', { class: 'figurine-size-ref-label' }, '15 CM');
+  const sizeRef = h(
+    'div',
+    {
+      class: 'figurine-size-ref',
+      'data-testid': 'figurine-size-ref',
+      'aria-hidden': 'true',
+    },
+    h('span', { class: 'figurine-size-ref-rule' }),
+    sizeRefLabel
+  );
+
   const collectibleOverlay = h(
     'div',
     {
@@ -938,7 +950,8 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
       '×'
     ),
     collectibleGrid,
-    collectibleDetail
+    collectibleDetail,
+    sizeRef
   );
   const openCollectibleBtn = h(
     'button',
@@ -1963,6 +1976,7 @@ export function stageStep(actions: UIActions, state: AppState): StepView {
         detailDesc.textContent = dv.description;
         detailPrice.textContent = dv.priceLabel;
         detailSize.textContent = dv.sizeLabel;
+        sizeRefLabel.textContent = dv.sizeLabel;
       }
       // The card that was clicked gets hidden with the grid, so move focus onto
       // the view that is now on screen rather than stranding it on a dead node.
