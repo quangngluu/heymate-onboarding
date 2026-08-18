@@ -969,6 +969,31 @@ async function runPaymentConfirmationCoverage(browser) {
       await page.waitForSelector('[data-testid="open-collectible"]', { visible: true });
       await clickSelector(page, '[data-testid="open-collectible"]');
       await page.waitForSelector('.collectible-overlay:not([hidden])', { visible: true });
+      // Regression guard: the grid catalog must be a REAL pointer target. The
+      // whole #ui tree is pointer-events:none, so if the grid overlay/cards do
+      // not re-arm pointer-events, a real cursor click falls through to the
+      // turntable canvas — cards become dead and drags spin the figure behind.
+      // clickSelector uses element.click() (synthetic, no hit-testing), so it
+      // cannot catch this; assert real hit-testability with elementFromPoint.
+      const gridHitTest = await page.evaluate(() => {
+        const overlay = document.querySelector('.collectible-overlay');
+        const card = document.querySelector('[data-testid="figurine-view-three-d"]');
+        if (!overlay || !card) return { ok: false, reason: 'grid nodes missing' };
+        const overlayPe = getComputedStyle(overlay).pointerEvents;
+        const rect = card.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        const cardIsTopmost = !!hit && card.contains(hit);
+        return {
+          ok: overlayPe !== 'none' && cardIsTopmost,
+          overlayPe,
+          cardIsTopmost,
+        };
+      });
+      if (!gridHitTest.ok) {
+        failures.push(
+          `${viewport.width} collectible grid not hit-testable overlayPe=${gridHitTest.overlayPe} cardTopmost=${gridHitTest.cardIsTopmost}`
+        );
+      }
       await clickSelector(page, '[data-testid="figurine-view-three-d"]');
       await page.waitForSelector('.collectible-overlay[data-view="detail"]', { visible: true });
       await clickSelector(page, '[data-testid="figurine-add-to-cart"]');

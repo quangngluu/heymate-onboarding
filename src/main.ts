@@ -723,6 +723,10 @@ class App implements UIActions {
       this.deskStageActive &&
       !s.transitioning &&
       !s.activeQuestId &&
+      // The catalog grid is a modal over the stage; stray drags there must not
+      // spin the figure behind it. (Detail view is intentionally pass-through so
+      // the live 3D can still be rotated, so only the grid face is blocked.)
+      !(s.collectibleOpen && s.collectibleView === 'grid') &&
       (s.companionMode === 'showcase' || s.companionMode === 'playground') &&
       s.figurineDisplayMode !== 'premium-preview'
     );

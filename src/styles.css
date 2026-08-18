@@ -770,12 +770,16 @@ html[data-desk-turning='true'] #stage { cursor: grabbing; }
   overflow: hidden; /* full-screen page: everything fits, never scrolls */
 }
 .collectible-overlay[hidden] { display: none; }
-/* Grid face: dimmed full-screen backdrop, catalog centered. */
+/* Grid face: dimmed full-screen backdrop, catalog centered. Re-arms pointer
+   events (the whole #ui tree is pointer-events:none by default) so the backdrop
+   captures clicks/drags instead of leaking them to the turntable canvas behind,
+   and so the edition cards are clickable. Detail face stays pass-through below. */
 .collectible-overlay[data-view='grid'] {
   place-items: center;
   background: rgba(5, 7, 10, 0.86);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  pointer-events: auto;
 }
 /* Detail face: transparent + click-through so the live 3D turntable behind
    stays visible and draggable; only the order card re-arms pointer events. */
