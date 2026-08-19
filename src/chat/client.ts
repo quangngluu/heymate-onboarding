@@ -123,7 +123,12 @@ export async function getReply(
       rapport?: unknown;
       visualIntent?: unknown;
       canon?: unknown;
+      unavailable?: boolean;
     };
+    if (data.unavailable === true) {
+      endpointAvailable = false; // no model configured here
+      return { ...scripted, source: 'scripted' };
+    }
     if (!data.text) return { ...scripted, source: 'scripted' };
     // The reveal schedule stays owned by the app, not the model.
     return {

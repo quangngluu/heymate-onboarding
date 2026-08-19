@@ -12,6 +12,14 @@ function devChatApi(key: string, model: string): Plugin {
     name: 'dev-chat-api',
     configureServer(server) {
       server.middlewares.use('/api/chat', async (req, res) => {
+        // No key means no upstream model: degrade silently so the app falls back
+        // to scripted replies instead of surfacing a 502 in the console.
+        if (!key) {
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ unavailable: true }));
+          return;
+        }
         try {
           // Run the real edge handler in development so prompt derivation,
           // repair, timeouts and failure semantics cannot drift by copy/paste.
@@ -51,6 +59,14 @@ function devTtsApi(key: string, defaultVoice: string): Plugin {
     name: 'dev-tts-api',
     configureServer(server) {
       server.middlewares.use('/api/tts', async (req, res) => {
+        // No working voice config degrades silently: the client falls back to
+        // text-only speech instead of a 502 in the console.
+        if (!key) {
+          res.statusCode = 200;
+          res.setHeader('X-Unavailable', '1');
+          res.end();
+          return;
+        }
         const chunks: Buffer[] = [];
         for await (const chunk of req) chunks.push(chunk as Buffer);
         const contentType = Array.isArray(req.headers['content-type'])
@@ -72,13 +88,21 @@ function devTtsApi(key: string, defaultVoice: string): Plugin {
             })
           );
 
+          // Upstream rejects (e.g. a stale voice id): degrade to text-only,
+          // not a console 502.
+          if (response.status >= 400) {
+            res.statusCode = 200;
+            res.setHeader('X-Unavailable', '1');
+            res.end();
+            return;
+          }
           res.statusCode = response.status;
           response.headers.forEach((value, header) => res.setHeader(header, value));
           res.end(Buffer.from(await response.arrayBuffer()));
         } catch {
-          res.statusCode = 502;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'unreachable' }));
+          res.statusCode = 200;
+          res.setHeader('X-Unavailable', '1');
+          res.end();
         }
       });
     },
@@ -95,6 +119,14 @@ function devHumeTokenApi(apiKey: string, secretKey: string): Plugin {
     name: 'dev-hume-token-api',
     configureServer(server) {
       server.middlewares.use('/api/hume-token', async (req, res) => {
+        // No Hume credentials: the call UI shows "not configured" without a
+        // console 503.
+        if (!apiKey || !secretKey) {
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ unavailable: true }));
+          return;
+        }
         try {
           // Only fill absent values so explicitly exported credentials win.
           process.env.HUME_API_KEY ??= apiKey;
@@ -105,13 +137,19 @@ function devHumeTokenApi(apiKey: string, secretKey: string): Plugin {
             new Request(`http://localhost${req.url ?? '/api/hume-token'}`, { method })
           );
 
+          if (response.status >= 400) {
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ unavailable: true }));
+            return;
+          }
           res.statusCode = response.status;
           response.headers.forEach((value, header) => res.setHeader(header, value));
           res.end(Buffer.from(await response.arrayBuffer()));
         } catch {
-          res.statusCode = 502;
+          res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'unreachable' }));
+          res.end(JSON.stringify({ unavailable: true }));
         }
       });
     },

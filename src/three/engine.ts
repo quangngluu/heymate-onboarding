@@ -28,14 +28,17 @@ export class Engine {
   private onResizeBound = () => this.resize();
 
   readonly reducedMotion: boolean;
+  /** Small-device quality tier, fixed for the session (like Sylva). */
+  readonly small: boolean;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
+    this.small = window.matchMedia?.('(max-width: 700px)').matches ?? false;
     // Companion stages composite live 3D over a DOM video plate. Other routes
     // still render their opaque scene.background, so one renderer serves both.
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.small, alpha: true });
     this.renderer.setClearColor(0x000000, 0);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.small ? 1.6 : 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;

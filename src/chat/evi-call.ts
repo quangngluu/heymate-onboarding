@@ -354,11 +354,20 @@ export async function startEviCall(): Promise<void> {
       headers: { Accept: 'application/json' },
       cache: 'no-store',
     });
-    const token = (await response.json().catch(() => null)) as TokenResponse | null;
-    if (!response.ok || typeof token?.access_token !== 'string' || !token.access_token) {
-      const message = response.status === 503
-        ? 'Voice calling is not configured on this server.'
-        : 'Could not authorize the voice call.';
+    const token = (await response.json().catch(() => null)) as
+      | (TokenResponse & { unavailable?: boolean })
+      | null;
+    const unavailable = token?.unavailable === true;
+    if (
+      !response.ok ||
+      unavailable ||
+      typeof token?.access_token !== 'string' ||
+      !token.access_token
+    ) {
+      const message =
+        response.status === 503 || unavailable
+          ? 'Voice calling is not configured on this server.'
+          : 'Could not authorize the voice call.';
       throw new Error(message);
     }
     if (!isCurrent(call)) return;

@@ -86,6 +86,8 @@ async function request(
       signal: handle.controller.signal,
     });
     if (handle.cancelled || !res.ok) return null;
+    // Dev marker: no working TTS config — degrade to text-only, not an error.
+    if (res.headers.get('X-Unavailable') === '1') return null;
     rememberEmotion(res);
     const blob = await res.blob();
     if (handle.cancelled) return null;
@@ -132,6 +134,7 @@ export async function streamSpeech(
         signal: handle.controller.signal,
       });
       if (!res.ok || !res.body) return null;
+      if (res.headers.get('X-Unavailable') === '1') return null;
       rememberEmotion(res);
       const rate = Number(res.headers.get('X-Sample-Rate')) || 32000;
       const reader = res.body.getReader();

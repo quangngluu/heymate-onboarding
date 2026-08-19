@@ -444,6 +444,7 @@ export function worldformStep(actions: UIActions, appState: AppState): StepView 
             { class: 'wf-actions' },
             button('Đúng là tôi · dựng side + back', () => {
               void run(async () => {
+                // Worldform chưa mount vào main app — khi mount, gọi GPU burst qua UIActions hook để celebrate gate này.
                 orchestrator.approveFront(buildId);
                 return orchestrator.generateMultiview(buildId);
               });
@@ -507,6 +508,7 @@ export function worldformStep(actions: UIActions, appState: AppState): StepView 
         { class: 'wf-actions' },
         button('Duyệt multiview · tạo 3D', () => {
           void run(async () => {
+            // Worldform chưa mount vào main app — khi mount, gọi GPU burst qua UIActions hook để celebrate gate này.
             orchestrator.approveMultiview(buildId);
             return orchestrator.startModel(buildId);
           });

@@ -23,3 +23,4 @@ voice-out*/
 
 # Unreferenced local asset candidate (not used in the build)
 public/assets/kagura-teaser-final.webp
+.env*

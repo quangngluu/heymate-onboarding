@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Engine } from './three/engine';
 import { CameraRig } from './three/rig';
+import { PointerSway } from './three/pointer-sway';
 import { buildStage, type StageHandles } from './three/stage';
 import { PLINTH_HEIGHT, plinthPositions } from './config/layout';
 import { LoadingPlinth } from './three/loading';
@@ -15,7 +16,8 @@ import {
   type ChampionView,
 } from './three/champions';
 import { Picker } from './three/picking';
-import { createRevealFx, type RevealFx } from './three/reveal';
+import type { RevealFx } from './three/reveal';
+import { createScanRevealFx, type ScanRevealFx } from './three/scan-reveal';
 import { Nameplate } from './three/nameplate';
 import { FactionBackdrop } from './three/backdrop';
 import { WaifuStage } from './three/waifu-stage';
@@ -150,6 +152,7 @@ type LiveDolly = {
 class App implements UIActions {
   private engine: Engine;
   private rig: CameraRig;
+  private pointerSway: PointerSway;
   private controls: OrbitControls;
   private turntable: TurntableController;
   private turntableYaw = 0;
@@ -178,6 +181,7 @@ class App implements UIActions {
   private hoveredId: string | null = null;
   private mate: ChampionView | null = null;
   private revealFx: RevealFx | null = null;
+  private premiumScanFx: ScanRevealFx | null = null;
 
   private rimA!: THREE.SpotLight;
   private rimB!: THREE.SpotLight;
@@ -253,6 +257,10 @@ class App implements UIActions {
     this.engine = new Engine(canvas);
     initCharacterLoader(this.engine.renderer);
     this.rig = new CameraRig(this.engine.camera, this.engine.reducedMotion);
+    this.pointerSway = new PointerSway((x, y) => this.rig.setSway(x, y), {
+      reducedMotion: this.engine.reducedMotion,
+      active: () => !this.deskStageActive,
+    });
 
     this.controls = new OrbitControls(this.engine.camera, canvas);
     this.controls.enabled = false;
@@ -546,10 +554,12 @@ class App implements UIActions {
 
   private tick(dt: number, t: number): void {
     this.rig.update(dt);
+    this.pointerSway.update(dt);
     if (this.controls.enabled && !this.rig.flying) this.controls.update();
     this.stage.update(dt, t);
     this.picker.update();
     this.revealFx?.update(dt);
+    this.premiumScanFx?.update(dt);
     this.nameplate.update(dt);
     this.backdrop.update(dt);
     if (this.cryoFlash) {
@@ -685,7 +695,8 @@ class App implements UIActions {
       this.residentStage = new WaifuStage(
         this.engine.scene,
         this.centerTopY,
-        this.engine.renderer.capabilities.getMaxAnisotropy()
+        this.engine.renderer.capabilities.getMaxAnisotropy(),
+        this.engine.small
       );
       void this.residentStage.load(s.residentId, (id) => {
         if (id === store.get().residentId) {
@@ -1523,6 +1534,8 @@ class App implements UIActions {
       ((s.figurineDisplayMode === 'premium' || s.figurineDisplayMode === 'premium-preview') &&
         s.kaguraFigurineVariantId === id)
     ) return;
+    this.premiumScanFx?.dispose();
+    this.premiumScanFx = null;
     const variant = kaguraFigurineVariantById(id);
     const revealToken = ++this.premiumRevealToken;
     this.residentStage?.hideHero();
@@ -1575,6 +1588,18 @@ class App implements UIActions {
     store.set({ figurineDisplayMode: 'premium' });
     this.residentStage!.setKaguraVariantHero(pending.id);
     this.residentStage!.setPremiumInspection(true);
+    this.premiumScanFx?.dispose();
+    this.premiumScanFx = null;
+    const hero = this.residentStage!.heroScanTarget();
+    if (hero) {
+      this.premiumScanFx = createScanRevealFx(hero, 0xff2038, { duration: 2.0 });
+      void this.premiumScanFx.play(this.engine.reducedMotion).then(() => {
+        if (this.premiumScanFx) {
+          this.premiumScanFx.dispose();
+          this.premiumScanFx = null;
+        }
+      });
+    }
     this.setPremiumDisplay(true);
     this.applyStageAccent();
     void this.rig.flyTo(premiumInspectPreset(), this.engine.reducedMotion ? 0 : 0.82);
@@ -1589,6 +1614,8 @@ class App implements UIActions {
     ) return;
     this.premiumRevealToken++;
     this.premiumPending = null;
+    this.premiumScanFx?.dispose();
+    this.premiumScanFx = null;
     store.set({ figurineDisplayMode: 'original' });
     this.setPremiumDisplay(false);
     this.residentStage?.setHero('kagura');
@@ -2293,7 +2320,7 @@ class App implements UIActions {
           else mate.setFacing(mateYaw, this.engine.reducedMotion);
           this.placeRims(new THREE.Vector3(0, 0.09, 0), revealCam, faction.accentColor);
           this.revealFx?.dispose();
-          this.revealFx = createRevealFx(this.engine.scene, faction.accentColor);
+          this.revealFx = createScanRevealFx(mate.root, faction.accentColor);
           const flight = this.rig.flyTo(CAMERA_PRESETS.reveal, 1.8);
           const fx = this.revealFx.play(this.engine.reducedMotion);
           void Promise.all([flight, fx]).then(([completed]) => {

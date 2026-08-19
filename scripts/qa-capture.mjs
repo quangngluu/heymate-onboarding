@@ -1,6 +1,17 @@
 // QA + screenshot capture via system Chrome (headless).
 // Drives the studio flow with real DOM events and captures deliverable
 // screenshots at desktop (1440x900) and mobile (390x844).
+//
+// Journey (updated to the current UI, intent preserved):
+//   gallery → "ENTER UNIVERSE" → teaser ("Bỏ qua") → stage showcase →
+//   "PRESS TO TALK" (chat playground) → chat turn → session sheet (open/apply)
+//   → 5 turns to reach the save gate → save → leave back to the gallery.
+//
+// TRIMMED: the Afterburn City creator flow (slider → describe → "Generate My
+// Mate" → reveal → "Join Afterburn City" → joined) no longer exists in the
+// live UI. Afterburn is out of the entry gallery (ENTRY_GALLERY_ALLOW =
+// ['waifu-universe']) and the studio step is now the Worldform Studio, so the
+// old shots 6-generating / 7-reveal / 8-joined have no equivalent to capture.
 import puppeteer from 'puppeteer-core';
 import { mkdirSync } from 'node:fs';
 
@@ -16,8 +27,9 @@ async function clickByText(page, selector, text, timeoutMs = 10000) {
   for (;;) {
     const ok = await page.evaluate(
       ({ selector, text }) => {
-        const el = [...document.querySelectorAll(selector)].find((b) =>
-          b.textContent.trim().includes(text)
+        const vis = (el) => !el.hidden && !el.closest('[hidden]') && el.getClientRects().length > 0;
+        const el = [...document.querySelectorAll(selector)].find(
+          (b) => vis(b) && b.textContent.replace(/\s+/g, ' ').trim().includes(text)
         );
         if (el) el.click();
         return !!el;
@@ -26,6 +38,32 @@ async function clickByText(page, selector, text, timeoutMs = 10000) {
     );
     if (ok) return;
     if (Date.now() > deadline) throw new Error(`clickByText miss: ${selector} "${text}"`);
+    await sleep(300);
+  }
+}
+
+/** Open the session sheet on either viewport (mobile gear vs desktop chip). */
+async function openSession(page) {
+  const deadline = Date.now() + 15000;
+  for (;;) {
+    const ok = await page.evaluate(() => {
+      const vis = (el) => el && !el.hidden && !el.closest('[hidden]') && el.getClientRects().length > 0;
+      const mobile = document.querySelector('[data-testid="session-settings-open"]');
+      if (vis(mobile)) {
+        mobile.click();
+        return true;
+      }
+      const chip = [...document.querySelectorAll('.dock-chip')].find(
+        (b) => vis(b) && b.textContent.includes('Là chính anh')
+      );
+      if (chip) {
+        chip.click();
+        return true;
+      }
+      return false;
+    });
+    if (ok) return;
+    if (Date.now() > deadline) throw new Error('openSession miss: no visible session control');
     await sleep(300);
   }
 }
@@ -43,84 +81,68 @@ async function journey(page, tag) {
     if (m.type() === 'error') errors.push(m.text());
   });
 
+  // Each journey is a fresh visitor: clear persisted progress so the desktop
+  // run's saved chapter/turns do not leak into the mobile run (same origin).
+  await page.evaluateOnNewDocument(() => {
+    localStorage.clear();
+  });
+
   await page.goto(URL, { waitUntil: 'networkidle0' });
   await sleep(1600);
   await shot('0-gallery');
-
-  // --- Waifu Universe: meet a resident, talk, tune the session, save ---
-  await clickByText(page, '.universe-tile', 'Waifu Universe');
-  await sleep(11000);
+  // --- Waifu Universe: enter, skip the teaser, land on the stage ---
+  await clickByText(page, '.universe-enter-button', 'ENTER UNIVERSE');
+  await sleep(4500);
   await shot('1-encounter');
-  await clickByText(page, '.roster-chip', 'KAGURA');
-  await sleep(2600);
-  await shot('2-resident-kagura');
+  await clickByText(page, '.teaser-skip', 'Bỏ qua');
+  await page.waitForSelector('[data-testid="press-to-talk"]', { timeout: 30000 });
+  await sleep(1200);
+  await shot('2-resident');
 
-  await page.evaluate(() => document.querySelector('.talk-btn').click());
-  await sleep(1500);
-  await page.type('.chat-input', 'i am preparing for a design review');
+  // --- Meet the resident: enter the chat playground ---
+  // NOTE: `.chat-input` also matches a hidden bond input inside the session
+  // sheet, so scope every chat interaction to the dock composer.
+  await clickByText(page, '[data-testid="press-to-talk"]', 'PRESS TO TALK');
+  // Wait for the opening line to finish streaming before typing the first turn.
+  await page.waitForFunction(() => !document.querySelector('.stage-dock .chat-input')?.disabled, { timeout: 30000 });
+
+  await page.type('.stage-dock .chat-input', 'i am preparing for a design review');
   await page.keyboard.press('Enter');
-  await sleep(1800);
+  await page.waitForFunction(() => !document.querySelector('.stage-dock .chat-input')?.disabled, { timeout: 30000 });
+  await sleep(800);
   await shot('3-chat');
 
-  // Session setup appears only now, and never shows a raw prompt.
-  await clickByText(page, '.chat-foot .btn', 'Set this session');
-  await sleep(600);
-  await clickByText(page, '.session-sheet .segment-btn', 'Playful');
-  await clickByText(page, '.session-sheet .segment-btn', 'Take the lead');
-  await sleep(400);
+  // --- Session setup (minimal: open + apply; the persona builder replaced
+  // the old "Playful / Take the lead" segments) ---
+  await openSession(page);
+  await sleep(900);
   await shot('4-session');
-  await clickByText(page, '.session-sheet .btn-secondary', 'Apply');
-  await sleep(500);
+  await clickByText(page, '.session-sheet .btn-primary', 'Xong');
+  await sleep(600);
 
-  // Spend the rest of the free encounter to reach the save gate.
-  // Model replies take a few seconds each; wait for the input to re-enable
-  // rather than guessing.
+  // --- Spend the free encounter to reach the save gate (opens on turn 5) ---
   for (const line of ['i love late night walks', 'what breaks first?', 'my project is late', 'thanks']) {
-    await page.type('.chat-input', line);
+    await page.waitForFunction(() => !document.querySelector('.stage-dock .chat-input')?.disabled, { timeout: 30000 });
+    await page.type('.stage-dock .chat-input', line);
     await page.keyboard.press('Enter');
-    await page.waitForFunction(() => !document.querySelector('.chat-input')?.disabled ||
-      document.querySelector('.turns-left')?.textContent?.includes('free encounter'), { timeout: 30000 });
-    await sleep(400);
+    await sleep(1800);
   }
-  await page.waitForFunction(() => !document.querySelector('.save-gate')?.hidden, { timeout: 20000 });
+  await page.waitForFunction(
+    () => {
+      const gate = document.querySelector('.save-gate');
+      return !!gate && !gate.hidden;
+    },
+    { timeout: 40000 }
+  );
   await sleep(600);
   await shot('5-save-gate');
-  await clickByText(page, '.gate-card .btn-primary', 'Use 1 credit');
+  await clickByText(page, '.gate-card .btn-primary', 'Lưu chương');
   await sleep(1200);
 
-  await clickByText(page, '.stage-top .btn', 'All universes');
+  // --- Leave back to the gallery (where Afterburn used to sit) ---
+  await clickByText(page, '.stage-top .btn', 'Tất cả vũ trụ');
   await sleep(1800);
-
-  // --- Afterburn City: the creator flow ---
-  await clickByText(page, '.universe-tile', 'Afterburn City');
-  await sleep(2600);
-  await clickByText(page, 'button', 'Enter Afterburn City');
-  await sleep(6600); // hall flight + fly to first character (slower under load)
-  await shot('4-studio-rex');
-
-  // Slider: jump to VALE via thumbnail, then arrow to UNIT K-6 and back
-  await clickByText(page, '.slider-thumb', 'VALE');
-  await sleep(2000);
-  await shot('5-studio-vale');
-  await clickByText(page, '.slider-arrow[aria-label="Next character"]', '›');
-  await sleep(1800);
-  await clickByText(page, '.slider-arrow[aria-label="Previous character"]', '‹');
-  await sleep(1800);
-
-  // Generate from text
-  await page.waitForSelector('.describe-input', { timeout: 10000 });
-  await page.type('.describe-input', 'Layered black hair, calm, smart casual, silver details.');
-  await clickByText(page, 'button', 'Generate My Mate');
-  await sleep(1200);
-  await shot('6-generating');
-  await sleep(4200); // processing + reveal flight
-  await shot('7-reveal');
-
-  await page.waitForSelector('.name-input', { timeout: 10000 });
-  await page.type('.name-input', 'Quang');
-  await clickByText(page, 'button', 'Join Afterburn City');
-  await sleep(3400);
-  await shot('8-joined');
+  await shot('6-gallery-again');
 
   return { shots, errors };
 }
@@ -128,14 +150,14 @@ async function journey(page, tag) {
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: 'new',
-  args: ['--hide-scrollbars', '--force-color-profile=srgb'],
+  args: ['--no-sandbox', '--disable-dev-shm-usage', '--hide-scrollbars', '--force-color-profile=srgb'],
 });
 
 try {
   const desktop = await browser.newPage();
   await desktop.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
   const d = await journey(desktop, 'desktop');
-  console.log('desktop shots:', d.shots.length, 'errors:', JSON.stringify(d.errors.slice(0, 5)));
+  console.log('desktop shots:', d.shots.length, 'errors:', JSON.stringify(d.errors.slice(0, 8)));
   // Close before the mobile run: a backgrounded page gets no rAF in headless
   // Chrome, which freezes the app's animation loop mid-journey.
   await desktop.close();
@@ -143,7 +165,7 @@ try {
   const mobile = await browser.newPage();
   await mobile.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const m = await journey(mobile, 'mobile');
-  console.log('mobile shots:', m.shots.length, 'errors:', JSON.stringify(m.errors.slice(0, 5)));
+  console.log('mobile shots:', m.shots.length, 'errors:', JSON.stringify(m.errors.slice(0, 8)));
 } finally {
   await browser.close();
 }

@@ -33,6 +33,9 @@ export class CameraRig {
   private impactDuration = 0;
   private impactStrength = 0;
   private impactBaseTarget = new THREE.Vector3();
+  private sway = new THREE.Vector2();
+  private swayTarget = new THREE.Vector3();
+  private swayTmp = new THREE.Vector3();
 
   constructor(
     private camera: THREE.PerspectiveCamera,
@@ -60,8 +63,22 @@ export class CameraRig {
     this.controls = controls;
   }
 
+  /** Pointer-driven idle parallax, normalized (-1..1) from PointerSway. */
+  setSway(x: number, y: number): void {
+    this.sway.set(x, y);
+  }
+
   get flying(): boolean {
     return this.flight !== null;
+  }
+
+  private get swayActive(): boolean {
+    return (
+      !this.reducedMotion &&
+      !this.flight &&
+      !this.controls?.enabled &&
+      (this.sway.x !== 0 || this.sway.y !== 0)
+    );
   }
 
   applyPreset(p: CamPreset): void {
@@ -149,7 +166,7 @@ export class CameraRig {
         this.impactDuration = 0;
       }
     }
-    if (f || this.impactDuration > 0) this.syncLook();
+    if (f || this.impactDuration > 0 || this.swayActive) this.syncLook();
   }
 
   /** Keep OrbitControls (when enabled) and lookAt coherent with one target. */
@@ -157,6 +174,9 @@ export class CameraRig {
     if (this.controls?.enabled) {
       this.controls.target.copy(this.target);
       this.controls.update();
+    } else if (this.swayActive) {
+      this.swayTarget.copy(this.target).add(this.swayTmp.set(this.sway.x * 0.09, this.sway.y * 0.06, 0));
+      this.camera.lookAt(this.swayTarget);
     } else {
       this.camera.lookAt(this.target);
     }

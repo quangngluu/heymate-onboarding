@@ -1,7 +1,11 @@
 // Transformation reveal: an expanding light ring + short-lived particle burst
 // around the Mate. Restrained by design — no bloom pass, no screen flash.
+//
+// The burst is a fixed GPU pool: particles are spawned once on `play()` and
+// integrated in the vertex shader, so no CPU loop touches the buffers per frame.
 
 import * as THREE from 'three';
+import { GpuParticlePool } from './gpu-particles';
 
 export interface RevealFx {
   play(reducedMotion: boolean): Promise<void>;
@@ -38,45 +42,40 @@ export function createRevealFx(parent: THREE.Object3D, accentColor: number): Rev
   pillar.position.y = 1.7;
   group.add(pillar);
 
-  const N = 280;
-  const positions = new Float32Array(N * 3);
-  const velocities: THREE.Vector3[] = [];
-  for (let i = 0; i < N; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const r = 0.15 + Math.random() * 0.25;
-    positions[i * 3] = Math.cos(a) * r;
-    positions[i * 3 + 1] = 0.15 + Math.random() * 1.2;
-    positions[i * 3 + 2] = Math.sin(a) * r;
-    velocities.push(
-      new THREE.Vector3(Math.cos(a) * (0.4 + Math.random() * 0.7), 0.5 + Math.random() * 0.9, Math.sin(a) * (0.4 + Math.random() * 0.7))
-    );
-  }
-  const pGeo = new THREE.BufferGeometry();
-  pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const pMat = new THREE.PointsMaterial({
-    color: accentColor,
+  // Burst pool reuses the old 280-particle budget; flight lives in the shader.
+  const pool = new GpuParticlePool(group, {
+    capacity: 280,
+    life: 1.8,
     size: 0.035,
-    transparent: true,
-    opacity: 0,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
+    color: accentColor,
+    mode: 'burst',
+    reducedMotion: false,
   });
-  const points = new THREE.Points(pGeo, pMat);
-  group.add(points);
+  pool.setOpacity(0);
 
   let t = -1; // -1 = idle
   let duration = 1.8;
+  let elapsed = 0; // monotonic clock for the pool, independent of the reveal t
   let resolveDone: (() => void) | null = null;
 
   return {
     play(reducedMotion: boolean): Promise<void> {
       duration = reducedMotion ? 0.4 : 1.8;
       t = 0;
+      pool.setReducedMotion(reducedMotion);
+      // Resync the shader clock to the caller's elapsed time before spawning so
+      // a burst always starts at the current time, then fan the particles out
+      // from around the figure. Under reduced motion the pool freezes time and
+      // seeds a still age spread instead of a flash.
+      pool.update(0, elapsed);
+      pool.burst(new THREE.Vector3(0, 0.5, 0), 280, 0.4);
       return new Promise((res) => {
         resolveDone = res;
       });
     },
     update(dt: number): void {
+      elapsed += dt;
+      pool.update(dt, elapsed);
       if (t < 0) return;
       t += dt;
       const k = Math.min(t / duration, 1);
@@ -89,19 +88,12 @@ export function createRevealFx(parent: THREE.Object3D, accentColor: number): Rev
       pillarMat.opacity = Math.sin(pk * Math.PI) * 0.32;
       pillar.scale.set(1 - k * 0.55, 1, 1 - k * 0.55);
       pillar.rotation.y += dt * 1.4;
-      // Particles: rise + fade
-      const pos = pGeo.getAttribute('position') as THREE.BufferAttribute;
-      for (let i = 0; i < N; i++) {
-        pos.setX(i, pos.getX(i) + velocities[i].x * dt * 0.6);
-        pos.setY(i, pos.getY(i) + velocities[i].y * dt * 0.8);
-        pos.setZ(i, pos.getZ(i) + velocities[i].z * dt * 0.6);
-      }
-      pos.needsUpdate = true;
-      pMat.opacity = Math.sin(Math.min(k, 1) * Math.PI) * 0.85;
+      // Particles fade with the ring; the shader ages and culls them on its own.
+      pool.setOpacity(Math.sin(Math.min(k, 1) * Math.PI) * 0.85);
       if (k >= 1) {
         t = -1;
         ringMat.opacity = 0;
-        pMat.opacity = 0;
+        pool.setOpacity(0);
         pillarMat.opacity = 0;
         resolveDone?.();
         resolveDone = null;
@@ -113,8 +105,7 @@ export function createRevealFx(parent: THREE.Object3D, accentColor: number): Rev
       ringMat.dispose();
       pillar.geometry.dispose();
       pillarMat.dispose();
-      pGeo.dispose();
-      pMat.dispose();
+      pool.dispose();
     },
   };
 }

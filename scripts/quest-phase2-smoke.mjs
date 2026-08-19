@@ -1083,6 +1083,8 @@ try {
     executablePath: chromeExecutable(),
     headless: 'new',
     args: [
+      '--no-sandbox',
+      '--disable-dev-shm-usage',
       '--autoplay-policy=no-user-gesture-required',
       '--force-color-profile=srgb',
       '--hide-scrollbars',

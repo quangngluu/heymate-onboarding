@@ -16,6 +16,7 @@ import {
 import { RESIDENTS, type VisualIdentity } from '../config/residents';
 import type { KaguraFigurineVariantId } from '../config/figurine-products';
 import type { QuestPresentation } from '../config/quests';
+import { GpuParticlePool } from './gpu-particles';
 
 type MoteMotif = VisualIdentity['moteMotif'];
 
@@ -166,7 +167,7 @@ export class WaifuStage {
   private cryoRevealTime = -1;
   private cryoRevealEntry: Entry | null = null;
   private cryoRevealReady: (() => void) | null = null;
-  private motes: THREE.Points;
+  private motePool: GpuParticlePool;
   private moteMotif: MoteMotif = 'data';
   private officeStatic = false;
   private questMode = false;
@@ -188,7 +189,8 @@ export class WaifuStage {
     private scene: THREE.Scene,
     /** Top surface of the center base; the hero stands here. */
     baseTopY: number,
-    maxAnisotropy = 8
+    maxAnisotropy = 8,
+    small = false
   ) {
     this.debugQuestRig = questRigDebugEnabled();
     document.documentElement.dataset.questRigDebug = String(this.debugQuestRig);
@@ -367,21 +369,18 @@ export class WaifuStage {
     this.cryoSmoke.visible = false;
     scene.add(this.cryoSmoke);
 
-    const N = 220;
-    const positions = new Float32Array(N * 3);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    this.motes = new THREE.Points(
-      geo,
-      new THREE.PointsMaterial({
-        size: 0.022,
-        transparent: true,
-        opacity: 0.55,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      })
-    );
-    scene.add(this.motes);
+    // Ambient motes ride the shared GPU pool: fixed count, shader aging, no
+    // per-frame CPU writes. `life` is the wrap period, so the field rises,
+    // dissolves and re-seeds continuously without ever respawning.
+    this.motePool = new GpuParticlePool(scene, {
+      capacity: small ? 120 : 220,
+      life: 8,
+      size: 0.022,
+      color: 0xffffff,
+      mode: 'ambient',
+      reducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
+    });
+    this.motePool.setOpacity(0.55);
 
     // Prototype 1 uses authored geometry as the guaranteed scene. A generated
     // image may later replace a camera cut, but the mystery and its mutations
@@ -639,6 +638,12 @@ export class WaifuStage {
     }
   }
 
+  /** The hero entry's group while a hero is set — the scan reveal's live target. */
+  heroScanTarget(): THREE.Object3D | null {
+    if (!this.heroId) return null;
+    return this.entries.get(this.heroId)?.group ?? null;
+  }
+
   /** Leave the display base empty while the explicitly selected sculpt streams. */
   hideHero(): void {
     for (const entry of this.entries.values()) entry.group.visible = false;
@@ -782,22 +787,28 @@ export class WaifuStage {
    */
   setMotes(color: number, motif: MoteMotif): void {
     this.moteMotif = motif;
-    (this.motes.material as THREE.PointsMaterial).color.setHex(color);
-    const pos = this.motes.geometry.getAttribute('position') as THREE.BufferAttribute;
-    for (let i = 0; i < pos.count; i++) {
-      const a = (i / pos.count) * Math.PI * 2 * 7;
+    this.motePool.setColor(color);
+    this.motePool.setSize(motif === 'ribbon' ? 0.035 : 0.022);
+    // Ribbon reads as a slow horizontal orbit, data a faint drift, ember a pure
+    // rise. The whole field still rotates on the object below.
+    this.motePool.setSwirl(motif === 'ribbon' ? 0.18 : motif === 'data' ? 0.05 : 0);
+    const rise = motif === 'ribbon' ? 0.05 : 0.16;
+    const count = this.motePool.capacity;
+    const origin = new THREE.Vector3();
+    const velocity = new THREE.Vector3(0, rise, 0);
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 * 7;
       const r = motif === 'ribbon' ? 0.9 + (i % 5) * 0.22 : 0.5 + (i % 9) * 0.16;
       const y = motif === 'ember' ? (i % 17) * 0.09 : 0.2 + (i % 21) * 0.09;
-      pos.setXYZ(i, Math.cos(a) * r, y, Math.sin(a) * r);
+      origin.set(Math.cos(a) * r, y, Math.sin(a) * r);
+      this.motePool.spawn(origin, velocity);
     }
-    pos.needsUpdate = true;
-    (this.motes.material as THREE.PointsMaterial).size = motif === 'ribbon' ? 0.035 : 0.022;
   }
 
   /** The office handoff is a physical desk shot, not a supernatural reveal. */
   setAmbientEffectsVisible(visible: boolean): void {
     this.officeStatic = !visible;
-    this.motes.visible = visible;
+    this.motePool.points.visible = visible;
     if (!visible) {
       this.cryoRevealTime = -1;
       this.cryoRevealEntry = null;
@@ -896,18 +907,12 @@ export class WaifuStage {
     this.glow.intensity = this.speakingLevel * 2.4 + 0.35;
 
     // Motes move the way her canon moves: data climbs, embers rise and fade,
-    // ribbons turn. All three lift a little while she is speaking.
-    const mm = this.motes.material as THREE.PointsMaterial;
-    const pos = this.motes.geometry.getAttribute('position') as THREE.BufferAttribute;
-    const rise = (this.moteMotif === 'ribbon' ? 0.05 : 0.16) * (1 + this.speakingLevel);
-    for (let i = 0; i < pos.count; i++) {
-      let y = pos.getY(i) + dt * rise;
-      if (y > 2.3) y = 0.05;
-      pos.setY(i, y);
-    }
-    pos.needsUpdate = true;
-    this.motes.rotation.y += dt * (this.moteMotif === 'ribbon' ? 0.16 : 0.05);
-    mm.opacity = 0.4 + this.speakingLevel * 0.3;
+    // ribbons turn. The shader advances rise and swirl; speaking lifts the rate
+    // and brightens the field.
+    this.motePool.update(dt, t);
+    this.motePool.setRate(1 + this.speakingLevel);
+    this.motePool.setOpacity(0.4 + this.speakingLevel * 0.3);
+    this.motePool.points.rotation.y += dt * (this.moteMotif === 'ribbon' ? 0.16 : 0.05);
 
     for (const [id, e] of this.entries) {
       const isHero = id === this.heroId;
@@ -1092,9 +1097,7 @@ export class WaifuStage {
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const material of materials) material.dispose();
     });
-    this.motes.parent?.remove(this.motes);
-    this.motes.geometry.dispose();
-    (this.motes.material as THREE.Material).dispose();
+    this.motePool.dispose();
     this.cryoPod.parent?.remove(this.cryoPod);
     this.cryoPod.traverse((object) => {
       const mesh = object as THREE.Mesh;
